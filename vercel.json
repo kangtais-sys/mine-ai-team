@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    { "source": "/api/chat", "destination": "/api/chat" },
+    { "source": "/api/orchestrate", "destination": "/api/orchestrate" },
+    { "source": "/api/briefing", "destination": "/api/briefing" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
