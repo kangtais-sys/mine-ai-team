@@ -1,121 +1,29 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { ArrowUp, Loader2 } from 'lucide-react';
 import useChatStore from '../store/chatStore';
 import { getAgent } from '../lib/agents';
 
 export default function ChatView() {
   const [input, setInput] = useState('');
-  const messagesEndRef = useRef(null);
+  const endRef = useRef(null);
   const { activeAgent, conversations, isLoading, sendMessage } = useChatStore();
   const agent = getAgent(activeAgent);
   const messages = conversations[activeAgent] || [];
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = () => {
-    const trimmed = input.trim();
-    if (!trimmed || isLoading) return;
+  const send = () => {
+    const text = input.trim();
+    if (!text || isLoading) return;
     setInput('');
-    sendMessage(activeAgent, trimmed);
+    sendMessage(activeAgent, text);
   };
 
   const Icon = agent.icon;
 
-  return (
-    <div className="flex flex-col h-screen">
-      {/* Header */}
-      <header className="h-[64px] border-b border-border flex items-center px-6 shrink-0 bg-bg-primary">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-bg-card border border-border flex items-center justify-center">
-            <Icon size={18} />
-          </div>
-          <div>
-            <h2 className="text-[16px] font-bold">{agent.name}</h2>
-            <p className="text-[12px] text-text-secondary">{agent.description}</p>
-          </div>
-        </div>
-      </header>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-16 h-16 rounded-2xl bg-bg-card border border-border flex items-center justify-center mb-4">
-              <Icon size={28} strokeWidth={1.5} />
-            </div>
-            <h3 className="text-[20px] font-bold mb-2">{agent.name}</h3>
-            <p className="text-text-secondary text-[14px] max-w-md">
-              {agent.description}에 대해 무엇이든 물어보세요.
-            </p>
-            <div className="flex flex-wrap gap-2 mt-6 max-w-lg justify-center">
-              {getQuickActions(activeAgent).map((action, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    setInput(action);
-                  }}
-                  className="px-4 py-2 rounded-lg border border-border text-[13px] text-text-secondary hover:border-white hover:text-white transition-all"
-                >
-                  {action}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {messages.map((msg, i) => (
-          <div key={i} className={`mb-4 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[75%] rounded-2xl px-4 py-3 ${
-              msg.role === 'user'
-                ? 'bg-white text-black'
-                : 'bg-bg-card border border-border'
-            }`}>
-              <p className="text-[14px] leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-            </div>
-          </div>
-        ))}
-
-        {isLoading && (
-          <div className="mb-4 flex justify-start">
-            <div className="bg-bg-card border border-border rounded-2xl px-4 py-3">
-              <Loader2 size={18} className="animate-spin text-text-secondary" />
-            </div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input */}
-      <div className="px-6 pb-6 pt-2 shrink-0">
-        <div className="flex items-center gap-3 bg-bg-card border border-border rounded-xl px-4 py-3 focus-within:border-white transition-colors">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-            placeholder={`${agent.name}에게 메시지 보내기...`}
-            className="flex-1 bg-transparent text-[14px] outline-none placeholder:text-text-muted"
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || isLoading}
-            className="w-8 h-8 rounded-lg bg-white text-black flex items-center justify-center disabled:opacity-30 transition-opacity hover:opacity-80"
-          >
-            <Send size={16} />
-          </button>
-        </div>
-        <p className="text-center text-[11px] text-text-muted mt-2">
-          Claude API (claude-sonnet-4-20250514) 기반
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function getQuickActions(agentId) {
-  const actions = {
+  const quickActions = {
     chief: ['오늘 전체 브리핑해줘', '이번 주 주요 일정 정리', '긴급 이슈 있어?'],
     creator: ['인스타 릴스 기획해줘', '이번 주 콘텐츠 캘린더', 'SEO 블로그 글 써줘'],
     community: ['오늘 DM 요약해줘', '댓글 분석 리포트', '악성댓글 현황'],
@@ -125,5 +33,195 @@ function getQuickActions(agentId) {
     product: ['신제품 트렌드 분석', '경쟁사 신제품 모니터링', '상품 기획서 작성'],
     global: ['수출 현황 보고', '환율 변동 리포트', '바이어 컨택 메일 작성'],
   };
-  return actions[agentId] || [];
+
+  return (
+    <>
+      {/* Header */}
+      <div style={{
+        height: 48,
+        minHeight: 48,
+        padding: '0 24px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        borderBottom: '1px solid #1A1A1A',
+        flexShrink: 0,
+      }}>
+        <Icon size={16} strokeWidth={1.5} color="#666" />
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5' }}>{agent.name}</span>
+        <span style={{ fontSize: 13, color: '#555' }}>{agent.title}</span>
+      </div>
+
+      {/* Messages Area */}
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+        {messages.length === 0 ? (
+          /* Empty State */
+          <div style={{
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+          }}>
+            <div style={{
+              width: 48,
+              height: 48,
+              borderRadius: 12,
+              background: '#141414',
+              border: '1px solid #242424',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 16,
+            }}>
+              <Icon size={22} strokeWidth={1.5} color="#5E6AD2" />
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 600, color: '#F5F5F5', marginBottom: 4 }}>{agent.name}</div>
+            <div style={{ fontSize: 14, color: '#666', marginBottom: 32 }}>{agent.description}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 520 }}>
+              {(quickActions[activeAgent] || []).map((action, i) => (
+                <button
+                  key={i}
+                  onClick={() => setInput(action)}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: 6,
+                    border: '1px solid #242424',
+                    background: 'transparent',
+                    color: '#888',
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#444'; e.currentTarget.style.color = '#CCC'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#242424'; e.currentTarget.style.color = '#888'; }}
+                >
+                  {action}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          /* Message List */
+          <div style={{ maxWidth: 720, margin: '0 auto', padding: 24 }}>
+            {messages.map((msg, i) => (
+              <div key={i} style={{ marginBottom: 20 }}>
+                {msg.role === 'user' ? (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <div style={{
+                      background: '#5E6AD2',
+                      color: '#FFFFFF',
+                      borderRadius: '18px 18px 4px 18px',
+                      padding: '10px 16px',
+                      maxWidth: '70%',
+                      fontSize: 14,
+                      lineHeight: 1.6,
+                      whiteSpace: 'pre-wrap',
+                    }}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <div style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 6,
+                        background: '#141414',
+                        border: '1px solid #242424',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <Icon size={12} strokeWidth={2} color="#5E6AD2" />
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 500, color: '#666' }}>{agent.name}</span>
+                    </div>
+                    <div style={{
+                      paddingLeft: 30,
+                      fontSize: 14,
+                      lineHeight: 1.7,
+                      color: '#DDD',
+                      whiteSpace: 'pre-wrap',
+                    }}>
+                      {msg.content}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {isLoading && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 30 }}>
+                <Loader2 size={16} color="#555" style={{ animation: 'spin 1s linear infinite' }} />
+                <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+              </div>
+            )}
+            <div ref={endRef} />
+          </div>
+        )}
+      </div>
+
+      {/* Input Area */}
+      <div style={{
+        padding: '12px 24px 20px',
+        flexShrink: 0,
+      }}>
+        <div style={{ maxWidth: 720, margin: '0 auto' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            background: '#141414',
+            border: '1px solid #242424',
+            borderRadius: 10,
+            padding: '10px 14px',
+          }}>
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
+              placeholder={`${agent.name}에게 메시지 보내기...`}
+              style={{
+                flex: 1,
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                color: '#E8E8E8',
+                fontSize: 14,
+                fontFamily: 'inherit',
+              }}
+            />
+            <button
+              onClick={send}
+              disabled={!input.trim() || isLoading}
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 8,
+                border: 'none',
+                background: input.trim() && !isLoading ? '#5E6AD2' : '#222',
+                color: input.trim() && !isLoading ? '#FFF' : '#555',
+                cursor: input.trim() && !isLoading ? 'pointer' : 'default',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s',
+                flexShrink: 0,
+              }}
+            >
+              <ArrowUp size={16} strokeWidth={2} />
+            </button>
+          </div>
+          <div style={{ textAlign: 'center', fontSize: 11, color: '#333', marginTop: 8 }}>
+            Claude API (claude-sonnet-4-20250514)
+          </div>
+        </div>
+      </div>
+    </>
+  );
 }

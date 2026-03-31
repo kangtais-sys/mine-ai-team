@@ -1,151 +1,219 @@
-import { Users, DollarSign, FileText, TrendingUp } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
+import { Users, DollarSign, FileText, TrendingUp, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import useDashboardStore from '../store/dashboardStore';
+import { agents } from '../lib/agents';
 
-const formatKRW = (value) => {
-  if (value >= 100000000) return `${(value / 100000000).toFixed(1)}억`;
-  if (value >= 10000) return `${(value / 10000).toFixed(0)}만`;
-  return value.toLocaleString();
+const fmt = (v) => {
+  if (v >= 100000000) return `${(v / 100000000).toFixed(1)}억`;
+  if (v >= 10000) return `${(v / 10000).toFixed(0)}만`;
+  return v.toLocaleString();
+};
+
+const tip = {
+  background: '#1A1A1A',
+  border: '1px solid #2A2A2A',
+  borderRadius: 6,
+  color: '#E8E8E8',
+  fontSize: 12,
+  padding: '6px 10px',
+  boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
 };
 
 export default function Dashboard() {
   const { stats, revenueData, followerData, channelRevenue } = useDashboardStore();
 
-  const statCards = [
-    { label: '총 팔로워', value: formatKRW(stats.totalFollowers), icon: Users, change: '+2.4%' },
-    { label: '월 매출', value: `${formatKRW(stats.monthlyRevenue)}원`, icon: DollarSign, change: '+12.8%' },
-    { label: '콘텐츠 발행', value: `${stats.contentCount}건`, icon: FileText, change: '+8건' },
-    { label: '인게이지먼트', value: `${stats.engagementRate}%`, icon: TrendingUp, change: '+0.3%' },
+  const kpis = [
+    { label: '총 팔로워', value: fmt(stats.totalFollowers), icon: Users, delta: '+2.4%', up: true },
+    { label: '월 매출', value: `${fmt(stats.monthlyRevenue)}원`, icon: DollarSign, delta: '+12.8%', up: true },
+    { label: '콘텐츠 발행', value: `${stats.contentCount}건`, icon: FileText, delta: '+8건', up: true },
+    { label: '인게이지먼트', value: `${stats.engagementRate}%`, icon: TrendingUp, delta: '+0.3%', up: true },
   ];
 
-  return (
-    <div className="flex flex-col h-screen">
-      <header className="h-[64px] border-b border-border flex items-center px-6 shrink-0 bg-bg-primary">
-        <h2 className="text-[18px] font-bold">대시보드</h2>
-        <span className="text-[13px] text-text-secondary ml-3">MILLIMILLI 통합 현황</span>
-      </header>
+  const activities = [
+    { agent: 'creator', action: '인스타 릴스 3개 예약 발행 완료', time: '10분 전' },
+    { agent: 'community', action: 'DM 24건 자동 응대 완료', time: '25분 전' },
+    { agent: 'cs', action: '교환 요청 3건 처리 완료', time: '1시간 전' },
+    { agent: 'marketer', action: '주간 성과 리포트 생성 완료', time: '2시간 전' },
+    { agent: 'global', action: '일본 바이어 컨택 메일 5건 발송', time: '3시간 전' },
+    { agent: 'admin', action: '3월 매출 정산 보고서 생성', time: '4시간 전' },
+    { agent: 'product', action: '봄 시즌 신제품 기획서 초안 완성', time: '5시간 전' },
+  ];
 
-      <div className="flex-1 overflow-y-auto p-6">
-        {/* Stat Cards */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
-          {statCards.map((card, i) => {
-            const Icon = card.icon;
+  const barColors = ['#5E6AD2', '#7C6BDE', '#9D8AE9', '#BBA8F4'];
+
+  return (
+    <>
+      {/* Header */}
+      <div style={{
+        height: 48,
+        minHeight: 48,
+        padding: '0 24px',
+        display: 'flex',
+        alignItems: 'center',
+        borderBottom: '1px solid #1A1A1A',
+        flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5' }}>대시보드</span>
+      </div>
+
+      {/* Scrollable Content */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+        {/* KPI Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 20 }}>
+          {kpis.map((kpi, i) => {
+            const Icon = kpi.icon;
             return (
-              <div key={i} className="bg-bg-card border border-border rounded-xl p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[13px] text-text-secondary">{card.label}</span>
-                  <Icon size={16} className="text-text-muted" />
+              <div key={i} style={{
+                background: '#141414',
+                border: '1px solid #242424',
+                borderRadius: 8,
+                padding: 20,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <span style={{ fontSize: 12, color: '#666', fontWeight: 500 }}>{kpi.label}</span>
+                  <Icon size={16} strokeWidth={1.5} color="#444" />
                 </div>
-                <div className="text-[24px] font-bold">{card.value}</div>
-                <div className="text-[12px] text-green-400 mt-1">{card.change} vs 지난달</div>
+                <div style={{ fontSize: 32, fontWeight: 700, color: '#FFFFFF', lineHeight: 1, letterSpacing: '-0.02em' }}>
+                  {kpi.value}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
+                  {kpi.up
+                    ? <ArrowUpRight size={13} color="#22C55E" />
+                    : <ArrowDownRight size={13} color="#EF4444" />
+                  }
+                  <span style={{ fontSize: 12, color: kpi.up ? '#22C55E' : '#EF4444', fontWeight: 500 }}>{kpi.delta}</span>
+                  <span style={{ fontSize: 12, color: '#555' }}>vs 지난달</span>
+                </div>
               </div>
             );
           })}
         </div>
 
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          {/* Revenue Chart */}
-          <div className="bg-bg-card border border-border rounded-xl p-5">
-            <h3 className="text-[16px] font-bold mb-4">채널별 매출 추이</h3>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={revenueData}>
-                <XAxis dataKey="month" stroke="#666" fontSize={12} />
-                <YAxis stroke="#666" fontSize={12} tickFormatter={(v) => `${v / 10000000}천만`} />
-                <Tooltip
-                  contentStyle={{ background: '#141414', border: '1px solid #2A2A2A', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
-                  formatter={(value) => [`${formatKRW(value)}원`]}
-                />
-                <Bar dataKey="올리브영" fill="#FFFFFF" radius={[2, 2, 0, 0]} />
-                <Bar dataKey="스마트스토어" fill="#888888" radius={[2, 2, 0, 0]} />
-                <Bar dataKey="자사몰" fill="#555555" radius={[2, 2, 0, 0]} />
-                <Bar dataKey="해외" fill="#333333" radius={[2, 2, 0, 0]} />
+        {/* Charts */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+          {/* Revenue */}
+          <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '20px 20px 12px' }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5', marginBottom: 16 }}>채널별 매출 추이</div>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={revenueData} barGap={2}>
+                <XAxis dataKey="month" stroke="#444" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="#444" fontSize={11} tickLine={false} axisLine={false} width={42} tickFormatter={(v) => `${v / 10000000}천만`} />
+                <Tooltip contentStyle={tip} formatter={(v) => [`${fmt(v)}원`]} cursor={{ fill: 'rgba(255,255,255,0.02)' }} />
+                <Bar dataKey="올리브영" fill={barColors[0]} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="스마트스토어" fill={barColors[1]} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="자사몰" fill={barColors[2]} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="해외" fill={barColors[3]} radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            {/* Legend */}
+            <div style={{ display: 'flex', gap: 16, marginTop: 8, paddingLeft: 42 }}>
+              {['올리브영', '스마트스토어', '자사몰', '해외'].map((name, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: 2, background: barColors[i] }} />
+                  <span style={{ fontSize: 11, color: '#666' }}>{name}</span>
+                </div>
+              ))}
+            </div>
           </div>
 
-          {/* Follower Chart */}
-          <div className="bg-bg-card border border-border rounded-xl p-5">
-            <h3 className="text-[16px] font-bold mb-4">팔로워 성장 추이</h3>
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={followerData}>
-                <XAxis dataKey="month" stroke="#666" fontSize={12} />
-                <YAxis stroke="#666" fontSize={12} tickFormatter={(v) => `${v / 10000}만`} />
-                <Tooltip
-                  contentStyle={{ background: '#141414', border: '1px solid #2A2A2A', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
-                  formatter={(value) => [formatKRW(value)]}
-                />
-                <Line type="monotone" dataKey="인스타그램" stroke="#FFFFFF" strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="틱톡" stroke="#888888" strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="유튜브" stroke="#555555" strokeWidth={2} dot={{ r: 3 }} />
-              </LineChart>
+          {/* Followers */}
+          <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '20px 20px 12px' }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5', marginBottom: 16 }}>팔로워 성장 추이</div>
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={followerData}>
+                <defs>
+                  <linearGradient id="gInsta" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#5E6AD2" stopOpacity={0.25} />
+                    <stop offset="100%" stopColor="#5E6AD2" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="gTiktok" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#7C6BDE" stopOpacity={0.15} />
+                    <stop offset="100%" stopColor="#7C6BDE" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="month" stroke="#444" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="#444" fontSize={11} tickLine={false} axisLine={false} width={36} tickFormatter={(v) => `${v / 10000}만`} />
+                <Tooltip contentStyle={tip} formatter={(v) => [fmt(v)]} cursor={{ stroke: '#333' }} />
+                <Area type="monotone" dataKey="인스타그램" stroke="#5E6AD2" strokeWidth={2} fill="url(#gInsta)" dot={false} />
+                <Area type="monotone" dataKey="틱톡" stroke="#7C6BDE" strokeWidth={2} fill="url(#gTiktok)" dot={false} />
+                <Area type="monotone" dataKey="유튜브" stroke="#9D8AE9" strokeWidth={1.5} fill="transparent" dot={false} />
+              </AreaChart>
             </ResponsiveContainer>
+            <div style={{ display: 'flex', gap: 16, marginTop: 8, paddingLeft: 36 }}>
+              {[
+                { name: '인스타그램', color: '#5E6AD2' },
+                { name: '틱톡', color: '#7C6BDE' },
+                { name: '유튜브', color: '#9D8AE9' },
+              ].map((ch, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 8, height: 3, borderRadius: 2, background: ch.color }} />
+                  <span style={{ fontSize: 11, color: '#666' }}>{ch.name}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
-          {/* Channel Revenue Breakdown */}
-          <div className="bg-bg-card border border-border rounded-xl p-5">
-            <h3 className="text-[16px] font-bold mb-4">채널별 매출 비중</h3>
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie
-                  data={channelRevenue}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  dataKey="value"
-                  stroke="#0A0A0A"
-                  strokeWidth={2}
-                >
-                  {channelRevenue.map((_, i) => (
-                    <Cell key={i} fill={['#FFFFFF', '#AAAAAA', '#666666', '#333333'][i]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{ background: '#141414', border: '1px solid #2A2A2A', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
-                  formatter={(value) => [`${formatKRW(value)}원`]}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="space-y-2 mt-2">
+        {/* Bottom Row */}
+        <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16 }}>
+          {/* Channel Pie */}
+          <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 20 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5', marginBottom: 16 }}>채널별 매출 비중</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {channelRevenue.map((ch, i) => (
-                <div key={i} className="flex items-center justify-between text-[13px]">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: ['#FFFFFF', '#AAAAAA', '#666666', '#333333'][i] }} />
-                    <span className="text-text-secondary">{ch.name}</span>
+                <div key={i}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ fontSize: 13, color: '#CCC' }}>{ch.name}</span>
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      <span style={{ fontSize: 13, color: '#666' }}>{fmt(ch.value)}원</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#F5F5F5', width: 44, textAlign: 'right' }}>{ch.percentage}%</span>
+                    </div>
                   </div>
-                  <span className="font-medium">{ch.percentage}%</span>
+                  <div style={{ height: 4, background: '#1F1F1F', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${ch.percentage}%`, background: barColors[i], borderRadius: 2 }} />
+                  </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Recent Activity */}
-          <div className="bg-bg-card border border-border rounded-xl p-5 col-span-2">
-            <h3 className="text-[16px] font-bold mb-4">최근 활동</h3>
-            <div className="space-y-3">
-              {[
-                { agent: 'AI 크리에이터', action: '인스타 릴스 3개 예약 발행 완료', time: '10분 전' },
-                { agent: 'AI 커뮤니티', action: 'DM 24건 자동 응대 완료', time: '25분 전' },
-                { agent: 'AI CS매니저', action: '교환 요청 3건 처리 완료', time: '1시간 전' },
-                { agent: 'AI 마케터', action: '주간 성과 리포트 생성 완료', time: '2시간 전' },
-                { agent: 'AI 글로벌', action: '일본 바이어 컨택 메일 5건 발송', time: '3시간 전' },
-                { agent: 'AI 경영지원', action: '3월 매출 정산 보고서 생성', time: '4시간 전' },
-                { agent: 'AI 상품개발', action: '봄 시즌 신제품 기획서 초안 완성', time: '5시간 전' },
-              ].map((item, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                  <div>
-                    <span className="text-[13px] font-medium text-white">{item.agent}</span>
-                    <span className="text-[13px] text-text-secondary ml-2">{item.action}</span>
+          {/* Activity */}
+          <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 20 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5', marginBottom: 12 }}>최근 활동</div>
+            {activities.map((item, i) => {
+              const ag = agents.find(a => a.id === item.agent);
+              const AgIcon = ag?.icon;
+              return (
+                <div key={i} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '8px 0',
+                  borderBottom: i < activities.length - 1 ? '1px solid #1F1F1F' : 'none',
+                }}>
+                  <div style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 6,
+                    background: '#1A1A1A',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    {AgIcon && <AgIcon size={14} strokeWidth={1.5} color="#5E6AD2" />}
                   </div>
-                  <span className="text-[12px] text-text-muted shrink-0">{item.time}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: '#DDD' }}>{ag?.name}</span>
+                    <span style={{ fontSize: 13, color: '#666', marginLeft: 8 }}>{item.action}</span>
+                  </div>
+                  <span style={{ fontSize: 12, color: '#444', flexShrink: 0 }}>{item.time}</span>
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
