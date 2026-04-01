@@ -48,16 +48,17 @@ function CreatorToolbar() {
   const lastUpload = recent[0];
   const lastFailed = lastUpload && (lastUpload.tiktok?.success === false || lastUpload.youtube?.success === false);
   const lastSuccess = lastUpload && !lastFailed;
+  const tiktokExpired = lastUpload?.tiktok?.tokenExpired === true;
 
-  const chip = (icon, label, ok) => (
+  const chip = (icon, label, ok, errorColor) => (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 5,
       padding: '3px 8px', borderRadius: 4,
-      background: ok ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
-      border: `1px solid ${ok ? 'rgba(34,197,94,0.15)' : '#1F1F1F'}`,
+      background: errorColor ? 'rgba(239,68,68,0.08)' : ok ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
+      border: `1px solid ${errorColor ? 'rgba(239,68,68,0.2)' : ok ? 'rgba(34,197,94,0.15)' : '#1F1F1F'}`,
     }}>
       {icon}
-      <span style={{ fontSize: 11, color: ok ? '#22C55E' : '#555', fontWeight: 500 }}>{label}</span>
+      <span style={{ fontSize: 11, color: errorColor || (ok ? '#22C55E' : '#555'), fontWeight: 500 }}>{label}</span>
     </div>
   );
 
@@ -90,7 +91,10 @@ function CreatorToolbar() {
       <div style={{ padding: '8px 28px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {chip(<CheckCircle2 size={11} color="#22C55E" />, status.email || '구글 연결됨', true)}
         {chip(<MonitorPlay size={11} color="#22C55E" />, '유튜브', true)}
-        {chip(<Music2 size={11} color={hasTiktok ? '#22C55E' : '#555'} />, '틱톡', hasTiktok)}
+        {tiktokExpired
+          ? chip(<Music2 size={11} color="#EF4444" />, '틱톡 토큰 만료 — 재로그인 필요', false, '#EF4444')
+          : chip(<Music2 size={11} color={hasTiktok ? '#22C55E' : '#555'} />, '틱톡', hasTiktok)
+        }
         <div
           onClick={() => setShowFiles(!showFiles)}
           style={{

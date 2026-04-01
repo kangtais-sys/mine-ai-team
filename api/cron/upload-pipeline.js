@@ -3,14 +3,28 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic();
 
-// Vercel Cron - runs every 5 minutes
 export const config = {
   maxDuration: 300,
 };
 
-// Google Auth - supports both OAuth (user tokens) and Service Account
+// Retry wrapper: retries fn up to maxRetries on failure
+async function withRetry(fn, maxRetries = 2, label = '') {
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      const isLast = attempt === maxRetries;
+      console.error(`[${label}] attempt ${attempt + 1}/${maxRetries + 1} failed: ${error.message}`);
+      if (!isLast) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
+// Google Auth with automatic token refresh
 function getAuth() {
-  // Prefer OAuth refresh token if available (user-connected)
   if (process.env.GOOGLE_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID) {
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
@@ -20,10 +34,10 @@ function getAuth() {
     oauth2Client.setCredentials({
       refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
     });
+    // googleapis library auto-refreshes via refresh_token when access_token expires
     return oauth2Client;
   }
 
-  // Fallback to service account
   return new google.auth.GoogleAuth({
     credentials: {
       client_email: process.env.GOOGLE_CLIENT_EMAIL,
@@ -38,22 +52,37 @@ function getAuth() {
   });
 }
 
-// Find or create a folder by name under a parent
-async function findOrCreateFolder(drive, name, parentId) {
-  const res = await drive.files.list({
-    q: `name='${name}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-    fields: 'files(id)',
-  });
-  if (res.data.files.length > 0) return res.data.files[0].id;
-
-  const folder = await drive.files.create({
-    requestBody: { name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] },
-    fields: 'id',
-  });
-  return folder.data.id;
+// Manually refresh access_token if needed (fallback)
+async function ensureFreshToken(auth) {
+  if (auth.credentials?.expiry_date && auth.credentials.expiry_date < Date.now() + 60000) {
+    console.log('[YouTube] Access token expired or expiring soon, refreshing...');
+    try {
+      const { credentials } = await auth.refreshAccessToken();
+      auth.setCredentials(credentials);
+      console.log('[YouTube] Token refreshed, new expiry:', new Date(credentials.expiry_date).toISOString());
+    } catch (error) {
+      console.error('[YouTube] Token refresh failed:', error.message);
+      throw new Error(`YouTube token refresh failed: ${error.message}. 대시보드에서 구글 계정 재연동이 필요합니다.`);
+    }
+  }
 }
 
-// Generate platform-optimized text via Claude
+function findOrCreateFolder(drive, name, parentId) {
+  return withRetry(async () => {
+    const res = await drive.files.list({
+      q: `name='${name}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: 'files(id)',
+    });
+    if (res.data.files.length > 0) return res.data.files[0].id;
+
+    const folder = await drive.files.create({
+      requestBody: { name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] },
+      fields: 'id',
+    });
+    return folder.data.id;
+  }, 1, 'Drive:findOrCreateFolder');
+}
+
 async function generateContent(fileName, platform) {
   const prompts = {
     tiktok: `당신은 MILLIMILLI 브랜드의 틱톡 콘텐츠 전문가입니다.
@@ -98,33 +127,19 @@ JSON 형식으로만 응답:
   });
 
   const text = response.content[0]?.text || '{}';
-  // Extract JSON from response
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   return jsonMatch ? JSON.parse(jsonMatch[0]) : {};
 }
 
-// Upload to TikTok via API
+// TikTok upload with token expiry detection
 async function uploadToTiktok(fileBuffer, fileName, content) {
   const accessToken = process.env.TIKTOK_ACCESS_TOKEN;
-  if (!accessToken) return { success: false, error: 'TIKTOK_ACCESS_TOKEN not set' };
+  if (!accessToken) {
+    console.error('[TikTok] TIKTOK_ACCESS_TOKEN not set');
+    return { success: false, error: 'TIKTOK_ACCESS_TOKEN not set', tokenExpired: false };
+  }
 
-  try {
-    // Step 1: Initialize upload
-    const initRes = await fetch('https://open.tiktokapis.com/v2/post/publish/inbox/video/init/', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        source_info: {
-          source: 'PULL_FROM_URL',
-          video_url: '', // Will be set after Drive sharing
-        },
-      }),
-    });
-
-    // TikTok API requires video URL - we'll use the publish intent flow
+  return withRetry(async () => {
     const caption = `${content.caption || ''}\n${(content.hashtags || []).map(t => `#${t.replace('#', '')}`).join(' ')}`;
 
     const publishRes = await fetch('https://open.tiktokapis.com/v2/post/publish/video/init/', {
@@ -151,23 +166,45 @@ async function uploadToTiktok(fileBuffer, fileName, content) {
     });
 
     const publishData = await publishRes.json();
+
+    // Detect token expiry
+    if (publishData.error?.code === 'access_token_invalid' ||
+        publishData.error?.code === 'token_expired' ||
+        publishRes.status === 401) {
+      const msg = '틱톡 토큰 만료 — 재로그인 필요';
+      console.error(`[TikTok] ${msg}`, publishData.error);
+      return { success: false, error: msg, tokenExpired: true };
+    }
+
+    if (publishData.error) {
+      console.error('[TikTok] API error:', JSON.stringify(publishData.error));
+      throw new Error(publishData.error.message || publishData.error.code || 'TikTok API error');
+    }
+
     if (publishData.data?.upload_url) {
-      await fetch(publishData.data.upload_url, {
+      const uploadRes = await fetch(publishData.data.upload_url, {
         method: 'PUT',
         headers: { 'Content-Type': 'video/mp4' },
         body: fileBuffer,
       });
+      if (!uploadRes.ok) {
+        throw new Error(`TikTok upload failed: HTTP ${uploadRes.status}`);
+      }
     }
 
-    return { success: true, publishId: publishData.data?.publish_id };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
+    console.log(`[TikTok] Upload success: ${fileName}, publishId: ${publishData.data?.publish_id}`);
+    return { success: true, publishId: publishData.data?.publish_id, tokenExpired: false };
+  }, 2, `TikTok:${fileName}`);
 }
 
-// Upload to YouTube Shorts
+// YouTube upload with token refresh and retry
 async function uploadToYoutube(auth, fileBuffer, fileName, content) {
-  try {
+  return withRetry(async () => {
+    // Ensure fresh token before upload
+    if (auth.credentials?.refresh_token) {
+      await ensureFreshToken(auth);
+    }
+
     const youtube = google.youtube({ version: 'v3', auth });
 
     const { Readable } = await import('stream');
@@ -180,7 +217,7 @@ async function uploadToYoutube(auth, fileBuffer, fileName, content) {
           title: (content.title || fileName).substring(0, 100),
           description: content.description || '',
           tags: content.tags || [],
-          categoryId: '26', // Howto & Style
+          categoryId: '26',
           defaultLanguage: 'ko',
         },
         status: {
@@ -195,38 +232,39 @@ async function uploadToYoutube(auth, fileBuffer, fileName, content) {
       },
     });
 
+    console.log(`[YouTube] Upload success: ${fileName}, videoId: ${res.data.id}`);
     return { success: true, videoId: res.data.id };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
+  }, 2, `YouTube:${fileName}`);
 }
 
-// Store upload log (append to a JSON file in Drive)
 async function logUpload(drive, folderId, logEntry) {
-  const logFileName = 'upload-log.json';
-  const res = await drive.files.list({
-    q: `name='${logFileName}' and '${folderId}' in parents and trashed=false`,
-    fields: 'files(id)',
-  });
+  try {
+    const logFileName = 'upload-log.json';
+    const res = await drive.files.list({
+      q: `name='${logFileName}' and '${folderId}' in parents and trashed=false`,
+      fields: 'files(id)',
+    });
 
-  let logs = [];
-  if (res.data.files.length > 0) {
-    const content = await drive.files.get({ fileId: res.data.files[0].id, alt: 'media' });
-    logs = Array.isArray(content.data) ? content.data : [];
-    await drive.files.update({
-      fileId: res.data.files[0].id,
-      media: { mimeType: 'application/json', body: JSON.stringify([...logs, logEntry]) },
-    });
-  } else {
-    await drive.files.create({
-      requestBody: { name: logFileName, parents: [folderId], mimeType: 'application/json' },
-      media: { mimeType: 'application/json', body: JSON.stringify([logEntry]) },
-    });
+    let logs = [];
+    if (res.data.files.length > 0) {
+      const content = await drive.files.get({ fileId: res.data.files[0].id, alt: 'media' });
+      logs = Array.isArray(content.data) ? content.data : [];
+      await drive.files.update({
+        fileId: res.data.files[0].id,
+        media: { mimeType: 'application/json', body: JSON.stringify([...logs, logEntry]) },
+      });
+    } else {
+      await drive.files.create({
+        requestBody: { name: logFileName, parents: [folderId], mimeType: 'application/json' },
+        media: { mimeType: 'application/json', body: JSON.stringify([logEntry]) },
+      });
+    }
+  } catch (error) {
+    console.error('[Log] Failed to write upload log:', error.message);
   }
 }
 
 export default async function handler(req, res) {
-  // Verify cron secret
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -240,7 +278,6 @@ export default async function handler(req, res) {
     const auth = getAuth();
     const drive = google.drive({ version: 'v3', auth });
 
-    // 1. List video files in "MINE 업로드" folder
     const videoMimes = [
       'video/mp4', 'video/quicktime', 'video/x-msvideo',
       'video/webm', 'video/x-matroska',
@@ -250,61 +287,62 @@ export default async function handler(req, res) {
       q: `(${videoMimes}) and '${uploadFolderId}' in parents and trashed=false`,
       fields: 'files(id, name, mimeType, size)',
       orderBy: 'createdTime',
-      pageSize: 5, // Process max 5 per run
+      pageSize: 5,
     });
 
     if (!files.data.files?.length) {
       return res.status(200).json({ message: 'No new files', processed: 0 });
     }
 
-    // 2. Find or create "완료" folder
     const doneFolderId = await findOrCreateFolder(drive, '완료', uploadFolderId);
-
     const results = [];
 
     for (const file of files.data.files) {
       const result = { fileName: file.name, tiktok: null, youtube: null };
 
       try {
-        // Download file
         const download = await drive.files.get(
           { fileId: file.id, alt: 'media' },
           { responseType: 'arraybuffer' }
         );
         const fileBuffer = Buffer.from(download.data);
 
-        // Generate content for both platforms (parallel)
         const [tiktokContent, youtubeContent] = await Promise.all([
           generateContent(file.name, 'tiktok'),
           generateContent(file.name, 'youtube'),
         ]);
 
-        // Upload to both platforms (parallel)
         const [tiktokResult, youtubeResult] = await Promise.all([
-          uploadToTiktok(fileBuffer, file.name, tiktokContent),
-          uploadToYoutube(auth, fileBuffer, file.name, youtubeContent),
+          uploadToTiktok(fileBuffer, file.name, tiktokContent).catch(e => ({
+            success: false, error: e.message, tokenExpired: false,
+          })),
+          uploadToYoutube(auth, fileBuffer, file.name, youtubeContent).catch(e => ({
+            success: false, error: e.message,
+          })),
         ]);
 
         result.tiktok = { ...tiktokResult, content: tiktokContent };
         result.youtube = { ...youtubeResult, content: youtubeContent };
 
-        // Move file to "완료" folder
-        await drive.files.update({
-          fileId: file.id,
-          addParents: doneFolderId,
-          removeParents: uploadFolderId,
-          fields: 'id, parents',
-        });
+        // Only move to "완료" if at least one platform succeeded
+        if (tiktokResult.success || youtubeResult.success) {
+          await drive.files.update({
+            fileId: file.id,
+            addParents: doneFolderId,
+            removeParents: uploadFolderId,
+            fields: 'id, parents',
+          });
+        }
 
-        // Log the upload
         await logUpload(drive, uploadFolderId, {
           timestamp: new Date().toISOString(),
           fileName: file.name,
-          tiktok: tiktokResult,
-          youtube: youtubeResult,
+          tiktok: { success: tiktokResult.success, error: tiktokResult.error, tokenExpired: tiktokResult.tokenExpired },
+          youtube: { success: youtubeResult.success, error: youtubeResult.error, videoId: youtubeResult.videoId },
         });
 
       } catch (fileError) {
+        console.error(`[Pipeline] File processing error (${file.name}):`, fileError.message);
         result.error = fileError.message;
       }
 
@@ -317,7 +355,7 @@ export default async function handler(req, res) {
       results,
     });
   } catch (error) {
-    console.error('Upload pipeline error:', error.message);
+    console.error('[Pipeline] Fatal error:', error.message);
     return res.status(500).json({ error: error.message });
   }
 }
