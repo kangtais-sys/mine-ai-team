@@ -25,18 +25,39 @@ export default function Dashboard() {
   const [googleStatus, setGoogleStatus] = useState(null); // null=loading, object=result
 
   useEffect(() => {
-    // Check URL params for OAuth callback result
     const params = new URLSearchParams(window.location.search);
+
     if (params.get('google_connected') === 'true') {
-      setGoogleStatus({ connected: true, email: params.get('email') });
-      window.history.replaceState({}, '', '/');
+      const email = params.get('email') || '';
+      localStorage.setItem('google_connected', 'true');
+      localStorage.setItem('google_email', email);
+      setGoogleStatus({ connected: true, email });
+      window.history.replaceState({}, '', window.location.pathname);
     } else if (params.get('google_error')) {
       setGoogleStatus({ connected: false, reason: 'oauth_error', error: params.get('google_error') });
-      window.history.replaceState({}, '', '/');
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (localStorage.getItem('google_connected') === 'true') {
+      setGoogleStatus({ connected: true, email: localStorage.getItem('google_email') || '' });
+      fetch('/api/auth/google-status')
+        .then(r => r.json())
+        .then(data => {
+          if (!data.connected) {
+            localStorage.removeItem('google_connected');
+            localStorage.removeItem('google_email');
+          }
+          setGoogleStatus(data);
+        })
+        .catch(() => {});
     } else {
       fetch('/api/auth/google-status')
         .then(r => r.json())
-        .then(setGoogleStatus)
+        .then(data => {
+          if (data.connected) {
+            localStorage.setItem('google_connected', 'true');
+            localStorage.setItem('google_email', data.email || '');
+          }
+          setGoogleStatus(data);
+        })
         .catch(() => setGoogleStatus({ connected: false, reason: 'fetch_error' }));
     }
   }, []);

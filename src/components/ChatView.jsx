@@ -9,13 +9,39 @@ function CreatorToolbar() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
     if (params.get('google_connected') === 'true') {
-      setStatus({ connected: true, email: params.get('email') });
-      window.history.replaceState({}, '', '/');
-    } else {
+      // OAuth callback just completed — save to localStorage and clean URL
+      const email = params.get('email') || '';
+      localStorage.setItem('google_connected', 'true');
+      localStorage.setItem('google_email', email);
+      setStatus({ connected: true, email });
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (localStorage.getItem('google_connected') === 'true') {
+      // Already connected (persisted in localStorage)
+      setStatus({ connected: true, email: localStorage.getItem('google_email') || '' });
+      // Validate server-side in background
       fetch('/api/auth/google-status')
         .then(r => r.json())
-        .then(setStatus)
+        .then(data => {
+          if (!data.connected) {
+            localStorage.removeItem('google_connected');
+            localStorage.removeItem('google_email');
+          }
+          setStatus(data);
+        })
+        .catch(() => {});
+    } else {
+      // Not connected locally — check server
+      fetch('/api/auth/google-status')
+        .then(r => r.json())
+        .then(data => {
+          if (data.connected) {
+            localStorage.setItem('google_connected', 'true');
+            localStorage.setItem('google_email', data.email || '');
+          }
+          setStatus(data);
+        })
         .catch(() => setStatus({ connected: false }));
     }
 

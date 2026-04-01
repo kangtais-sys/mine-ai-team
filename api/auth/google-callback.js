@@ -1,6 +1,5 @@
 import { google } from 'googleapis';
 
-// Step 2: Handle OAuth callback, exchange code for tokens
 export default async function handler(req, res) {
   const { code } = req.query;
 
@@ -18,30 +17,26 @@ export default async function handler(req, res) {
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
 
-    // Get user email for verification
+    // Get user email
     const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
     const { data: userInfo } = await oauth2.userinfo.get();
 
-    // Store tokens in Vercel KV or environment
-    // For now, we'll store in a simple JSON response and
-    // the frontend will save to localStorage + show to user
-    const tokenData = {
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      expiry_date: tokens.expiry_date,
-      email: userInfo.email,
-    };
+    // Store tokens in httpOnly cookies (persist across serverless invocations)
+    const cookieOpts = 'Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000';
 
-    // Redirect back to dashboard with token info
-    const params = new URLSearchParams({
-      google_connected: 'true',
-      email: userInfo.email,
-    });
+    const cookies = [
+      `google_access_token=${tokens.access_token}; ${cookieOpts}`,
+      `google_refresh_token=${tokens.refresh_token}; ${cookieOpts}`,
+      `google_email=${encodeURIComponent(userInfo.email)}; Path=/; Secure; SameSite=Lax; Max-Age=31536000`,
+      `google_connected=true; Path=/; Secure; SameSite=Lax; Max-Age=31536000`,
+    ];
 
-    // Store tokens server-side for cron to use
-    // Save refresh_token to process.env via Vercel API or KV
-    // For MVP: redirect with success and instruct user to set env var
-    res.redirect(`/?${params.toString()}`);
+    if (tokens.expiry_date) {
+      cookies.push(`google_expiry=${tokens.expiry_date}; ${cookieOpts}`);
+    }
+
+    res.setHeader('Set-Cookie', cookies);
+    res.redirect('/?google_connected=true&email=' + encodeURIComponent(userInfo.email));
   } catch (error) {
     console.error('OAuth callback error:', error.message);
     res.redirect('/?google_error=' + encodeURIComponent(error.message));
