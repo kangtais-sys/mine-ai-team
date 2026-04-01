@@ -5,7 +5,7 @@ export default function handler(req, res) {
     return res.status(500).json({ error: 'TIKTOK_CLIENT_KEY not set' });
   }
 
-  const redirectUri = process.env.TIKTOK_REDIRECT_URI;
+  const redirectUri = process.env.TIKTOK_REDIRECT_URI || 'https://mine-ai-team.vercel.app/api/auth/tiktok-callback';
   const scope = 'user.info.basic,video.publish,video.upload';
   const state = Math.random().toString(36).substring(2, 15);
 
