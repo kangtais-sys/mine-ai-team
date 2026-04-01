@@ -1,108 +1,69 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowUp, Loader2, Link2, CheckCircle2, HardDrive, MonitorPlay, FolderSync } from 'lucide-react';
+import { ArrowUp, Loader2, Link2, CheckCircle2, XCircle, HardDrive, MonitorPlay, FolderSync, Music2, X, FileVideo } from 'lucide-react';
 import useChatStore from '../store/chatStore';
 import { getAgent } from '../lib/agents';
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - new Date(ts).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return '방금 전';
+  if (m < 60) return `${m}분 전`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}시간 전`;
+  return `${Math.floor(h / 24)}일 전`;
+}
 
 function CreatorToolbar() {
   const [status, setStatus] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
+  const [showFiles, setShowFiles] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-
     if (params.get('google_connected') === 'true') {
-      // OAuth callback just completed — save to localStorage and clean URL
       const email = params.get('email') || '';
       localStorage.setItem('google_connected', 'true');
       localStorage.setItem('google_email', email);
       setStatus({ connected: true, email });
       window.history.replaceState({}, '', window.location.pathname);
     } else if (localStorage.getItem('google_connected') === 'true') {
-      // Already connected (persisted in localStorage)
       setStatus({ connected: true, email: localStorage.getItem('google_email') || '' });
-      // Validate server-side in background
-      fetch('/api/auth/google-status')
-        .then(r => r.json())
-        .then(data => {
-          if (!data.connected) {
-            localStorage.removeItem('google_connected');
-            localStorage.removeItem('google_email');
-          }
-          setStatus(data);
-        })
-        .catch(() => {});
+      fetch('/api/auth/google-status').then(r => r.json()).then(data => {
+        if (!data.connected) { localStorage.removeItem('google_connected'); localStorage.removeItem('google_email'); }
+        setStatus(data);
+      }).catch(() => {});
     } else {
-      // Not connected locally — check server
-      fetch('/api/auth/google-status')
-        .then(r => r.json())
-        .then(data => {
-          if (data.connected) {
-            localStorage.setItem('google_connected', 'true');
-            localStorage.setItem('google_email', data.email || '');
-          }
-          setStatus(data);
-        })
-        .catch(() => setStatus({ connected: false }));
+      fetch('/api/auth/google-status').then(r => r.json()).then(data => {
+        if (data.connected) { localStorage.setItem('google_connected', 'true'); localStorage.setItem('google_email', data.email || ''); }
+        setStatus(data);
+      }).catch(() => setStatus({ connected: false }));
     }
-
-    fetch('/api/upload-status')
-      .then(r => r.json())
-      .then(setUploadStatus)
-      .catch(() => setUploadStatus({ pending: 0, recent: [] }));
+    fetch('/api/upload-status').then(r => r.json()).then(setUploadStatus).catch(() => setUploadStatus({ pending: 0, recent: [] }));
   }, []);
 
   const connected = status?.connected;
+  const hasTiktok = !!localStorage.getItem('tiktok_connected');
+  const recent = uploadStatus?.recent || [];
+  const lastUpload = recent[0];
+  const lastFailed = lastUpload && (lastUpload.tiktok?.success === false || lastUpload.youtube?.success === false);
+  const lastSuccess = lastUpload && !lastFailed;
 
-  const statusItem = (icon, label, ok, detail) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+  const chip = (icon, label, ok) => (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 5,
+      padding: '3px 8px', borderRadius: 4,
+      background: ok ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
+      border: `1px solid ${ok ? 'rgba(34,197,94,0.15)' : '#1F1F1F'}`,
+    }}>
       {icon}
-      <span style={{ fontSize: 12, color: '#888' }}>{label}</span>
-      <span style={{
-        fontSize: 11, fontWeight: 500,
-        color: ok ? '#22C55E' : '#555',
-      }}>
-        {detail}
-      </span>
+      <span style={{ fontSize: 11, color: ok ? '#22C55E' : '#555', fontWeight: 500 }}>{label}</span>
     </div>
   );
 
-  return (
-    <div style={{
-      padding: '10px 28px',
-      borderBottom: '1px solid #1A1A1A',
-      display: 'flex',
-      alignItems: 'center',
-      gap: 20,
-      flexShrink: 0,
-    }}>
-      {connected ? (
-        <>
-          {statusItem(
-            <CheckCircle2 size={13} color="#22C55E" />,
-            '구글',
-            true,
-            status.email || '연결됨'
-          )}
-          {statusItem(
-            <HardDrive size={13} color={connected ? '#5E6AD2' : '#555'} />,
-            '드라이브',
-            true,
-            uploadStatus ? `대기 ${uploadStatus.pending}건` : '확인 중...'
-          )}
-          {statusItem(
-            <MonitorPlay size={13} color={connected ? '#EF4444' : '#555'} />,
-            '유튜브',
-            true,
-            '연결됨'
-          )}
-          {statusItem(
-            <FolderSync size={13} color={connected ? '#5E6AD2' : '#555'} />,
-            '자동 업로드',
-            true,
-            '5분마다 감시 중'
-          )}
-        </>
-      ) : (
+  if (!connected) {
+    return (
+      <div style={{ padding: '10px 28px', borderBottom: '1px solid #1A1A1A', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         <button
           onClick={() => { window.location.href = '/api/auth/google'; }}
           style={{
@@ -117,8 +78,96 @@ function CreatorToolbar() {
         >
           <Link2 size={13} />
           구글 계정 연동
-          <span style={{ fontSize: 11, color: '#555', marginLeft: 4 }}>Drive + YouTube 권한</span>
+          <span style={{ fontSize: 11, color: '#555', marginLeft: 4 }}>Drive + YouTube</span>
         </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ borderBottom: '1px solid #1A1A1A', flexShrink: 0 }}>
+      {/* Status Row */}
+      <div style={{ padding: '8px 28px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {chip(<CheckCircle2 size={11} color="#22C55E" />, status.email || '구글 연결됨', true)}
+        {chip(<MonitorPlay size={11} color="#22C55E" />, '유튜브', true)}
+        {chip(<Music2 size={11} color={hasTiktok ? '#22C55E' : '#555'} />, '틱톡', hasTiktok)}
+        <div
+          onClick={() => setShowFiles(!showFiles)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '3px 8px', borderRadius: 4,
+            background: uploadStatus?.pending > 0 ? 'rgba(94,106,210,0.08)' : 'rgba(255,255,255,0.03)',
+            border: `1px solid ${uploadStatus?.pending > 0 ? 'rgba(94,106,210,0.2)' : '#1F1F1F'}`,
+            cursor: 'pointer',
+          }}
+        >
+          <HardDrive size={11} color={uploadStatus?.pending > 0 ? '#5E6AD2' : '#555'} />
+          <span style={{ fontSize: 11, color: uploadStatus?.pending > 0 ? '#5E6AD2' : '#555', fontWeight: 500 }}>
+            대기 {uploadStatus?.pending ?? '?'}건
+          </span>
+        </div>
+        {chip(<FolderSync size={11} color="#5E6AD2" />, '매일 자동', true)}
+
+        {/* Last Upload Status */}
+        <div style={{ flex: 1 }} />
+        {lastSuccess && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <CheckCircle2 size={11} color="#22C55E" />
+            <span style={{ fontSize: 11, color: '#22C55E' }}>
+              업로드 완료 — 틱톡 + 유튜브 {timeAgo(lastUpload.timestamp)}
+            </span>
+          </div>
+        )}
+        {lastFailed && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <XCircle size={11} color="#EF4444" />
+            <span style={{ fontSize: 11, color: '#EF4444' }}>
+              업로드 실패 — {lastUpload.tiktok?.error || lastUpload.youtube?.error || '오류 확인 필요'}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Pending Files Popup */}
+      {showFiles && (
+        <div style={{
+          margin: '0 28px 8px', padding: 12, borderRadius: 8,
+          background: '#141414', border: '1px solid #242424',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5' }}>드라이브 대기 파일</span>
+            <button onClick={() => setShowFiles(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+              <X size={14} color="#555" />
+            </button>
+          </div>
+          {recent.length === 0 && uploadStatus?.pending === 0 ? (
+            <div style={{ fontSize: 12, color: '#555', padding: '8px 0' }}>대기 중인 파일이 없습니다.</div>
+          ) : (
+            <>
+              {uploadStatus?.pending > 0 && (
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>
+                  "MINE 업로드" 폴더에 {uploadStatus.pending}개 영상 대기 중
+                </div>
+              )}
+              {recent.length > 0 && (
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>최근 업로드:</div>
+              )}
+              {recent.slice(0, 5).map((log, i) => (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0',
+                  borderBottom: i < Math.min(recent.length, 5) - 1 ? '1px solid #1F1F1F' : 'none',
+                }}>
+                  <FileVideo size={12} color="#5E6AD2" />
+                  <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{log.fileName}</span>
+                  <span style={{ fontSize: 10, color: log.tiktok?.success !== false && log.youtube?.success !== false ? '#22C55E' : '#EF4444' }}>
+                    {log.tiktok?.success !== false && log.youtube?.success !== false ? '완료' : '실패'}
+                  </span>
+                  <span style={{ fontSize: 10, color: '#444' }}>{timeAgo(log.timestamp)}</span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
       )}
     </div>
   );
