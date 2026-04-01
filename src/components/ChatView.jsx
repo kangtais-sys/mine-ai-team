@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowUp, Loader2, Link2, CheckCircle2, XCircle, HardDrive, MonitorPlay, FolderSync, Music2, X, FileVideo } from 'lucide-react';
+import { ArrowUp, Loader2, Link2, CheckCircle2, XCircle, HardDrive, MonitorPlay, FolderSync, Music2, X, FileVideo, LogOut } from 'lucide-react';
 import useChatStore from '../store/chatStore';
 import { getAgent } from '../lib/agents';
 
@@ -107,6 +107,32 @@ function CreatorToolbar() {
           </span>
         </div>
         {chip(<FolderSync size={11} color="#5E6AD2" />, '매일 자동', true)}
+
+        {/* Disconnect */}
+        <button
+          onClick={() => {
+            localStorage.removeItem('google_connected');
+            localStorage.removeItem('google_email');
+            document.cookie = 'google_connected=; Path=/; Max-Age=0';
+            document.cookie = 'google_email=; Path=/; Max-Age=0';
+            document.cookie = 'google_access_token=; Path=/; Max-Age=0';
+            document.cookie = 'google_refresh_token=; Path=/; Max-Age=0';
+            document.cookie = 'google_expiry=; Path=/; Max-Age=0';
+            setStatus({ connected: false });
+          }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '3px 8px', borderRadius: 4,
+            background: 'transparent', border: '1px solid #1F1F1F',
+            color: '#555', fontSize: 11, cursor: 'pointer',
+            fontFamily: 'inherit', transition: 'all 0.15s',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#EF4444'; e.currentTarget.style.color = '#EF4444'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#1F1F1F'; e.currentTarget.style.color = '#555'; }}
+        >
+          <LogOut size={10} />
+          연결 해제
+        </button>
 
         {/* Last Upload Status */}
         <div style={{ flex: 1 }} />
