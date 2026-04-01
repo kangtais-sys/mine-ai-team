@@ -18,7 +18,7 @@ body {
   background: #0F0F0F;
   color: #E8E8E8;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.6;
   letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -45,4 +45,13 @@ body {
 
 ::selection {
   background: rgba(94, 106, 210, 0.35);
+}
+
+:focus-visible {
+  outline: 2px solid rgba(94, 106, 210, 0.5);
+  outline-offset: 2px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }

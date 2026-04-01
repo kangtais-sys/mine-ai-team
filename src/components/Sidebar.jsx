@@ -52,7 +52,7 @@ export default function Sidebar({ page, onNavigate }) {
     }}>
       {/* Workspace */}
       <div style={{
-        height: 52,
+        height: 56,
         padding: '0 12px',
         display: 'flex',
         alignItems: 'center',
@@ -90,7 +90,7 @@ export default function Sidebar({ page, onNavigate }) {
       {/* Section Label */}
       <div style={{
         padding: '16px 16px 6px',
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: 600,
         color: '#4A4A4A',
         textTransform: 'uppercase',
@@ -104,7 +104,7 @@ export default function Sidebar({ page, onNavigate }) {
       <div style={{
         flex: 1,
         overflowY: 'auto',
-        padding: '0 8px',
+        padding: '0 8px 8px',
         minHeight: 0,
       }}>
         {agents.map((agent) => {
@@ -125,7 +125,7 @@ export default function Sidebar({ page, onNavigate }) {
 
       {/* User Profile */}
       <div style={{
-        height: 48,
+        height: 52,
         padding: '0 12px',
         display: 'flex',
         alignItems: 'center',
@@ -148,8 +148,8 @@ export default function Sidebar({ page, onNavigate }) {
           M
         </div>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 500, color: '#CCC', lineHeight: 1.2 }}>MILLIMILLI</div>
-          <div style={{ fontSize: 10, color: '#555', lineHeight: 1.2 }}>대표</div>
+          <div style={{ fontSize: 14, fontWeight: 500, color: '#CCC', lineHeight: 1.2 }}>MILLIMILLI</div>
+          <div style={{ fontSize: 11, color: '#555', lineHeight: 1.2 }}>대표</div>
         </div>
       </div>
     </div>

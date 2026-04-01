@@ -5,6 +5,7 @@ import { getAgent } from '../lib/agents';
 
 export default function ChatView() {
   const [input, setInput] = useState('');
+  const [inputFocused, setInputFocused] = useState(false);
   const endRef = useRef(null);
   const { activeAgent, conversations, isLoading, sendMessage } = useChatStore();
   const agent = getAgent(activeAgent);
@@ -40,16 +41,16 @@ export default function ChatView() {
       <div style={{
         height: 48,
         minHeight: 48,
-        padding: '0 24px',
+        padding: '0 28px',
         display: 'flex',
         alignItems: 'center',
-        gap: 10,
+        gap: 12,
         borderBottom: '1px solid #1A1A1A',
         flexShrink: 0,
       }}>
         <Icon size={16} strokeWidth={1.5} color="#666" />
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5' }}>{agent.name}</span>
-        <span style={{ fontSize: 13, color: '#555' }}>{agent.title}</span>
+        <span style={{ fontSize: 15, fontWeight: 600, color: '#F5F5F5' }}>{agent.name}</span>
+        <span style={{ fontSize: 14, color: '#555' }}>{agent.title}</span>
       </div>
 
       {/* Messages Area */}
@@ -62,7 +63,7 @@ export default function ChatView() {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: 24,
+            padding: 28,
           }}>
             <div style={{
               width: 48,
@@ -77,20 +78,20 @@ export default function ChatView() {
             }}>
               <Icon size={22} strokeWidth={1.5} color="#5E6AD2" />
             </div>
-            <div style={{ fontSize: 18, fontWeight: 600, color: '#F5F5F5', marginBottom: 4 }}>{agent.name}</div>
-            <div style={{ fontSize: 14, color: '#666', marginBottom: 32 }}>{agent.description}</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 520 }}>
+            <div style={{ fontSize: 20, fontWeight: 600, color: '#F5F5F5', marginBottom: 6 }}>{agent.name}</div>
+            <div style={{ fontSize: 14, color: '#777', marginBottom: 40 }}>{agent.description}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center', maxWidth: 520 }}>
               {(quickActions[activeAgent] || []).map((action, i) => (
                 <button
                   key={i}
                   onClick={() => setInput(action)}
                   style={{
-                    padding: '6px 14px',
-                    borderRadius: 6,
+                    padding: '8px 16px',
+                    borderRadius: 8,
                     border: '1px solid #242424',
                     background: 'transparent',
                     color: '#888',
-                    fontSize: 13,
+                    fontSize: 14,
                     cursor: 'pointer',
                     fontFamily: 'inherit',
                     transition: 'all 0.15s',
@@ -107,14 +108,14 @@ export default function ChatView() {
           /* Message List */
           <div style={{ maxWidth: 720, margin: '0 auto', padding: 24 }}>
             {messages.map((msg, i) => (
-              <div key={i} style={{ marginBottom: 20 }}>
+              <div key={i} style={{ marginBottom: 24 }}>
                 {msg.role === 'user' ? (
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <div style={{
                       background: '#5E6AD2',
                       color: '#FFFFFF',
-                      borderRadius: '18px 18px 4px 18px',
-                      padding: '10px 16px',
+                      borderRadius: '16px 16px 4px 16px',
+                      padding: '12px 18px',
                       maxWidth: '70%',
                       fontSize: 14,
                       lineHeight: 1.6,
@@ -143,7 +144,7 @@ export default function ChatView() {
                     <div style={{
                       paddingLeft: 30,
                       fontSize: 14,
-                      lineHeight: 1.7,
+                      lineHeight: 1.75,
                       color: '#DDD',
                       whiteSpace: 'pre-wrap',
                     }}>
@@ -157,7 +158,6 @@ export default function ChatView() {
             {isLoading && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 30 }}>
                 <Loader2 size={16} color="#555" style={{ animation: 'spin 1s linear infinite' }} />
-                <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
               </div>
             )}
             <div ref={endRef} />
@@ -167,7 +167,7 @@ export default function ChatView() {
 
       {/* Input Area */}
       <div style={{
-        padding: '12px 24px 20px',
+        padding: '12px 28px 20px',
         flexShrink: 0,
       }}>
         <div style={{ maxWidth: 720, margin: '0 auto' }}>
@@ -176,15 +176,18 @@ export default function ChatView() {
             alignItems: 'center',
             gap: 10,
             background: '#141414',
-            border: '1px solid #242424',
-            borderRadius: 10,
-            padding: '10px 14px',
+            border: `1px solid ${inputFocused ? '#333' : '#242424'}`,
+            borderRadius: 12,
+            padding: '12px 16px',
+            transition: 'border-color 0.15s',
           }}>
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
               placeholder={`${agent.name}에게 메시지 보내기...`}
               style={{
                 flex: 1,
@@ -217,7 +220,7 @@ export default function ChatView() {
               <ArrowUp size={16} strokeWidth={2} />
             </button>
           </div>
-          <div style={{ textAlign: 'center', fontSize: 11, color: '#333', marginTop: 8 }}>
+          <div style={{ textAlign: 'center', fontSize: 11, color: '#444', marginTop: 8 }}>
             Claude API (claude-sonnet-4-20250514)
           </div>
         </div>

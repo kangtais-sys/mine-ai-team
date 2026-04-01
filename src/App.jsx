@@ -14,7 +14,7 @@ export default function App() {
       </div>
 
       {/* Main - takes remaining space */}
-      <div style={{ marginLeft: 240, width: 'calc(100vw - 240px)', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ marginLeft: 240, width: 'calc(100vw - 240px)', height: '100vh', overflow: 'hidden', overflowX: 'hidden', display: 'flex', flexDirection: 'column', background: '#0F0F0F' }}>
         {page === 'dashboard' ? <Dashboard /> : <ChatView />}
       </div>
     </div>
