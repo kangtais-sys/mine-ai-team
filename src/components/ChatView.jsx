@@ -1,7 +1,102 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowUp, Loader2 } from 'lucide-react';
+import { ArrowUp, Loader2, Link2, CheckCircle2, HardDrive, MonitorPlay, FolderSync } from 'lucide-react';
 import useChatStore from '../store/chatStore';
 import { getAgent } from '../lib/agents';
+
+function CreatorToolbar() {
+  const [status, setStatus] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('google_connected') === 'true') {
+      setStatus({ connected: true, email: params.get('email') });
+      window.history.replaceState({}, '', '/');
+    } else {
+      fetch('/api/auth/google-status')
+        .then(r => r.json())
+        .then(setStatus)
+        .catch(() => setStatus({ connected: false }));
+    }
+
+    fetch('/api/upload-status')
+      .then(r => r.json())
+      .then(setUploadStatus)
+      .catch(() => setUploadStatus({ pending: 0, recent: [] }));
+  }, []);
+
+  const connected = status?.connected;
+
+  const statusItem = (icon, label, ok, detail) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {icon}
+      <span style={{ fontSize: 12, color: '#888' }}>{label}</span>
+      <span style={{
+        fontSize: 11, fontWeight: 500,
+        color: ok ? '#22C55E' : '#555',
+      }}>
+        {detail}
+      </span>
+    </div>
+  );
+
+  return (
+    <div style={{
+      padding: '10px 28px',
+      borderBottom: '1px solid #1A1A1A',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 20,
+      flexShrink: 0,
+    }}>
+      {connected ? (
+        <>
+          {statusItem(
+            <CheckCircle2 size={13} color="#22C55E" />,
+            '구글',
+            true,
+            status.email || '연결됨'
+          )}
+          {statusItem(
+            <HardDrive size={13} color={connected ? '#5E6AD2' : '#555'} />,
+            '드라이브',
+            true,
+            uploadStatus ? `대기 ${uploadStatus.pending}건` : '확인 중...'
+          )}
+          {statusItem(
+            <MonitorPlay size={13} color={connected ? '#EF4444' : '#555'} />,
+            '유튜브',
+            true,
+            '연결됨'
+          )}
+          {statusItem(
+            <FolderSync size={13} color={connected ? '#5E6AD2' : '#555'} />,
+            '자동 업로드',
+            true,
+            '5분마다 감시 중'
+          )}
+        </>
+      ) : (
+        <button
+          onClick={() => { window.location.href = '/api/auth/google'; }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '5px 12px', borderRadius: 6,
+            border: '1px solid #242424', background: 'transparent',
+            color: '#888', fontSize: 12, cursor: 'pointer',
+            fontFamily: 'inherit', transition: 'all 0.15s',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#444'; e.currentTarget.style.color = '#CCC'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#242424'; e.currentTarget.style.color = '#888'; }}
+        >
+          <Link2 size={13} />
+          구글 계정 연동
+          <span style={{ fontSize: 11, color: '#555', marginLeft: 4 }}>Drive + YouTube 권한</span>
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function ChatView() {
   const [input, setInput] = useState('');
@@ -23,6 +118,7 @@ export default function ChatView() {
   };
 
   const Icon = agent.icon;
+  const isCreator = activeAgent === 'creator';
 
   const quickActions = {
     chief: ['오늘 전체 브리핑해줘', '이번 주 주요 일정 정리', '긴급 이슈 있어?'],
@@ -53,10 +149,12 @@ export default function ChatView() {
         <span style={{ fontSize: 14, color: '#555' }}>{agent.title}</span>
       </div>
 
+      {/* Creator Toolbar - only for AI 크리에이터 */}
+      {isCreator && <CreatorToolbar />}
+
       {/* Messages Area */}
       <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {messages.length === 0 ? (
-          /* Empty State */
           <div style={{
             height: '100%',
             display: 'flex',
@@ -105,7 +203,6 @@ export default function ChatView() {
             </div>
           </div>
         ) : (
-          /* Message List */
           <div style={{ maxWidth: 720, margin: '0 auto', padding: 24 }}>
             {messages.map((msg, i) => (
               <div key={i} style={{ marginBottom: 24 }}>
