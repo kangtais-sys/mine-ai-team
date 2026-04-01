@@ -39,11 +39,17 @@ function CreatorToolbar() {
         setStatus(data);
       }).catch(() => setStatus({ connected: false }));
     }
+    // TikTok OAuth callback
+    if (params.get('tiktok_connected') === 'true') {
+      localStorage.setItem('tiktok_connected', 'true');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
     fetch('/api/upload-status').then(r => r.json()).then(setUploadStatus).catch(() => setUploadStatus({ pending: 0, recent: [] }));
   }, []);
 
   const connected = status?.connected;
-  const hasTiktok = !!localStorage.getItem('tiktok_connected');
+  const hasTiktok = localStorage.getItem('tiktok_connected') === 'true';
   const recent = uploadStatus?.recent || [];
   const lastUpload = recent[0];
   const lastFailed = lastUpload && (lastUpload.tiktok?.success === false || lastUpload.youtube?.success === false);
@@ -91,10 +97,27 @@ function CreatorToolbar() {
       <div style={{ padding: '8px 28px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {chip(<CheckCircle2 size={11} color="#22C55E" />, status.email || '구글 연결됨', true)}
         {chip(<MonitorPlay size={11} color="#22C55E" />, '유튜브', true)}
-        {tiktokExpired
-          ? chip(<Music2 size={11} color="#EF4444" />, '틱톡 토큰 만료 — 재로그인 필요', false, '#EF4444')
-          : chip(<Music2 size={11} color={hasTiktok ? '#22C55E' : '#555'} />, '틱톡', hasTiktok)
-        }
+        {tiktokExpired ? (
+          <div
+            onClick={() => { window.location.href = '/api/auth/tiktok'; }}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 4, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', cursor: 'pointer' }}
+          >
+            <Music2 size={11} color="#EF4444" />
+            <span style={{ fontSize: 11, color: '#EF4444', fontWeight: 500 }}>틱톡 토큰 만료 — 클릭하여 재로그인</span>
+          </div>
+        ) : hasTiktok ? (
+          chip(<Music2 size={11} color="#22C55E" />, '틱톡', true)
+        ) : (
+          <div
+            onClick={() => { window.location.href = '/api/auth/tiktok'; }}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 4, background: 'rgba(255,255,255,0.03)', border: '1px solid #1F1F1F', cursor: 'pointer', transition: 'all 0.15s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#444'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#1F1F1F'; }}
+          >
+            <Music2 size={11} color="#555" />
+            <span style={{ fontSize: 11, color: '#555', fontWeight: 500 }}>틱톡 연동</span>
+          </div>
+        )}
         <div
           onClick={() => setShowFiles(!showFiles)}
           style={{

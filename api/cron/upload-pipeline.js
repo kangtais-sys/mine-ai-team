@@ -131,21 +131,53 @@ JSON 형식으로만 응답:
   return jsonMatch ? JSON.parse(jsonMatch[0]) : {};
 }
 
-// TikTok upload with token expiry detection
+// TikTok: refresh access_token using refresh_token
+async function refreshTiktokToken() {
+  const refreshToken = process.env.TIKTOK_REFRESH_TOKEN;
+  const clientKey = process.env.TIKTOK_CLIENT_KEY;
+  const clientSecret = process.env.TIKTOK_CLIENT_SECRET;
+
+  if (!refreshToken || !clientKey || !clientSecret) {
+    return null;
+  }
+
+  console.log('[TikTok] Refreshing access token...');
+  const res = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_key: clientKey,
+      client_secret: clientSecret,
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    }),
+  });
+
+  const data = await res.json();
+  if (data.access_token) {
+    console.log('[TikTok] Token refreshed successfully');
+    return data.access_token;
+  }
+
+  console.error('[TikTok] Token refresh failed:', data.error || data.error_description);
+  return null;
+}
+
+// TikTok upload with auto token refresh
 async function uploadToTiktok(fileBuffer, fileName, content) {
-  const accessToken = process.env.TIKTOK_ACCESS_TOKEN;
+  let accessToken = process.env.TIKTOK_ACCESS_TOKEN;
   if (!accessToken) {
     console.error('[TikTok] TIKTOK_ACCESS_TOKEN not set');
     return { success: false, error: 'TIKTOK_ACCESS_TOKEN not set', tokenExpired: false };
   }
 
-  return withRetry(async () => {
+  async function attemptUpload(token) {
     const caption = `${content.caption || ''}\n${(content.hashtags || []).map(t => `#${t.replace('#', '')}`).join(' ')}`;
 
     const publishRes = await fetch('https://open.tiktokapis.com/v2/post/publish/video/init/', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -165,15 +197,30 @@ async function uploadToTiktok(fileBuffer, fileName, content) {
       }),
     });
 
-    const publishData = await publishRes.json();
+    return { res: publishRes, data: await publishRes.json() };
+  }
 
-    // Detect token expiry
-    if (publishData.error?.code === 'access_token_invalid' ||
+  return withRetry(async () => {
+    let { res: publishRes, data: publishData } = await attemptUpload(accessToken);
+
+    // Detect token expiry → try auto-refresh
+    const isExpired = publishData.error?.code === 'access_token_invalid' ||
         publishData.error?.code === 'token_expired' ||
-        publishRes.status === 401) {
-      const msg = '틱톡 토큰 만료 — 재로그인 필요';
-      console.error(`[TikTok] ${msg}`, publishData.error);
-      return { success: false, error: msg, tokenExpired: true };
+        publishRes.status === 401;
+
+    if (isExpired) {
+      console.log('[TikTok] Token expired, attempting refresh...');
+      const newToken = await refreshTiktokToken();
+      if (newToken) {
+        accessToken = newToken;
+        const retry = await attemptUpload(newToken);
+        publishRes = retry.res;
+        publishData = retry.data;
+      } else {
+        const msg = '틱톡 토큰 만료 — 재로그인 필요';
+        console.error(`[TikTok] ${msg}`);
+        return { success: false, error: msg, tokenExpired: true };
+      }
     }
 
     if (publishData.error) {
