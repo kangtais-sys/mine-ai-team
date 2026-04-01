@@ -1,4 +1,5 @@
-import { Users, DollarSign, FileText, TrendingUp, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Users, DollarSign, FileText, TrendingUp, ArrowUpRight, ArrowDownRight, Link2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import useDashboardStore from '../store/dashboardStore';
 import { agents } from '../lib/agents';
@@ -21,6 +22,24 @@ const tip = {
 
 export default function Dashboard() {
   const { stats, revenueData, followerData, channelRevenue } = useDashboardStore();
+  const [googleStatus, setGoogleStatus] = useState(null); // null=loading, object=result
+
+  useEffect(() => {
+    // Check URL params for OAuth callback result
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('google_connected') === 'true') {
+      setGoogleStatus({ connected: true, email: params.get('email') });
+      window.history.replaceState({}, '', '/');
+    } else if (params.get('google_error')) {
+      setGoogleStatus({ connected: false, reason: 'oauth_error', error: params.get('google_error') });
+      window.history.replaceState({}, '', '/');
+    } else {
+      fetch('/api/auth/google-status')
+        .then(r => r.json())
+        .then(setGoogleStatus)
+        .catch(() => setGoogleStatus({ connected: false, reason: 'fetch_error' }));
+    }
+  }, []);
 
   const kpis = [
     { label: '총 팔로워', value: fmt(stats.totalFollowers), icon: Users, delta: '+2.4%', up: true },
@@ -54,6 +73,29 @@ export default function Dashboard() {
         flexShrink: 0,
       }}>
         <span style={{ fontSize: 15, fontWeight: 600, color: '#F5F5F5' }}>대시보드</span>
+        <div style={{ flex: 1 }} />
+        {googleStatus?.connected ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <CheckCircle2 size={14} color="#22C55E" />
+            <span style={{ fontSize: 12, color: '#666' }}>{googleStatus.email || 'Google 연동됨'}</span>
+          </div>
+        ) : (
+          <button
+            onClick={() => { window.location.href = '/api/auth/google'; }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px', borderRadius: 6,
+              border: '1px solid #242424', background: 'transparent',
+              color: '#888', fontSize: 12, cursor: 'pointer',
+              fontFamily: 'inherit', transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#444'; e.currentTarget.style.color = '#CCC'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#242424'; e.currentTarget.style.color = '#888'; }}
+          >
+            <Link2 size={13} />
+            구글 계정 연동
+          </button>
+        )}
       </div>
 
       {/* Scrollable Content */}

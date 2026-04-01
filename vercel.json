@@ -6,6 +6,9 @@
     }
   ],
   "rewrites": [
+    { "source": "/api/auth/google", "destination": "/api/auth/google" },
+    { "source": "/api/auth/google-callback", "destination": "/api/auth/google-callback" },
+    { "source": "/api/auth/google-status", "destination": "/api/auth/google-status" },
     { "source": "/api/chat", "destination": "/api/chat" },
     { "source": "/api/orchestrate", "destination": "/api/orchestrate" },
     { "source": "/api/briefing", "destination": "/api/briefing" },

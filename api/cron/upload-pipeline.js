@@ -8,8 +8,22 @@ export const config = {
   maxDuration: 300,
 };
 
-// Google Auth
+// Google Auth - supports both OAuth (user tokens) and Service Account
 function getAuth() {
+  // Prefer OAuth refresh token if available (user-connected)
+  if (process.env.GOOGLE_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID) {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI
+    );
+    oauth2Client.setCredentials({
+      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+    });
+    return oauth2Client;
+  }
+
+  // Fallback to service account
   return new google.auth.GoogleAuth({
     credentials: {
       client_email: process.env.GOOGLE_CLIENT_EMAIL,
