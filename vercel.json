@@ -1,8 +1,16 @@
 {
+  "crons": [
+    {
+      "path": "/api/cron/upload-pipeline",
+      "schedule": "*/5 * * * *"
+    }
+  ],
   "rewrites": [
     { "source": "/api/chat", "destination": "/api/chat" },
     { "source": "/api/orchestrate", "destination": "/api/orchestrate" },
     { "source": "/api/briefing", "destination": "/api/briefing" },
+    { "source": "/api/upload-status", "destination": "/api/upload-status" },
+    { "source": "/api/cron/upload-pipeline", "destination": "/api/cron/upload-pipeline" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
