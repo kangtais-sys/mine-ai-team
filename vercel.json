@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/upload-pipeline",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cs/daily-report",
+      "schedule": "0 9 * * *"
     }
   ],
   "rewrites": [
@@ -16,6 +20,8 @@
     { "source": "/api/briefing", "destination": "/api/briefing" },
     { "source": "/api/upload-status", "destination": "/api/upload-status" },
     { "source": "/api/cron/upload-pipeline", "destination": "/api/cron/upload-pipeline" },
+    { "source": "/api/cs/kakao-webhook", "destination": "/api/cs/kakao-webhook" },
+    { "source": "/api/cs/daily-report", "destination": "/api/cs/daily-report" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
