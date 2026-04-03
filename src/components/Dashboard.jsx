@@ -74,9 +74,11 @@ export default function Dashboard() {
     { agent: 'community', action: 'DM 24건 자동 응대 완료', time: '25분 전' },
     { agent: 'cs', action: '교환 요청 3건 처리 완료', time: '1시간 전' },
     { agent: 'marketer', action: '주간 성과 리포트 생성 완료', time: '2시간 전' },
+    { agent: 'commerce', action: '스마트스토어 가격 최적화 완료', time: '2시간 전' },
     { agent: 'global', action: '일본 바이어 컨택 메일 5건 발송', time: '3시간 전' },
     { agent: 'admin', action: '3월 매출 정산 보고서 생성', time: '4시간 전' },
     { agent: 'product', action: '봄 시즌 신제품 기획서 초안 완성', time: '5시간 전' },
+    { agent: 'strategy', action: 'Q2 매출 성장 전략안 초안 완성', time: '6시간 전' },
   ];
 
   const barColors = ['#5E6AD2', '#7C6BDE', '#9D8AE9', '#BBA8F4'];

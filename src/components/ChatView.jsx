@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowUp, Loader2, Link2, CheckCircle2, XCircle, HardDrive, MonitorPlay, FolderSync, Music2, X, FileVideo, LogOut, TrendingUp, TrendingDown, Users, Eye, MessageCircle, DollarSign, Star, Globe, Package, Headphones, ShoppingCart, FileText, BarChart3 } from 'lucide-react';
+import { ArrowUp, Loader2, TrendingUp, TrendingDown, Users, Eye, MessageCircle, DollarSign, Star, Globe, Package, Headphones, ShoppingCart, FileText, BarChart3, CheckCircle2, XCircle, Circle, Target, Percent } from 'lucide-react';
 import useChatStore from '../store/chatStore';
 import { getAgent } from '../lib/agents';
 
@@ -23,13 +23,11 @@ const fmt = (v) => {
   return v.toLocaleString();
 };
 
-// ─── KPI Card Component ─────────────────────────────────────
+// ─── Reusable Components ────────────────────────────────────
 
 function KpiCard({ label, value, delta, up, icon: Icon }) {
   return (
-    <div style={{
-      background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '14px 16px',
-    }}>
+    <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '14px 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <span style={{ fontSize: 11, color: '#777', fontWeight: 500 }}>{label}</span>
         {Icon && <Icon size={13} strokeWidth={1.5} color="#444" />}
@@ -45,29 +43,63 @@ function KpiCard({ label, value, delta, up, icon: Icon }) {
   );
 }
 
-function StatusChip({ icon, label, ok, error, onClick }) {
-  const color = error ? '#EF4444' : ok ? '#22C55E' : '#555';
-  const bg = error ? 'rgba(239,68,68,0.08)' : ok ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)';
-  const border = error ? 'rgba(239,68,68,0.2)' : ok ? 'rgba(34,197,94,0.15)' : '#1F1F1F';
+function ApiStatusPanel({ agent }) {
+  const apis = agent.apis || [];
+  if (apis.length === 0) return null;
+
+  // Check real connection status from localStorage
+  const getStatus = (api) => {
+    if (api.connected) return 'connected';
+    const keyMap = {
+      google_drive: 'google_connected',
+      youtube: 'google_connected',
+      tiktok: 'tiktok_connected',
+    };
+    const lsKey = keyMap[api.key];
+    if (lsKey && localStorage.getItem(lsKey) === 'true') return 'connected';
+    return 'disconnected';
+  };
+
   return (
-    <div onClick={onClick} style={{
-      display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 4,
-      background: bg, border: `1px solid ${border}`, cursor: onClick ? 'pointer' : 'default',
-    }}>
-      {icon}
-      <span style={{ fontSize: 11, color, fontWeight: 500 }}>{label}</span>
+    <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>API 연동 상태</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {apis.map((api, i) => {
+          const status = getStatus(api);
+          const color = status === 'connected' ? '#22C55E' : status === 'error' ? '#EF4444' : '#555';
+          const bg = status === 'connected' ? 'rgba(34,197,94,0.06)' : status === 'error' ? 'rgba(239,68,68,0.06)' : 'rgba(255,255,255,0.02)';
+          return (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px',
+              borderRadius: 4, background: bg, cursor: status === 'disconnected' ? 'pointer' : 'default',
+            }}
+              onClick={() => {
+                if (status !== 'disconnected') return;
+                if (api.key === 'google_drive' || api.key === 'youtube' || api.key === 'google_sheets' || api.key === 'adsense') window.location.href = '/api/auth/google';
+                else if (api.key === 'tiktok' || api.key === 'tiktok_ads' || api.key === 'tiktokshop') window.location.href = '/api/auth/tiktok';
+              }}
+            >
+              {status === 'connected' ? <CheckCircle2 size={11} color={color} /> : status === 'error' ? <XCircle size={11} color={color} /> : <Circle size={11} color={color} />}
+              <span style={{ fontSize: 11, color: status === 'connected' ? '#CCC' : '#666', flex: 1 }}>{api.name}</span>
+              <span style={{ fontSize: 10, color, fontWeight: 500 }}>
+                {status === 'connected' ? '연결됨' : status === 'error' ? '오류' : '미연결'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-// ─── Agent-Specific KPI Dashboards ──────────────────────────
+// ─── Agent KPI Dashboards ───────────────────────────────────
 
 const AGENT_DASHBOARDS = {
   chief: () => (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <KpiCard label="오늘 처리 업무" value="47건" delta="+12건" up icon={FileText} />
-        <KpiCard label="활성 에이전트" value="8/8" delta="전원 가동" up icon={Users} />
+        <KpiCard label="활성 에이전트" value="10/10" delta="전원 가동" up icon={Users} />
         <KpiCard label="긴급 이슈" value="2건" delta="+1건" up={false} icon={XCircle} />
         <KpiCard label="주간 완료율" value="94%" delta="+3%" up icon={CheckCircle2} />
       </div>
@@ -77,73 +109,31 @@ const AGENT_DASHBOARDS = {
           { name: 'AI 크리에이터', status: '릴스 3개 제작 중', color: '#5E6AD2' },
           { name: 'AI 커뮤니티', status: 'DM 24건 응대 완료', color: '#22C55E' },
           { name: 'AI CS매니저', status: '교환 3건 처리 중', color: '#F59E0B' },
-          { name: 'AI 마케터', status: '주간 리포트 생성 완료', color: '#22C55E' },
-          { name: 'AI 글로벌', status: '일본 바이어 5건 컨택', color: '#5E6AD2' },
+          { name: 'AI 마케터', status: '주간 리포트 생성', color: '#22C55E' },
+          { name: 'AI 커머스MD', status: '가격 최적화 분석', color: '#5E6AD2' },
+          { name: 'AI 경영지원', status: '3월 정산 완료', color: '#22C55E' },
+          { name: 'AI 브랜드/상품', status: '신제품 기획 중', color: '#5E6AD2' },
+          { name: 'AI 수출', status: '일본 바이어 5건', color: '#5E6AD2' },
+          { name: 'AI 전략기획', status: 'Q2 전략안 작성', color: '#F59E0B' },
         ].map((t, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < 4 ? '1px solid #1F1F1F' : 'none' }}>
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < 8 ? '1px solid #1F1F1F' : 'none' }}>
             <div style={{ width: 6, height: 6, borderRadius: 3, background: t.color, flexShrink: 0 }} />
-            <span style={{ fontSize: 12, color: '#CCC', width: 90 }}>{t.name}</span>
-            <span style={{ fontSize: 11, color: '#777' }}>{t.status}</span>
+            <span style={{ fontSize: 11, color: '#CCC', width: 95 }}>{t.name}</span>
+            <span style={{ fontSize: 11, color: '#666' }}>{t.status}</span>
           </div>
         ))}
       </div>
     </>
   ),
 
-  creator: () => {
-    const [gStatus, setGStatus] = useState(null);
-    const [uploadStatus, setUploadStatus] = useState(null);
-    const hasTiktok = localStorage.getItem('tiktok_connected') === 'true';
-
-    useEffect(() => {
-      if (localStorage.getItem('google_connected') === 'true') {
-        setGStatus({ connected: true, email: localStorage.getItem('google_email') || '' });
-      } else {
-        fetch('/api/auth/google-status').then(r => r.json()).then(setGStatus).catch(() => setGStatus({ connected: false }));
-      }
-      fetch('/api/upload-status').then(r => r.json()).then(setUploadStatus).catch(() => setUploadStatus({ pending: 0, recent: [] }));
-    }, []);
-
-    const connected = gStatus?.connected;
-    const recent = uploadStatus?.recent || [];
-    const lastUpload = recent[0];
-
-    return (
-      <>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <KpiCard label="이번 달 콘텐츠" value="156건" delta="+8건" up icon={FileText} />
-          <KpiCard label="총 조회수" value={fmt(4820000)} delta="+18.2%" up icon={Eye} />
-          <KpiCard label="인게이지먼트" value="4.8%" delta="+0.3%" up icon={TrendingUp} />
-          <KpiCard label="수익" value={fmt(3200000) + '원'} delta="+22%" up icon={DollarSign} />
-        </div>
-        {/* API Connections */}
-        <div style={{ marginTop: 12, background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>API 연동 상태</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <StatusChip icon={<CheckCircle2 size={11} color={connected ? '#22C55E' : '#555'} />} label={connected ? (gStatus.email || '구글 연결됨') : '구글 미연결'} ok={connected} onClick={connected ? undefined : () => { window.location.href = '/api/auth/google'; }} />
-              {connected && (
-                <button onClick={() => { localStorage.removeItem('google_connected'); localStorage.removeItem('google_email'); document.cookie='google_connected=;Path=/;Max-Age=0'; document.cookie='google_refresh_token=;Path=/;Max-Age=0'; document.cookie='google_access_token=;Path=/;Max-Age=0'; setGStatus({ connected: false }); }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#555', fontFamily: 'inherit' }}
-                  onMouseEnter={e => e.currentTarget.style.color = '#EF4444'} onMouseLeave={e => e.currentTarget.style.color = '#555'}>해제</button>
-              )}
-            </div>
-            <StatusChip icon={<MonitorPlay size={11} color={connected ? '#22C55E' : '#555'} />} label={connected ? '유튜브 연결됨' : '유튜브 미연결'} ok={connected} />
-            <StatusChip icon={<Music2 size={11} color={hasTiktok ? '#22C55E' : '#555'} />} label={hasTiktok ? '틱톡 연결됨' : '틱톡 미연결'} ok={hasTiktok} onClick={hasTiktok ? undefined : () => { window.location.href = '/api/auth/tiktok'; }} />
-            <StatusChip icon={<HardDrive size={11} color={connected ? '#5E6AD2' : '#555'} />} label={`드라이브 대기 ${uploadStatus?.pending ?? '?'}건`} ok={connected} />
-            <StatusChip icon={<FolderSync size={11} color="#5E6AD2" />} label="자동 업로드 5분마다" ok />
-          </div>
-          {lastUpload && (
-            <div style={{ marginTop: 8, padding: '6px 8px', borderRadius: 4, background: lastUpload.tiktok?.success !== false && lastUpload.youtube?.success !== false ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)', border: `1px solid ${lastUpload.tiktok?.success !== false && lastUpload.youtube?.success !== false ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)'}` }}>
-              <span style={{ fontSize: 11, color: lastUpload.tiktok?.success !== false && lastUpload.youtube?.success !== false ? '#22C55E' : '#EF4444' }}>
-                {lastUpload.tiktok?.success !== false && lastUpload.youtube?.success !== false ? '최근 업로드 성공' : '최근 업로드 실패'} — {lastUpload.fileName} ({timeAgo(lastUpload.timestamp)})
-              </span>
-            </div>
-          )}
-        </div>
-      </>
-    );
-  },
+  creator: () => (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <KpiCard label="이번 달 콘텐츠" value="156건" delta="+8건" up icon={FileText} />
+      <KpiCard label="총 조회수" value={fmt(4820000)} delta="+18.2%" up icon={Eye} />
+      <KpiCard label="인게이지먼트" value="4.8%" delta="+0.3%" up icon={TrendingUp} />
+      <KpiCard label="수익" value={fmt(3200000) + '원'} delta="+22%" up icon={DollarSign} />
+    </div>
+  ),
 
   community: () => (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -175,6 +165,19 @@ const AGENT_DASHBOARDS = {
       <KpiCard label="전환율" value="3.8%" delta="+0.5%" up icon={ShoppingCart} />
       <KpiCard label="메타 광고비" value={fmt(5200000) + '원'} delta="+8%" up={false} icon={DollarSign} />
       <KpiCard label="네이버 SA" value={fmt(3100000) + '원'} delta="+15%" up={false} icon={BarChart3} />
+    </div>
+  ),
+
+  commerce: () => (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <KpiCard label="총 주문" value="1,847건" delta="+14%" up icon={ShoppingCart} />
+      <KpiCard label="총 매출" value={fmt(48500000) + '원'} delta="+12.8%" up icon={DollarSign} />
+      <KpiCard label="올리브영" value={fmt(21000000) + '원'} delta="+8%" up icon={DollarSign} />
+      <KpiCard label="스마트스토어" value={fmt(16000000) + '원'} delta="+15%" up icon={DollarSign} />
+      <KpiCard label="카페24/자사몰" value={fmt(7500000) + '원'} delta="+22%" up icon={DollarSign} />
+      <KpiCard label="해외(아마존/쇼피)" value={fmt(4500000) + '원'} delta="+32%" up icon={Globe} />
+      <KpiCard label="평균 객단가" value="32,400원" delta="+8%" up icon={TrendingUp} />
+      <KpiCard label="재구매율" value="34.2%" delta="+2.1%" up icon={Users} />
     </div>
   ),
 
@@ -210,9 +213,50 @@ const AGENT_DASHBOARDS = {
       <KpiCard label="환율 USD" value="1,342원" delta="-0.8%" up icon={TrendingDown} />
     </div>
   ),
+
+  strategy: () => (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <KpiCard label="매출 목표 달성률" value="78%" delta="+5%" up icon={Target} />
+        <KpiCard label="비용절감 실적" value={fmt(4200000) + '원'} delta="+18%" up icon={TrendingUp} />
+        <KpiCard label="진행 전략 프로젝트" value="5건" delta="+2건" up icon={FileText} />
+        <KpiCard label="작성 문서/제안서" value="12건" delta="+3건" up icon={FileText} />
+      </div>
+      <div style={{ marginTop: 12, background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>진행 중 프로젝트</div>
+        {[
+          { name: 'Q2 매출 성장 전략', progress: 75, status: '진행 중' },
+          { name: '물류비 절감 프로젝트', progress: 90, status: '마무리' },
+          { name: '미국 시장 진출 기획', progress: 40, status: '초기' },
+          { name: '브랜드 리포지셔닝', progress: 60, status: '진행 중' },
+          { name: 'IR 자료 업데이트', progress: 20, status: '시작' },
+        ].map((p, i) => (
+          <div key={i} style={{ marginBottom: i < 4 ? 10 : 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 11, color: '#CCC' }}>{p.name}</span>
+              <span style={{ fontSize: 10, color: '#777' }}>{p.progress}%</span>
+            </div>
+            <div style={{ height: 3, background: '#1F1F1F', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${p.progress}%`, background: p.progress >= 80 ? '#22C55E' : '#5E6AD2', borderRadius: 2, transition: 'width 0.3s' }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 12, background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>경쟁사 분석 현황</div>
+        {['롬앤', '클리오', '페리페라', '바닐라코', '마뗑킴'].map((c, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < 4 ? '1px solid #1F1F1F' : 'none' }}>
+            <div style={{ width: 6, height: 6, borderRadius: 3, background: '#5E6AD2', flexShrink: 0 }} />
+            <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{c}</span>
+            <span style={{ fontSize: 10, color: '#22C55E' }}>모니터링 중</span>
+          </div>
+        ))}
+      </div>
+    </>
+  ),
 };
 
-// ─── Main ChatView Component ────────────────────────────────
+// ─── Main ChatView ──────────────────────────────────────────
 
 export default function ChatView() {
   const [input, setInput] = useState('');
@@ -222,11 +266,8 @@ export default function ChatView() {
   const agent = getAgent(activeAgent);
   const messages = conversations[activeAgent] || [];
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  // Handle OAuth callbacks
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('google_connected') === 'true') {
@@ -256,30 +297,24 @@ export default function ChatView() {
     community: ['오늘 DM 요약해줘', '댓글 분석 리포트', '악성댓글 현황'],
     cs: ['오늘 상담 현황', '불만 고객 리스트', 'FAQ 업데이트해줘'],
     marketer: ['이번 달 성과 분석', '트렌드 리포트', '광고 ROI 분석'],
+    commerce: ['채널별 매출 현황', '재고 부족 알림', '프로모션 분석'],
     admin: ['이번 달 매출 현황', '정부지원사업 공고', '재고 현황 체크'],
     product: ['신제품 트렌드 분석', '경쟁사 신제품 모니터링', '상품 기획서 작성'],
     global: ['수출 현황 보고', '환율 변동 리포트', '바이어 컨택 메일 작성'],
+    strategy: ['비용절감 방안 분석', 'Q2 전략 제안', '사업계획서 작성'],
   };
 
   return (
     <>
-      {/* Header */}
-      <div style={{
-        height: 48, minHeight: 48, padding: '0 20px',
-        display: 'flex', alignItems: 'center', gap: 12,
-        borderBottom: '1px solid #1A1A1A', flexShrink: 0,
-      }}>
+      <div style={{ height: 48, minHeight: 48, padding: '0 20px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid #1A1A1A', flexShrink: 0 }}>
         <Icon size={16} strokeWidth={1.5} color="#666" />
         <span style={{ fontSize: 15, fontWeight: 600, color: '#F5F5F5' }}>{agent.name}</span>
         <span style={{ fontSize: 13, color: '#555' }}>{agent.title}</span>
       </div>
 
-      {/* Split Layout: Chat 55% + Dashboard 45% */}
       <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
-
-        {/* LEFT: Chat Area (55%) */}
+        {/* LEFT: Chat 55% */}
         <div style={{ width: '55%', display: 'flex', flexDirection: 'column', borderRight: '1px solid #1A1A1A' }}>
-          {/* Messages */}
           <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
             {messages.length === 0 ? (
               <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
@@ -305,9 +340,7 @@ export default function ChatView() {
                   <div key={i} style={{ marginBottom: 20 }}>
                     {msg.role === 'user' ? (
                       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <div style={{ background: '#5E6AD2', color: '#FFF', borderRadius: '14px 14px 4px 14px', padding: '10px 16px', maxWidth: '80%', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                          {msg.content}
-                        </div>
+                        <div style={{ background: '#5E6AD2', color: '#FFF', borderRadius: '14px 14px 4px 14px', padding: '10px 16px', maxWidth: '80%', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{msg.content}</div>
                       </div>
                     ) : (
                       <div>
@@ -317,9 +350,7 @@ export default function ChatView() {
                           </div>
                           <span style={{ fontSize: 11, fontWeight: 500, color: '#666' }}>{agent.name}</span>
                         </div>
-                        <div style={{ paddingLeft: 26, fontSize: 13, lineHeight: 1.75, color: '#DDD', whiteSpace: 'pre-wrap' }}>
-                          {msg.content}
-                        </div>
+                        <div style={{ paddingLeft: 26, fontSize: 13, lineHeight: 1.75, color: '#DDD', whiteSpace: 'pre-wrap' }}>{msg.content}</div>
                       </div>
                     )}
                   </div>
@@ -333,37 +364,24 @@ export default function ChatView() {
               </div>
             )}
           </div>
-
-          {/* Input */}
           <div style={{ padding: '10px 16px 16px', flexShrink: 0 }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              background: '#141414', border: `1px solid ${inputFocused ? '#333' : '#242424'}`,
-              borderRadius: 10, padding: '10px 14px', transition: 'border-color 0.15s',
-            }}>
-              <input type="text" value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
-                onFocus={() => setInputFocused(true)} onBlur={() => setInputFocused(false)}
-                placeholder={`${agent.name}에게 메시지...`}
-                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#E8E8E8', fontSize: 13, fontFamily: 'inherit' }} />
-              <button onClick={send} disabled={!input.trim() || isLoading}
-                style={{ width: 28, height: 28, borderRadius: 7, border: 'none', background: input.trim() && !isLoading ? '#5E6AD2' : '#222', color: input.trim() && !isLoading ? '#FFF' : '#555', cursor: input.trim() && !isLoading ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#141414', border: `1px solid ${inputFocused ? '#333' : '#242424'}`, borderRadius: 10, padding: '10px 14px', transition: 'border-color 0.15s' }}>
+              <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()} onFocus={() => setInputFocused(true)} onBlur={() => setInputFocused(false)} placeholder={`${agent.name}에게 메시지...`} style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#E8E8E8', fontSize: 13, fontFamily: 'inherit' }} />
+              <button onClick={send} disabled={!input.trim() || isLoading} style={{ width: 28, height: 28, borderRadius: 7, border: 'none', background: input.trim() && !isLoading ? '#5E6AD2' : '#222', color: input.trim() && !isLoading ? '#FFF' : '#555', cursor: input.trim() && !isLoading ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', flexShrink: 0 }}>
                 <ArrowUp size={14} strokeWidth={2} />
               </button>
             </div>
           </div>
         </div>
 
-        {/* RIGHT: Agent KPI Dashboard (45%) */}
+        {/* RIGHT: KPI Dashboard 45% */}
         <div style={{ width: '45%', overflowY: 'auto', padding: 16, background: '#0A0A0A' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
             <Icon size={14} strokeWidth={1.5} color="#5E6AD2" />
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {agent.name} Dashboard
-            </span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{agent.name} Dashboard</span>
           </div>
           {AgentDashboard && <AgentDashboard />}
+          <ApiStatusPanel agent={agent} />
         </div>
       </div>
     </>
