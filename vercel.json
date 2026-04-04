@@ -35,6 +35,7 @@
     { "source": "/api/scrape/instagram-followers", "destination": "/api/scrape/instagram-followers" },
     { "source": "/api/stats", "destination": "/api/stats" },
     { "source": "/api/webhooks/zernio", "destination": "/api/webhooks/zernio" },
+    { "source": "/api/webhooks/instagram", "destination": "/api/webhooks/instagram" },
     { "source": "/api/cs/kakao-webhook", "destination": "/api/cs/kakao-webhook" },
     { "source": "/api/cs/daily-report", "destination": "/api/cs/daily-report" },
     { "source": "/(.*)", "destination": "/index.html" }
