@@ -11,6 +11,17 @@ const zFetch = (path) => fetch(`${ZERNIO}${path}`, {
   headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}` },
 }).then(r => r.json());
 
+// Username-based matching as fallback (no env var dependency)
+const YUMINHYE_ACCOUNTS = {
+  tiktok: 'peerstory',
+  youtube: '15초유민혜',
+};
+const MILLIMILLI_ACCOUNTS = {
+  instagram: 'millimilli.official',
+  tiktok: 'millimilli.official',
+  youtube: '유민혜-z2r',
+};
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -23,36 +34,38 @@ export default async function handler(req, res) {
       try {
         const zData = await zFetch('/accounts');
         const accounts = zData.accounts || [];
-        const milliProfileId = process.env.ZERNIO_MILLIMILLI_PROFILE_ID;
-        const yuProfileId = process.env.ZERNIO_YUMINHYE_PROFILE_ID;
 
         for (const acc of accounts) {
           const followers = acc.metadata?.profileData?.followersCount || 0;
-          const profId = acc.profileId?._id || acc.profileId;
           const plat = acc.platform;
+          const username = acc.username;
 
-          if (profId === yuProfileId && plat === 'tiktok') yuminhye.tiktok = { count: followers, source: 'zernio' };
-          if (profId === yuProfileId && plat === 'youtube') yuminhye.youtube = { count: followers, source: 'zernio' };
-          if (profId === milliProfileId && plat === 'instagram') millimilli.instagram = { count: followers, source: 'zernio' };
-          if (profId === milliProfileId && plat === 'tiktok') millimilli.tiktok = { count: followers, source: 'zernio' };
-          if (profId === milliProfileId && plat === 'youtube') millimilli.youtube = { count: followers, source: 'zernio' };
+          // Match by username (reliable, no env var needed)
+          if (username === YUMINHYE_ACCOUNTS[plat]) {
+            yuminhye[plat] = { count: followers, source: 'zernio', username };
+          }
+          if (username === MILLIMILLI_ACCOUNTS[plat]) {
+            millimilli[plat] = { count: followers, source: 'zernio', username };
+          }
         }
 
-        // 유민혜 인스타 from scrape
+        // 유민혜 인스타 from scrape (not in Zernio)
         const igFollowers = await redis.get('followers:yuminhye:instagram');
         yuminhye.instagram = { count: igFollowers?.count || 0, source: 'scrape' };
-      } catch { /* Zernio unavailable */ }
+      } catch (e) {
+        console.error('[Stats] Zernio error:', e.message);
+      }
     }
 
-    yuminhye.total = yuminhye.instagram.count + yuminhye.tiktok.count + yuminhye.youtube.count;
-    millimilli.total = millimilli.instagram.count + millimilli.tiktok.count + millimilli.youtube.count;
+    yuminhye.total = (yuminhye.instagram?.count || 0) + (yuminhye.tiktok?.count || 0) + (yuminhye.youtube?.count || 0);
+    millimilli.total = (millimilli.instagram?.count || 0) + (millimilli.tiktok?.count || 0) + (millimilli.youtube?.count || 0);
 
     // === B. Content count (Zernio posts) ===
     let contentCount = 0;
     if (process.env.ZERNIO_API_KEY) {
       try {
         const postsData = await zFetch('/posts?limit=1');
-        contentCount = postsData.total || postsData.pagination?.total || (postsData.posts || []).length || 0;
+        contentCount = postsData.pagination?.total || postsData.total || 0;
       } catch { /* skip */ }
     }
 
@@ -68,7 +81,14 @@ export default async function handler(req, res) {
       try {
         const rows = await readSheet(process.env.OLIVEYOUNG_SHEET_ID);
         oliveyoungRevenue = { status: 'connected', rows: rows.length - 1 };
-      } catch (e) { oliveyoungRevenue = { status: 'error', error: e.message }; }
+      } catch (e) {
+        const msg = e.message || '';
+        if (msg.includes('has not been used') || msg.includes('not been enabled') || msg.includes('PERMISSION_DENIED')) {
+          oliveyoungRevenue = { status: 'sheets_api_disabled', message: 'Google Sheets API 활성화 필요', url: 'https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=998424366713' };
+        } else {
+          oliveyoungRevenue = { status: 'error', error: msg };
+        }
+      }
     }
 
     // === E. Follower growth (daily snapshots from KV) ===
@@ -83,7 +103,7 @@ export default async function handler(req, res) {
     // Save today's snapshot if not exists
     const todayKey = `followers:snapshot:${now.toISOString().slice(0, 10)}`;
     const todaySnap = await redis.get(todayKey);
-    if (!todaySnap) {
+    if (!todaySnap && (yuminhye.total > 0 || millimilli.total > 0)) {
       await redis.set(todayKey, JSON.stringify({
         date: now.toISOString().slice(0, 10),
         yuminhye: yuminhye.total,
@@ -93,19 +113,19 @@ export default async function handler(req, res) {
 
     // === F. Activity log (KV) ===
     const activityLog = await redis.lrange('activity:log', 0, 9);
-    const parsedLog = (activityLog || []).map(l => typeof l === 'string' ? JSON.parse(l) : l);
+    const parsedLog = (activityLog || []).map(l => { try { return typeof l === 'string' ? JSON.parse(l) : l; } catch { return l; } });
 
     // === G. Channel connection status ===
     const connections = {
-      zernio: { connected: !!process.env.ZERNIO_API_KEY, label: process.env.ZERNIO_API_KEY ? '🟢' : '🔴' },
-      google: { connected: !!process.env.GOOGLE_REFRESH_TOKEN, label: process.env.GOOGLE_REFRESH_TOKEN ? '🟢' : '🔴' },
-      anthropic: { connected: !!process.env.ANTHROPIC_API_KEY, label: process.env.ANTHROPIC_API_KEY ? '🟢' : '🔴' },
-      instagram: { connected: !!process.env.INSTAGRAM_ACCESS_TOKEN, label: process.env.INSTAGRAM_ACCESS_TOKEN ? '🟢' : '🔴' },
-      oliveyoung: { connected: !!process.env.OLIVEYOUNG_SHEET_ID, label: process.env.OLIVEYOUNG_SHEET_ID ? '🟢' : '🔴' },
-      happytalk: { connected: !!process.env.HAPPYTALK_API_KEY, label: process.env.HAPPYTALK_API_KEY ? '🟢' : '🔴' },
-      naverAds: { connected: !!process.env.NAVER_AD_API_KEY, label: process.env.NAVER_AD_API_KEY ? '🟢' : '🔴' },
-      googleAds: { connected: !!process.env.GOOGLE_ADS_CUSTOMER_ID, label: process.env.GOOGLE_ADS_CUSTOMER_ID ? '🟢' : '🔴' },
-      ga4: { connected: !!process.env.GA4_PROPERTY_ID, label: process.env.GA4_PROPERTY_ID ? '🟢' : '🔴' },
+      zernio: { connected: !!process.env.ZERNIO_API_KEY },
+      google: { connected: !!process.env.GOOGLE_REFRESH_TOKEN },
+      anthropic: { connected: !!process.env.ANTHROPIC_API_KEY },
+      instagram: { connected: !!process.env.INSTAGRAM_ACCESS_TOKEN },
+      oliveyoung: { connected: !!process.env.OLIVEYOUNG_SHEET_ID },
+      happytalk: { connected: !!process.env.HAPPYTALK_API_KEY },
+      naverAds: { connected: !!process.env.NAVER_AD_API_KEY },
+      googleAds: { connected: !!process.env.GOOGLE_ADS_CUSTOMER_ID },
+      ga4: { connected: !!process.env.GA4_PROPERTY_ID },
     };
 
     return res.status(200).json({
