@@ -39,23 +39,27 @@ const SPAM = ['팔로우', '맞팔', 'follow', 'http://', 'https://', '홍보', 
 
 const OY_SALE_KEYWORDS = ['올영세일', '올리브영세일', '올영 세일', '올리브영 할인'];
 
-function getMilliPrompt(messageText) {
+function getPrompt(persona, platform, messageText) {
   const isOYSale = OY_SALE_KEYWORDS.some(k => (messageText || '').includes(k));
   const purchaseGuide = isOYSale
-    ? '현재 올영세일 기간! 올리브영에서 구매 적극 추천.'
-    : '구매 추천 순서: 1) 자사몰 https://millimilli.official (가입 혜택 최고, 적립금/첫구매 할인) 2) 네이버 스마트스토어 "밀리밀리" 검색 3) 올리브영 매장/온라인. 항상 자사몰을 먼저 추천하세요.';
+    ? '현재 올영세일 기간! 올리브영 추천. "지금 올영세일 기간이면 올리브영에서 득템하세요! 🍀"'
+    : '구매 추천: 1) 자사몰 (혜택 최고) 2) 스마트스토어 3) 올리브영. "프로필 링크에서 자사몰 바로 가실 수 있어요! 🛍️"';
 
-  return `당신은 밀리밀리 브랜드 SNS 담당자입니다. 500달톤 초저분자 단백질 화장품 전문가.
-이모지 1-2개, 2문장 이내. 가격 직접 언급 금지. 악성/스팸이면 SKIP만 반환.
-제품/성분 문의 → 간단 답변 + "카카오채널 @밀리밀리에서 자세히 안내드릴게요 🫶"
-${purchaseGuide}
-${isOYSale ? '올영세일 언급 시 → "지금 올영세일 기간이면 올리브영에서 득템하세요! 🍀"' : '구매 문의 시 → "프로필 링크에서 자사몰 바로 가실 수 있어요! 가입하시면 혜택이 쏠쏠해서 자사몰 추천드려요 🛍️"'}
-스마트스토어 물어보면 → "네이버 스마트스토어에서 밀리밀리 검색하시면 됩니다 😊"`;
+  const base = '가격 직접 언급 금지. 악성/스팸이면 SKIP만 반환.';
+
+  // 밀리밀리 + 플랫폼별
+  if (persona === 'millimilli') {
+    if (platform === 'youtube') return `당신은 밀리밀리 유튜브 채널 담당자입니다. 500달톤 초저분자 단백질 화장품 브랜드. 영상 내용에 공감하며 따뜻하게 답글. 제품 문의 → 자사몰 또는 카카오채널 @밀리밀리. 2문장 이내, 이모지 1-2개. ${purchaseGuide} ${base}`;
+    if (platform === 'tiktok') return `당신은 밀리밀리 틱톡 채널 담당자입니다. 500달톤 초저분자 단백질 화장품. 틱톡 특유의 밝고 캐주얼한 말투! 짧고 임팩트 있게, 이모지 적극 활용. 제품 문의 → 프로필 링크 또는 카카오채널 @밀리밀리. 1-2문장. ${purchaseGuide} ${base}`;
+    // instagram (default)
+    return `당신은 밀리밀리 브랜드 SNS 담당자입니다. 500달톤 초저분자 단백질 화장품 전문가. 이모지 1-2개, 2문장 이내. 제품/성분 문의 → "카카오채널 @밀리밀리에서 자세히 안내드릴게요 🫶" ${purchaseGuide} 스마트스토어 문의 → "네이버에서 밀리밀리 검색하시면 됩니다 😊" ${base}`;
+  }
+
+  // 유민혜 + 플랫폼별
+  if (platform === 'youtube') return `당신은 유민혜 유튜브 크리에이터입니다. 영상 봐줘서 진심 감사한 마음으로 따뜻하게. 시청자와 소통하는 느낌. 제품 관련 → @millimilli.official 안내. 2문장 이내, 친근하게. ${base}`;
+  if (platform === 'tiktok') return `당신은 유민혜 틱톡 크리에이터입니다. 짧고 임팩트 있는 답글. 팔로워와 친근하게 소통. 제품 관련 → @millimilli.official 안내. 1-2문장, 밝고 캐주얼. ${base}`;
+  return `당신은 유민혜 인플루언서입니다. 친근하고 따뜻한 크리에이터 말투. 이모지 자연스럽게. 2문장 이내. 제품 관련은 "@millimilli.official 에서 확인해주세요!" ${base}`;
 }
-
-const PROMPTS = {
-  yuminhye: `당신은 유민혜 인플루언서입니다. 친근하고 따뜻한 크리에이터 말투. 이모지 자연스럽게. 2문장 이내. 제품 관련은 "@millimilli.official 에서 확인해주세요!" 악성/스팸이면 SKIP만 반환.`,
-};
 
 async function getInstagramToken() {
   // Try Zernio account token first, then fall back to env
@@ -102,7 +106,7 @@ export default async function handler(req, res) {
       const platform = account?.platform || comment.platform || 'instagram';
 
       // Skip duplicates (24h TTL)
-      const dupeKey = `replied:${commentId}`;
+      const dupeKey = `replied:${platform}:${commentId}`;
       const alreadyProcessed = await redis.get(dupeKey);
       if (alreadyProcessed) {
         return res.status(200).json({ skipped: true, reason: 'duplicate' });
@@ -123,7 +127,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 200,
-          system: persona === 'millimilli' ? getMilliPrompt(text) : PROMPTS[persona],
+          system: getPrompt(persona, platform, text),
           messages: [{ role: 'user', content: `댓글: "${text}"` }],
         }),
       });
@@ -132,35 +136,47 @@ export default async function handler(req, res) {
 
       if (!reply || reply === 'SKIP') return res.status(200).json({ skipped: true, reason: 'filtered' });
 
-      // Reply via Instagram Graph API (Zernio doesn't have reply API)
-      let replyStatus = 'no_token';
-      const igToken = await getInstagramToken();
-      if (igToken && platform === 'instagram') {
-        try {
-          const igRes = await fetch(
-            `https://graph.instagram.com/v21.0/${commentId}/replies`,
-            {
+      // Reply: Instagram → IG Graph API, YouTube/TikTok → Zernio API
+      let replyStatus = 'unsupported';
+
+      if (platform === 'instagram') {
+        const igToken = await getInstagramToken();
+        if (igToken) {
+          try {
+            const igRes = await fetch(`https://graph.instagram.com/v21.0/${commentId}/replies`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ message: reply, access_token: igToken }),
-            }
-          );
-          const igData = await igRes.json();
-          replyStatus = igRes.ok ? 'sent' : `ig_error:${igData.error?.message || igRes.status}`;
-          console.log(`[IG Reply] ${commentId}: ${replyStatus}`);
-        } catch (e) {
-          replyStatus = `ig_exception:${e.message}`;
-        }
-      } else {
-        replyStatus = platform !== 'instagram' ? `${platform}_not_supported` : 'no_ig_token';
+            });
+            const igData = await igRes.json();
+            replyStatus = igRes.ok ? 'sent' : `ig_error:${igData.error?.message || igRes.status}`;
+          } catch (e) { replyStatus = `ig_exception:${e.message}`; }
+        } else { replyStatus = 'no_ig_token'; }
+      } else if (platform === 'youtube' || platform === 'tiktok') {
+        // YouTube/TikTok: Zernio manages OAuth, try their comment reply
+        try {
+          const zRes = await fetch(`https://zernio.com/api/v1/inbox/comments/${commentId}/reply`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: reply }),
+          });
+          if (zRes.ok) {
+            replyStatus = 'sent_zernio';
+          } else {
+            // Fallback: log for manual reply
+            replyStatus = `zernio_${zRes.status}`;
+          }
+        } catch (e) { replyStatus = `zernio_exception:${e.message}`; }
       }
+
+      console.log(`[${platform}] ${persona} 댓글 응대: "${reply.substring(0, 40)}" → ${replyStatus}`);
 
       await redis.lpush('webhook-logs', JSON.stringify({
         type: 'comment', commentId, author: comment.author?.username, text: text.substring(0, 50),
         reply, replyStatus, persona, platform, timestamp: new Date().toISOString(),
       }));
 
-      return res.status(200).json({ success: replyStatus === 'sent', reply, replyStatus });
+      return res.status(200).json({ success: replyStatus.startsWith('sent'), reply, replyStatus });
     }
 
     // ─── DM Reply via Zernio Inbox API ───
@@ -168,6 +184,7 @@ export default async function handler(req, res) {
       const text = message.text || message.message || '';
       const messageId = message.id || body.id;
       const accountId = account?.id || '';
+      const platform = account?.platform || message.platform || 'instagram';
       const conversationId = message.conversationId || body.conversationId || message.participantId;
 
       // Skip duplicates
@@ -184,7 +201,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 300,
-          system: persona === 'millimilli' ? getMilliPrompt(text) : PROMPTS[persona],
+          system: getPrompt(persona, platform, text),
           messages: [{ role: 'user', content: `DM: "${text}"` }],
         }),
       });
