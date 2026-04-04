@@ -7,6 +7,22 @@
     {
       "path": "/api/cs/daily-report",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/instagram-comments",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/instagram-comments",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/instagram-comments",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/instagram-comments",
+      "schedule": "0 13 * * *"
     }
   ],
   "rewrites": [
@@ -20,6 +36,8 @@
     { "source": "/api/briefing", "destination": "/api/briefing" },
     { "source": "/api/upload-status", "destination": "/api/upload-status" },
     { "source": "/api/cron/upload-pipeline", "destination": "/api/cron/upload-pipeline" },
+    { "source": "/api/cron/instagram-comments", "destination": "/api/cron/instagram-comments" },
+    { "source": "/api/instagram-logs", "destination": "/api/instagram-logs" },
     { "source": "/api/cs/kakao-webhook", "destination": "/api/cs/kakao-webhook" },
     { "source": "/api/cs/daily-report", "destination": "/api/cs/daily-report" },
     { "source": "/(.*)", "destination": "/index.html" }

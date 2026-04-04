@@ -138,7 +138,9 @@ const AGENT_DASHBOARDS = {
 
   community: () => {
     const [igLogs, setIgLogs] = useState(null);
+    const [igLoading, setIgLoading] = useState(true);
     const [igRunning, setIgRunning] = useState(false);
+    const [igError, setIgError] = useState(null);
     const mockLogs = [
       { time: '18:02', user: '@beauty_fan_kr', comment: '이 세럼 진짜 좋아요!', reply: '감사합니다 💕 꾸준히 사용하시면 더 좋은 결과 보실 거예요!', status: 'replied' },
       { time: '18:01', user: '@skincare_daily', comment: '가격이 얼마인가요?', reply: '공식 스마트스토어에서 29,000원입니다! 😊', status: 'replied' },
@@ -158,9 +160,28 @@ const AGENT_DASHBOARDS = {
       { time: '22:00', done: hour >= 22 },
     ];
 
-    useEffect(() => {
-      fetch('/api/instagram-logs').then(r => r.json()).then(d => { if (d.logs) setIgLogs(d.logs); }).catch(() => {});
-    }, []);
+    const fetchLogs = () => {
+      fetch('/api/instagram-logs')
+        .then(r => r.json())
+        .then(d => { if (d.logs && d.logs.length > 0) setIgLogs(d.logs); })
+        .catch(() => {})
+        .finally(() => setIgLoading(false));
+    };
+
+    useEffect(() => { fetchLogs(); }, []);
+
+    const runNow = () => {
+      setIgRunning(true);
+      setIgError(null);
+      fetch('/api/cron/instagram-comments', { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+          if (d.success) setTimeout(fetchLogs, 5000);
+          else setIgError(d.error || '실행 실패');
+        })
+        .catch(e => setIgError(e.message))
+        .finally(() => setIgRunning(false));
+    };
 
     return (
       <>
@@ -176,11 +197,7 @@ const AGENT_DASHBOARDS = {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5' }}>Instagram 댓글 자동화</div>
             <button
-              onClick={() => {
-                setIgRunning(true);
-                fetch('/api/cron/instagram-comments', { method: 'POST' })
-                  .finally(() => setIgRunning(false));
-              }}
+              onClick={runNow}
               disabled={igRunning}
               style={{
                 fontSize: 10, padding: '3px 10px', borderRadius: 4,
@@ -221,6 +238,17 @@ const AGENT_DASHBOARDS = {
               <div style={{ fontSize: 18, fontWeight: 700, color: '#F59E0B' }}>{skipped}</div>
             </div>
           </div>
+
+          {/* Status messages */}
+          {igLoading && !igLogs && (
+            <div style={{ fontSize: 11, color: '#555', textAlign: 'center', padding: 4 }}>로그 로딩 중...</div>
+          )}
+          {igError && (
+            <div style={{ fontSize: 11, color: '#EF4444', background: 'rgba(239,68,68,0.06)', borderRadius: 4, padding: '4px 8px', marginBottom: 8 }}>{igError}</div>
+          )}
+          {!igLogs && !igLoading && (
+            <div style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>API 미연결 — 목업 데이터 표시 중</div>
+          )}
 
           {/* Log Table */}
           <div>
