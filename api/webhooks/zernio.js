@@ -138,13 +138,14 @@ export default async function handler(req, res) {
       if (!reply || reply === 'SKIP') return res.status(200).json({ skipped: true, reason: 'filtered' });
 
       // Reply via Zernio unified API (works for all platforms)
+      // Webhook provides platform comment ID, not Zernio _id → use flat endpoint
       let replyStatus = 'unsupported';
 
       try {
-        const zRes = await fetch(`https://zernio.com/api/v1/inbox/comments/${commentId}/reply`, {
+        const zRes = await fetch('https://zernio.com/api/v1/inbox/comments/reply', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: reply, accountId }),
+          body: JSON.stringify({ commentId, message: reply, accountId }),
         });
         const zData = await zRes.json();
         replyStatus = zRes.ok ? 'sent' : `zernio_error:${zData.error || zRes.status}`;
@@ -181,10 +182,10 @@ export default async function handler(req, res) {
     // ─── DM Reply via Zernio Inbox API ───
     if (event === 'message.received' && message) {
       const text = message.text || message.message || '';
-      const messageId = message.id || body.id;
+      const messageId = message.id || req.body.id;
       const accountId = account?.id || '';
       const platform = account?.platform || message.platform || 'instagram';
-      const conversationId = message.conversationId || body.conversationId || message.participantId;
+      const conversationId = message.conversationId || req.body.conversationId || message.participantId;
 
       // Skip duplicates
       const dmDupeKey = `dm:replied:${messageId}`;
