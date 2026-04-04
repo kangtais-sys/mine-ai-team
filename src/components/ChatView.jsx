@@ -100,7 +100,7 @@ function CommunityKpis() {
   useEffect(() => { fetch('/api/agents/community').then(r => r.json()).then(setD).catch(() => {}); }, []);
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-      <KpiCard label="오늘 댓글" value={d ? `${d.today?.comments || 0}건` : '-'} delta={d?.today?.byPlatform ? `IG${d.today.byPlatform.instagram} YT${d.today.byPlatform.youtube} TT${d.today.byPlatform.tiktok}` : '로�� 중'} up icon={MessageCircle} />
+      <KpiCard label="오늘 댓글" value={d ? `${d.today?.comments || 0}건` : '-'} delta={d?.today?.byPlatform ? `IG${d.today.byPlatform.instagram} YT${d.today.byPlatform.youtube} TT${d.today.byPlatform.tiktok}` : '로딩 중'} up icon={MessageCircle} />
       <KpiCard label="오늘 DM" value={d ? `${d.today?.dm || 0}건` : '-'} up icon={MessageCircle} />
       <KpiCard label="총 댓글" value={d ? `${d.totals?.comments || 0}건` : '-'} delta="KV 누적" up icon={CheckCircle2} />
       <KpiCard label="총 DM" value={d ? `${d.totals?.dm || 0}건` : '-'} delta="KV 누적" up icon={Users} />

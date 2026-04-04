@@ -78,7 +78,7 @@ export default function Dashboard() {
   const activityLog = stats?.activityLog || [];
 
   const kpis = [
-    { label: '콘텐츠 발행', value: stats?.contentCount != null ? `${stats.contentCount}���` : '-', icon: FileText, delta: 'Zernio 실데이터', up: true },
+    { label: '콘텐츠 발행', value: stats?.contentCount != null ? `${stats.contentCount}건` : '-', icon: FileText, delta: 'Zernio 실데이터', up: true },
     { label: '댓글 응대', value: `${engagement.comments || 0}건`, icon: MessageCircle, delta: 'KV 실데이터', up: true },
     { label: 'DM 응대', value: `${engagement.dm || 0}건`, icon: MessageCircle, delta: 'KV 실데이터', up: true },
   ];
