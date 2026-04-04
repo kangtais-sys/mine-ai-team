@@ -1,23 +1,31 @@
 export default function handler(req, res) {
   if (req.method === 'GET') {
-    // Parse query params from URL directly (fallback for Vercel parsing issues)
-    const url = new URL(req.url, `https://${req.headers.host || 'mine-ai-team.vercel.app'}`);
-    const mode = url.searchParams.get('hub.mode') || req.query?.['hub.mode'];
-    const token = url.searchParams.get('hub.verify_token') || req.query?.['hub.verify_token'];
-    const challenge = url.searchParams.get('hub.challenge') || req.query?.['hub.challenge'];
+    const url = req.url || '';
+    const queryString = url.includes('?') ? url.split('?')[1] : '';
+    const params = Object.fromEntries(new URLSearchParams(queryString));
 
-    console.log('[Meta Webhook] URL:', req.url);
-    console.log('[Meta Webhook] Parsed:', { mode, token, challenge });
-
+    const mode = params['hub.mode'];
+    const token = params['hub.verify_token'];
+    const challenge = params['hub.challenge'];
     const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN || 'millimilli2024secret';
 
+    // Debug: return all parsed info
+    if (!mode && !token) {
+      return res.status(200).json({
+        debug: true,
+        url: req.url,
+        queryString,
+        params,
+        reqQuery: req.query,
+      });
+    }
+
     if (mode === 'subscribe' && token === verifyToken) {
-      console.log('[Meta Webhook] Verified!');
       res.setHeader('Content-Type', 'text/plain');
       return res.status(200).end(String(challenge));
     }
 
-    return res.status(403).end('Forbidden');
+    return res.status(403).json({ error: 'Forbidden', mode, tokenMatch: token === verifyToken, envToken: verifyToken?.substring(0, 5) });
   }
 
   if (req.method === 'POST') {
