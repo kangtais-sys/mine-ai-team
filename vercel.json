@@ -7,6 +7,7 @@
     { "path": "/api/cron/daily-report", "schedule": "0 9 * * *" },
     { "path": "/api/cron/upload-pipeline", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/instagram-comments", "schedule": "0 0,4,9,13 * * *" },
+    { "path": "/api/cron/youtube-comments", "schedule": "*/15 * * * *" },
     { "path": "/api/scrape/instagram-followers", "schedule": "0 0 * * *" },
     { "path": "/api/cron/refresh-token", "schedule": "0 0 1 * *" }
   ],
@@ -26,6 +27,7 @@
     { "source": "/api/instagram-logs", "destination": "/api/instagram-logs" },
     { "source": "/api/cron/upload-pipeline", "destination": "/api/cron/upload-pipeline" },
     { "source": "/api/cron/instagram-comments", "destination": "/api/cron/instagram-comments" },
+    { "source": "/api/cron/youtube-comments", "destination": "/api/cron/youtube-comments" },
     { "source": "/api/cron/publish-morning", "destination": "/api/cron/publish-morning" },
     { "source": "/api/cron/publish-evening", "destination": "/api/cron/publish-evening" },
     { "source": "/api/cron/inbox", "destination": "/api/cron/inbox" },

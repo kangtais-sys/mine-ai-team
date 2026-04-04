@@ -30,9 +30,9 @@ const redis = new Redis({
 const ACCOUNT_PERSONA = {
   '69d08dbbbf4d9161df5463f1': 'millimilli',  // @millimilli.official IG
   '69d08d11bf4d9161df546260': 'millimilli',  // @millimilli.official TT
-  '69d08d8bbf4d9161df54637a': 'millimilli',  // @choi_jacob YT
+  '69d08d8bbf4d9161df54637a': 'millimilli',  // @유민혜-z2r YT (밀리밀리 프로필)
   '69d08abdbf4d9161df545c4b': 'yuminhye',   // @peerstory TT
-  '69d08acebf4d9161df545c66': 'yuminhye',   // @유민혜 YT
+  '69d08acebf4d9161df545c66': 'yuminhye',   // @15초유민혜 YT
 };
 
 const SPAM = ['팔로우', '맞팔', 'follow', 'http://', 'https://', '홍보', 'dm주세요', '선팔'];
