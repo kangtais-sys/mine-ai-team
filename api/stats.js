@@ -76,15 +76,37 @@ export default async function handler(req, res) {
     ]);
 
     // === D. Olive Young revenue (Google Sheets) ===
+    // 시트 구조: [빈열, 기준일, 기간계상품코드, 상품코드, 상품명, 올리브영 매출, 판매수량, 홍천 납품 기준 매출]
     let oliveyoungRevenue = null;
     if (process.env.OLIVEYOUNG_SHEET_ID) {
       try {
         const rows = await readSheet(process.env.OLIVEYOUNG_SHEET_ID);
-        oliveyoungRevenue = { status: 'connected', rows: rows.length - 1 };
+        const dataRows = rows.slice(1); // 헤더 제외
+        const totalSales = dataRows.reduce((s, r) => s + (Number((r[5] || '0').replace(/,/g, '')) || 0), 0);
+        const totalQty = dataRows.reduce((s, r) => s + (Number(r[6]) || 0), 0);
+        const totalShipment = dataRows.reduce((s, r) => s + (Number((r[7] || '0').replace(/,/g, '')) || 0), 0);
+
+        // 날짜별 집계
+        const byDate = {};
+        for (const r of dataRows) {
+          const date = r[1] || '';
+          if (!byDate[date]) byDate[date] = { sales: 0, qty: 0 };
+          byDate[date].sales += Number((r[5] || '0').replace(/,/g, '')) || 0;
+          byDate[date].qty += Number(r[6]) || 0;
+        }
+
+        oliveyoungRevenue = {
+          status: 'connected',
+          totalRows: dataRows.length,
+          totalSales,
+          totalQty,
+          totalShipment,
+          byDate,
+        };
       } catch (e) {
         const msg = e.message || '';
         if (msg.includes('has not been used') || msg.includes('not been enabled') || msg.includes('PERMISSION_DENIED')) {
-          oliveyoungRevenue = { status: 'sheets_api_disabled', message: 'Google Sheets API 활성화 필요', url: 'https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=998424366713' };
+          oliveyoungRevenue = { status: 'sheets_api_disabled', message: 'Google Sheets API 활성화 필요' };
         } else {
           oliveyoungRevenue = { status: 'error', error: msg };
         }

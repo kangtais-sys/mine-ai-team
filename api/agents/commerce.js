@@ -6,16 +6,28 @@ export default async function handler(req, res) {
   const result = { oliveyoung: null, smartstore: null, cafe24: null, amazon: null, shopee: null, qoo10: null, tiktokShop: null };
 
   // A. Olive Young (Google Sheets)
+  // 시트: [빈열, 기준일, 기간계상품코드, 상품코드, 상품명, 올리브영 매출, 판매수량, 홍천 납품 기준 매출]
   if (process.env.OLIVEYOUNG_SHEET_ID) {
     try {
       const rows = await readSheet(process.env.OLIVEYOUNG_SHEET_ID);
-      const headers = rows[0] || [];
-      const data = rows.slice(1).map(row => {
-        const obj = {};
-        headers.forEach((h, i) => { obj[h] = row[i] || ''; });
-        return obj;
-      });
-      result.oliveyoung = { status: 'connected', rowCount: data.length, data: data.slice(-10) };
+      const dataRows = rows.slice(1);
+      const totalSales = dataRows.reduce((s, r) => s + (Number((r[5] || '0').replace(/,/g, '')) || 0), 0);
+      const totalQty = dataRows.reduce((s, r) => s + (Number(r[6]) || 0), 0);
+
+      // 상품별 집계
+      const byProduct = {};
+      for (const r of dataRows) {
+        const name = r[4] || '미상';
+        if (!byProduct[name]) byProduct[name] = { sales: 0, qty: 0 };
+        byProduct[name].sales += Number((r[5] || '0').replace(/,/g, '')) || 0;
+        byProduct[name].qty += Number(r[6]) || 0;
+      }
+
+      const recent = dataRows.slice(-10).map(r => ({
+        date: r[1], product: r[4], sales: r[5], qty: r[6],
+      }));
+
+      result.oliveyoung = { status: 'connected', totalRows: dataRows.length, totalSales, totalQty, byProduct, recent };
     } catch (e) { result.oliveyoung = { status: 'error', error: e.message }; }
   } else {
     result.oliveyoung = { status: 'disconnected', message: '올리브영 시트 연결 필요' };
