@@ -148,11 +148,19 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: replyStatus === 'sent', reply, replyStatus });
     }
 
-    // ─── DM Reply ───
+    // ─── DM Reply via Zernio Inbox API ───
     if (event === 'message.received' && message) {
-      const text = message.text || '';
-      const messageId = message.id;
+      const text = message.text || message.message || '';
+      const messageId = message.id || body.id;
       const accountId = account?.id || '';
+      const conversationId = message.conversationId || body.conversationId || message.participantId;
+
+      // Skip duplicates
+      const dmDupeKey = `dm:replied:${messageId}`;
+      const dmAlready = await redis.get(dmDupeKey);
+      if (dmAlready) return res.status(200).json({ skipped: true, reason: 'duplicate' });
+      await redis.set(dmDupeKey, true, { ex: 86400 });
+
       const persona = ACCOUNT_PERSONA[accountId] || 'millimilli';
 
       const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -170,13 +178,50 @@ export default async function handler(req, res) {
 
       if (!reply || reply === 'SKIP') return res.status(200).json({ skipped: true });
 
-      // DM reply would need IG Messaging API (requires approval)
+      // Send via Zernio Inbox Conversations API
+      let replyStatus = 'no_conversation';
+      if (conversationId && accountId) {
+        try {
+          const dmRes = await fetch(
+            `https://zernio.com/api/v1/inbox/conversations/${conversationId}/messages`,
+            {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: reply, accountId }),
+            }
+          );
+          const dmData = await dmRes.json();
+          replyStatus = dmRes.ok ? 'sent' : `error:${dmData.error || dmRes.status}`;
+          console.log(`[Zernio DM] ${conversationId}: ${replyStatus}`);
+        } catch (e) {
+          replyStatus = `exception:${e.message}`;
+        }
+      } else {
+        // Fallback: try with participantId as conversationId
+        const fallbackId = message.author?.id || message.from?.id;
+        if (fallbackId) {
+          try {
+            const dmRes = await fetch(
+              `https://zernio.com/api/v1/inbox/conversations/${fallbackId}/messages`,
+              {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: reply, accountId }),
+              }
+            );
+            replyStatus = dmRes.ok ? 'sent_fallback' : `fallback_error:${dmRes.status}`;
+          } catch (e) {
+            replyStatus = `fallback_exception:${e.message}`;
+          }
+        }
+      }
+
       await redis.lpush('webhook-logs', JSON.stringify({
         type: 'dm', messageId, text: text.substring(0, 50), reply, persona,
-        replyStatus: 'pending_manual', timestamp: new Date().toISOString(),
+        replyStatus, conversationId, timestamp: new Date().toISOString(),
       }));
 
-      return res.status(200).json({ success: true, reply, note: 'DM reply generated, manual send needed' });
+      return res.status(200).json({ success: replyStatus.startsWith('sent'), reply, replyStatus });
     }
 
     return res.status(200).json({ received: true, event });
