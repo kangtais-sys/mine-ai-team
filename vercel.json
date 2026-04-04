@@ -7,7 +7,8 @@
     { "path": "/api/cron/daily-report", "schedule": "0 9 * * *" },
     { "path": "/api/cron/upload-pipeline", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/instagram-comments", "schedule": "0 0,4,9,13 * * *" },
-    { "path": "/api/scrape/instagram-followers", "schedule": "0 0 * * *" }
+    { "path": "/api/scrape/instagram-followers", "schedule": "0 0 * * *" },
+    { "path": "/api/cron/refresh-token", "schedule": "0 0 1 * *" }
   ],
   "rewrites": [
     { "source": "/api/auth/google", "destination": "/api/auth/google" },
@@ -35,6 +36,7 @@
     { "source": "/api/scrape/instagram-followers", "destination": "/api/scrape/instagram-followers" },
     { "source": "/api/stats", "destination": "/api/stats" },
     { "source": "/api/webhooks/zernio", "destination": "/api/webhooks/zernio" },
+    { "source": "/api/cron/refresh-token", "destination": "/api/cron/refresh-token" },
     { "source": "/api/cs/kakao-webhook", "destination": "/api/cs/kakao-webhook" },
     { "source": "/api/cs/daily-report", "destination": "/api/cs/daily-report" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
