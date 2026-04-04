@@ -1,22 +1,25 @@
 export default function handler(req, res) {
   // GET: Meta webhook verification
   if (req.method === 'GET') {
-    const mode = req.query['hub.mode'];
-    const token = req.query['hub.verify_token'];
-    const challenge = req.query['hub.challenge'];
+    // Vercel may parse "hub.mode" as nested or flat — try both
+    const q = req.query || {};
+    const mode = q['hub.mode'] || q['hub_mode'] || q.hub?.mode;
+    const token = q['hub.verify_token'] || q['hub_verify_token'] || q.hub?.verify_token;
+    const challenge = q['hub.challenge'] || q['hub_challenge'] || q.hub?.challenge;
 
-    console.log('[Meta Webhook] Verification request:', { mode, token: token?.substring(0, 5) + '...', challenge });
+    console.log('[Meta Webhook] GET query keys:', Object.keys(q));
+    console.log('[Meta Webhook] Parsed:', { mode, token, challenge });
+    console.log('[Meta Webhook] Raw URL:', req.url);
 
     const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN || 'millimilli2024secret';
 
     if (mode === 'subscribe' && token === verifyToken) {
-      console.log('[Meta Webhook] Verified!');
-      // Must return challenge as plain text, not JSON
+      console.log('[Meta Webhook] ✅ Verified!');
       res.setHeader('Content-Type', 'text/plain');
       return res.status(200).end(String(challenge));
     }
 
-    console.log('[Meta Webhook] Verification failed - token mismatch');
+    console.log('[Meta Webhook] ❌ Failed. Expected token:', verifyToken?.substring(0, 5) + '...');
     return res.status(403).end('Forbidden');
   }
 
