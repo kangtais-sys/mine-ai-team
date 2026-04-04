@@ -6,9 +6,21 @@ const redis = new Redis({
 });
 
 export default async function handler(req, res) {
+  // Accept both GET (health check) and POST (webhook)
+  if (req.method === 'GET') {
+    return res.status(200).json({ status: 'ok', handler: 'zernio-webhook' });
+  }
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Debug: log full payload to identify Zernio's actual structure
+  console.log('[Zernio Webhook] Payload:', JSON.stringify(req.body, null, 2));
+
+  // Save raw payload to KV for debugging
+  try {
+    await redis.lpush('webhook-raw', JSON.stringify({ timestamp: new Date().toISOString(), body: req.body }));
+  } catch {}
 
   const { event, comment, message } = req.body;
 
@@ -51,7 +63,8 @@ export default async function handler(req, res) {
         return res.status(200).json({ skipped: true, reason: 'filtered' });
       }
 
-      await fetch(`https://zernio.com/api/v1/inbox/comments/${commentId}/reply`, {
+      // Try Zernio reply API (log response for debugging)
+      const replyRes = await fetch(`https://zernio.com/api/v1/inbox/comments/${commentId}/reply`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`,
@@ -59,12 +72,15 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({ text: reply }),
       });
+      const replyStatus = replyRes.status;
+      const replyBody = await replyRes.text().catch(() => '');
+      console.log(`[Zernio Reply] Comment ${commentId}: status=${replyStatus}, body=${replyBody.substring(0, 200)}`);
 
       await redis.lpush('webhook-logs', JSON.stringify({
-        type: 'comment_reply', commentId, reply, timestamp: new Date().toISOString(),
+        type: 'comment_reply', commentId, reply, replyStatus, timestamp: new Date().toISOString(),
       }));
 
-      return res.status(200).json({ success: true, reply });
+      return res.status(200).json({ success: replyStatus < 400, reply, replyStatus });
     }
 
     // DM 응대
@@ -100,7 +116,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ skipped: true });
       }
 
-      await fetch(`https://zernio.com/api/v1/inbox/messages/${messageId}/reply`, {
+      const dmReplyRes = await fetch(`https://zernio.com/api/v1/inbox/messages/${messageId}/reply`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`,
@@ -108,12 +124,14 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({ text: reply }),
       });
+      const dmReplyStatus = dmReplyRes.status;
+      console.log(`[Zernio Reply] DM ${messageId}: status=${dmReplyStatus}`);
 
       await redis.lpush('webhook-logs', JSON.stringify({
-        type: 'dm_reply', messageId, reply, timestamp: new Date().toISOString(),
+        type: 'dm_reply', messageId, reply, dmReplyStatus, timestamp: new Date().toISOString(),
       }));
 
-      return res.status(200).json({ success: true, reply });
+      return res.status(200).json({ success: dmReplyStatus < 400, reply });
     }
 
     return res.status(200).json({ received: true, event });
