@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowUp, Loader2, TrendingUp, TrendingDown, Users, Eye, MessageCircle, DollarSign, Star, Globe, Package, Headphones, ShoppingCart, FileText, BarChart3, CheckCircle2, XCircle, Circle, Target, Percent } from 'lucide-react';
+import { ArrowUp, Loader2, TrendingUp, TrendingDown, Users, Eye, MessageCircle, DollarSign, Star, Globe, Package, Headphones, ShoppingCart, FileText, BarChart3, CheckCircle2, XCircle, Circle, Target, Percent, Play, Clock } from 'lucide-react';
 import useChatStore from '../store/chatStore';
 import { getAgent } from '../lib/agents';
 
@@ -55,6 +55,7 @@ function ApiStatusPanel({ agent }) {
       youtube: 'google_connected',
       tiktok: 'tiktok_connected',
     };
+    if (api.key === 'instagram') return 'automated';
     const lsKey = keyMap[api.key];
     if (lsKey && localStorage.getItem(lsKey) === 'true') return 'connected';
     return 'disconnected';
@@ -66,8 +67,8 @@ function ApiStatusPanel({ agent }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {apis.map((api, i) => {
           const status = getStatus(api);
-          const color = status === 'connected' ? '#22C55E' : status === 'error' ? '#EF4444' : '#555';
-          const bg = status === 'connected' ? 'rgba(34,197,94,0.06)' : status === 'error' ? 'rgba(239,68,68,0.06)' : 'rgba(255,255,255,0.02)';
+          const color = (status === 'connected' || status === 'automated') ? '#22C55E' : status === 'error' ? '#EF4444' : '#555';
+          const bg = (status === 'connected' || status === 'automated') ? 'rgba(34,197,94,0.06)' : status === 'error' ? 'rgba(239,68,68,0.06)' : 'rgba(255,255,255,0.02)';
           return (
             <div key={i} style={{
               display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px',
@@ -82,7 +83,7 @@ function ApiStatusPanel({ agent }) {
               {status === 'connected' ? <CheckCircle2 size={11} color={color} /> : status === 'error' ? <XCircle size={11} color={color} /> : <Circle size={11} color={color} />}
               <span style={{ fontSize: 11, color: status === 'connected' ? '#CCC' : '#666', flex: 1 }}>{api.name}</span>
               <span style={{ fontSize: 10, color, fontWeight: 500 }}>
-                {status === 'connected' ? '연결됨' : status === 'error' ? '오류' : '미연결'}
+                {status === 'automated' ? '자동화 연결됨' : status === 'connected' ? '연결됨' : status === 'error' ? '오류' : '미연결'}
               </span>
             </div>
           );
@@ -135,16 +136,117 @@ const AGENT_DASHBOARDS = {
     </div>
   ),
 
-  community: () => (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-      <KpiCard label="오늘 댓글" value="342건" delta="+28%" up icon={MessageCircle} />
-      <KpiCard label="오늘 DM" value="89건" delta="+15건" up icon={MessageCircle} />
-      <KpiCard label="응대 완료" value="98.2%" delta="+1.2%" up icon={CheckCircle2} />
-      <KpiCard label="악성댓글 차단" value="12건" delta="-3건" up icon={XCircle} />
-      <KpiCard label="VIP 팔로워" value="1,247명" delta="+32명" up icon={Star} />
-      <KpiCard label="팔로워 증가" value="+1,840" delta="+22%" up icon={Users} />
-    </div>
-  ),
+  community: () => {
+    const [igLogs, setIgLogs] = useState(null);
+    const [igRunning, setIgRunning] = useState(false);
+    const mockLogs = [
+      { time: '18:02', user: '@beauty_fan_kr', comment: '이 세럼 진짜 좋아요!', reply: '감사합니다 💕 꾸준히 사용하시면 더 좋은 결과 보실 거예요!', status: 'replied' },
+      { time: '18:01', user: '@skincare_daily', comment: '가격이 얼마인가요?', reply: '공식 스마트스토어에서 29,000원입니다! 😊', status: 'replied' },
+      { time: '18:01', user: '@ad_spam_bot', comment: '팔로우하면 선물...', reply: '-', status: 'skipped' },
+      { time: '13:03', user: '@glow_up_jin', comment: '성분이 궁금해요', reply: '500달톤 저분자 콜라겐 + 나이아신아마이드가 핵심입니다!', status: 'replied' },
+      { time: '13:02', user: '@jp_beauty', comment: '日本に配送できますか?', reply: 'はい！Qoo10 Japanで購入可能です ✨', status: 'replied' },
+      { time: '09:05', user: '@random_user', comment: 'ㅋㅋㅋㅋ', reply: '-', status: 'skipped' },
+    ];
+    const logs = igLogs || mockLogs;
+    const replied = logs.filter(l => l.status === 'replied').length;
+    const skipped = logs.filter(l => l.status === 'skipped').length;
+    const hour = new Date().getHours();
+    const schedules = [
+      { time: '09:00', done: hour >= 9 },
+      { time: '13:00', done: hour >= 13 },
+      { time: '18:00', done: hour >= 18 },
+      { time: '22:00', done: hour >= 22 },
+    ];
+
+    useEffect(() => {
+      fetch('/api/instagram-logs').then(r => r.json()).then(d => { if (d.logs) setIgLogs(d.logs); }).catch(() => {});
+    }, []);
+
+    return (
+      <>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <KpiCard label="오늘 댓글" value="342건" delta="+28%" up icon={MessageCircle} />
+          <KpiCard label="오늘 DM" value="89건" delta="+15건" up icon={MessageCircle} />
+          <KpiCard label="응대 완료" value="98.2%" delta="+1.2%" up icon={CheckCircle2} />
+          <KpiCard label="팔로워 증가" value="+1,840" delta="+22%" up icon={Users} />
+        </div>
+
+        {/* Instagram 댓글 자동화 */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5' }}>Instagram 댓글 자동화</div>
+            <button
+              onClick={() => {
+                setIgRunning(true);
+                fetch('/api/cron/instagram-comments', { method: 'POST' })
+                  .finally(() => setIgRunning(false));
+              }}
+              disabled={igRunning}
+              style={{
+                fontSize: 10, padding: '3px 10px', borderRadius: 4,
+                border: 'none', background: '#5E6AD2', color: '#FFF',
+                cursor: igRunning ? 'default' : 'pointer', opacity: igRunning ? 0.5 : 1,
+                fontFamily: 'inherit',
+              }}
+            >
+              {igRunning ? '실행 중...' : '지금 실행'}
+            </button>
+          </div>
+
+          {/* Schedule */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+            {schedules.map((s, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                {s.done
+                  ? <CheckCircle2 size={11} color="#22C55E" />
+                  : <Clock size={11} color="#555" />
+                }
+                <span style={{ fontSize: 11, color: s.done ? '#22C55E' : '#555' }}>{s.time}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+            <div style={{ background: '#1A1A1A', borderRadius: 6, padding: '8px 10px', textAlign: 'center' }}>
+              <div style={{ fontSize: 10, color: '#777' }}>댓글 수신</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#FFF' }}>{logs.length}</div>
+            </div>
+            <div style={{ background: '#1A1A1A', borderRadius: 6, padding: '8px 10px', textAlign: 'center' }}>
+              <div style={{ fontSize: 10, color: '#777' }}>답글 완료</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#22C55E' }}>{replied}</div>
+            </div>
+            <div style={{ background: '#1A1A1A', borderRadius: 6, padding: '8px 10px', textAlign: 'center' }}>
+              <div style={{ fontSize: 10, color: '#777' }}>스킵</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#F59E0B' }}>{skipped}</div>
+            </div>
+          </div>
+
+          {/* Log Table */}
+          <div>
+            <div style={{ display: 'flex', gap: 6, fontSize: 10, color: '#555', borderBottom: '1px solid #242424', paddingBottom: 4, marginBottom: 4 }}>
+              <span style={{ width: 36 }}>시간</span>
+              <span style={{ width: 90 }}>작성자</span>
+              <span style={{ flex: 1 }}>댓글</span>
+              <span style={{ flex: 1 }}>답글</span>
+              <span style={{ width: 44, textAlign: 'right' }}>상태</span>
+            </div>
+            {logs.slice(0, 5).map((l, i) => (
+              <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '3px 0', borderBottom: i < Math.min(logs.length, 5) - 1 ? '1px solid #1F1F1F' : 'none' }}>
+                <span style={{ width: 36, fontSize: 10, color: '#777', fontFamily: 'monospace' }}>{l.time}</span>
+                <span style={{ width: 90, fontSize: 10, color: '#5E6AD2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.user}</span>
+                <span style={{ flex: 1, fontSize: 10, color: '#CCC', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.comment}</span>
+                <span style={{ flex: 1, fontSize: 10, color: '#777', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.reply}</span>
+                <span style={{ width: 44, fontSize: 10, fontWeight: 600, textAlign: 'right', color: l.status === 'replied' ? '#22C55E' : '#F59E0B' }}>
+                  {l.status === 'replied' ? 'replied' : 'skipped'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </>
+    );
+  },
 
   cs: () => (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -294,7 +396,7 @@ export default function ChatView() {
   const quickActions = {
     chief: ['오늘 전체 브리핑해줘', '이번 주 주요 일정 정리', '긴급 이슈 있어?'],
     creator: ['인스타 릴스 기획해줘', '이번 주 콘텐츠 캘린더', 'SEO 블로그 글 써줘'],
-    community: ['오늘 DM 요약해줘', '댓글 분석 리포트', '악성댓글 현황'],
+    community: ['댓글 현황 보기', '오늘 DM 요약해줘', '댓글 분석 리포트', '악성댓글 현황'],
     cs: ['오늘 상담 현황', '불만 고객 리스트', 'FAQ 업데이트해줘'],
     marketer: ['이번 달 성과 분석', '트렌드 리포트', '광고 ROI 분석'],
     commerce: ['채널별 매출 현황', '재고 부족 알림', '프로모션 분석'],
