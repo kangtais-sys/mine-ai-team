@@ -127,14 +127,96 @@ const AGENT_DASHBOARDS = {
     </>
   ),
 
-  creator: () => (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-      <KpiCard label="이번 달 콘텐츠" value="156건" delta="+8건" up icon={FileText} />
-      <KpiCard label="총 조회수" value={fmt(4820000)} delta="+18.2%" up icon={Eye} />
-      <KpiCard label="인게이지먼트" value="4.8%" delta="+0.3%" up icon={TrendingUp} />
-      <KpiCard label="수익" value={fmt(3200000) + '원'} delta="+22%" up icon={DollarSign} />
-    </div>
-  ),
+  creator: () => {
+    const [zAccounts, setZAccounts] = useState(null);
+    const [postText, setPostText] = useState('');
+    const [postPlatforms, setPostPlatforms] = useState({ instagram: true, tiktok: false, youtube: false });
+    const [posting, setPosting] = useState(false);
+    const [postResult, setPostResult] = useState(null);
+
+    useEffect(() => {
+      fetch('/api/zernio/accounts').then(r => r.json()).then(setZAccounts).catch(() => {});
+    }, []);
+
+    const togglePlatform = (p) => setPostPlatforms(prev => ({ ...prev, [p]: !prev[p] }));
+    const selectedPlatforms = Object.entries(postPlatforms).filter(([, v]) => v).map(([k]) => k);
+
+    const publish = () => {
+      if (!postText.trim() || selectedPlatforms.length === 0) return;
+      setPosting(true);
+      setPostResult(null);
+      fetch('/api/zernio/post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: postText, platforms: selectedPlatforms }),
+      })
+        .then(r => r.json())
+        .then(d => setPostResult(d.success ? 'success' : d.error || 'failed'))
+        .catch(e => setPostResult(e.message))
+        .finally(() => setPosting(false));
+    };
+
+    const accounts = zAccounts?.accounts || [];
+
+    return (
+      <>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <KpiCard label="이번 달 콘텐츠" value="156건" delta="+8건" up icon={FileText} />
+          <KpiCard label="총 조회수" value={fmt(4820000)} delta="+18.2%" up icon={Eye} />
+          <KpiCard label="인게이지먼트" value="4.8%" delta="+0.3%" up icon={TrendingUp} />
+          <KpiCard label="수익" value={fmt(3200000) + '원'} delta="+22%" up icon={DollarSign} />
+        </div>
+
+        {/* Zernio 연결 계정 */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>연결된 채널 (Zernio)</div>
+          {accounts.length > 0 ? accounts.map((a, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < accounts.length - 1 ? '1px solid #1F1F1F' : 'none' }}>
+              <CheckCircle2 size={11} color="#22C55E" />
+              <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>@{a.username}</span>
+              <span style={{ fontSize: 10, color: '#5E6AD2', textTransform: 'capitalize' }}>{a.platform}</span>
+              <span style={{ fontSize: 10, color: '#777' }}>{fmt(a.followers)}</span>
+            </div>
+          )) : (
+            <div style={{ fontSize: 11, color: '#555' }}>로딩 중...</div>
+          )}
+        </div>
+
+        {/* 콘텐츠 발행 */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>콘텐츠 발행</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            {['instagram', 'tiktok', 'youtube'].map(p => (
+              <button key={p} onClick={() => togglePlatform(p)} style={{
+                fontSize: 10, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                background: postPlatforms[p] ? 'rgba(94,106,210,0.15)' : '#1A1A1A',
+                color: postPlatforms[p] ? '#5E6AD2' : '#555',
+              }}>
+                {p === 'instagram' ? 'Instagram' : p === 'tiktok' ? 'TikTok' : 'YouTube'}
+              </button>
+            ))}
+          </div>
+          <textarea
+            value={postText}
+            onChange={e => setPostText(e.target.value)}
+            placeholder="캡션을 입력하세요..."
+            rows={3}
+            style={{ width: '100%', background: '#1A1A1A', border: '1px solid #242424', borderRadius: 6, padding: 10, fontSize: 12, color: '#E8E8E8', fontFamily: 'inherit', resize: 'vertical', outline: 'none' }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+            <button onClick={publish} disabled={posting || !postText.trim() || selectedPlatforms.length === 0} style={{
+              fontSize: 11, padding: '5px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+              background: posting ? '#333' : '#5E6AD2', color: '#FFF', opacity: (!postText.trim() || selectedPlatforms.length === 0) ? 0.4 : 1,
+            }}>
+              {posting ? '발행 중...' : '지금 발행'}
+            </button>
+            {postResult === 'success' && <span style={{ fontSize: 11, color: '#22C55E' }}>발행 완료</span>}
+            {postResult && postResult !== 'success' && <span style={{ fontSize: 11, color: '#EF4444' }}>{postResult}</span>}
+          </div>
+        </div>
+      </>
+    );
+  },
 
   community: () => {
     const [igLogs, setIgLogs] = useState(null);
