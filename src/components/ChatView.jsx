@@ -128,91 +128,163 @@ const AGENT_DASHBOARDS = {
   ),
 
   creator: () => {
+    const [tab, setTab] = useState('millimilli');
     const [zAccounts, setZAccounts] = useState(null);
+    const [status, setStatus] = useState(null);
     const [postText, setPostText] = useState('');
-    const [postPlatforms, setPostPlatforms] = useState({ instagram: true, tiktok: false, youtube: false });
+    const [postPlatforms, setPostPlatforms] = useState({ instagram: true, tiktok: true, youtube: false });
     const [posting, setPosting] = useState(false);
     const [postResult, setPostResult] = useState(null);
+    const [showReport, setShowReport] = useState(false);
 
     useEffect(() => {
       fetch('/api/zernio/accounts').then(r => r.json()).then(setZAccounts).catch(() => {});
+      fetch('/api/creator-status').then(r => r.json()).then(setStatus).catch(() => {});
     }, []);
 
     const togglePlatform = (p) => setPostPlatforms(prev => ({ ...prev, [p]: !prev[p] }));
     const selectedPlatforms = Object.entries(postPlatforms).filter(([, v]) => v).map(([k]) => k);
-
     const publish = () => {
       if (!postText.trim() || selectedPlatforms.length === 0) return;
-      setPosting(true);
-      setPostResult(null);
-      fetch('/api/zernio/post', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: postText, platforms: selectedPlatforms }),
-      })
-        .then(r => r.json())
-        .then(d => setPostResult(d.success ? 'success' : d.error || 'failed'))
-        .catch(e => setPostResult(e.message))
-        .finally(() => setPosting(false));
+      setPosting(true); setPostResult(null);
+      fetch('/api/zernio/post', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: postText, platforms: selectedPlatforms }) })
+        .then(r => r.json()).then(d => setPostResult(d.success ? 'success' : d.error || 'failed'))
+        .catch(e => setPostResult(e.message)).finally(() => setPosting(false));
     };
 
     const accounts = zAccounts?.accounts || [];
+    const pub = status?.publish || { total: 0, morning: 0, afternoon: 0, evening: 0 };
+    const inbox = status?.inbox || { replied: 0, skipped: 0, dm: 0 };
+    const report = status?.report;
+    const hour = new Date().getHours();
+    const nextPublish = hour < 11 ? '오전 11시' : hour < 14 ? '오후 2시' : hour < 19 ? '오후 7시' : '내일 오전 11시';
+
+    const tabBtn = (id, label) => (
+      <button onClick={() => setTab(id)} style={{ fontSize: 11, padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: tab === id ? '#5E6AD2' : '#1A1A1A', color: tab === id ? '#FFF' : '#777' }}>{label}</button>
+    );
 
     return (
       <>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <KpiCard label="이번 달 콘텐츠" value="156건" delta="+8건" up icon={FileText} />
-          <KpiCard label="총 조회수" value={fmt(4820000)} delta="+18.2%" up icon={Eye} />
-          <KpiCard label="인게이지먼트" value="4.8%" delta="+0.3%" up icon={TrendingUp} />
-          <KpiCard label="수익" value={fmt(3200000) + '원'} delta="+22%" up icon={DollarSign} />
+        {/* Tab Selector */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          {tabBtn('yuminhye', '유민혜')}
+          {tabBtn('millimilli', '밀리밀리')}
         </div>
 
-        {/* Zernio 연결 계정 */}
-        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>연결된 채널 (Zernio)</div>
-          {accounts.length > 0 ? accounts.map((a, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < accounts.length - 1 ? '1px solid #1F1F1F' : 'none' }}>
-              <CheckCircle2 size={11} color="#22C55E" />
-              <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>@{a.username}</span>
-              <span style={{ fontSize: 10, color: '#5E6AD2', textTransform: 'capitalize' }}>{a.platform}</span>
-              <span style={{ fontSize: 10, color: '#777' }}>{fmt(a.followers)}</span>
+        {tab === 'yuminhye' && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <KpiCard label="오늘 발행" value={`${pub.total}건`} delta="유튜브+틱톡" up icon={FileText} />
+              <KpiCard label="다음 발행" value={nextPublish} icon={Clock} />
             </div>
-          )) : (
-            <div style={{ fontSize: 11, color: '#555' }}>로딩 중...</div>
-          )}
-        </div>
+            <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 8 }}>자동화 상태</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <CheckCircle2 size={11} color="#22C55E" />
+                <span style={{ fontSize: 11, color: '#CCC' }}>구글드라이브 감지 중</span>
+                <span style={{ fontSize: 10, color: '#22C55E', marginLeft: 'auto' }}>활성</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <CheckCircle2 size={11} color="#22C55E" />
+                <span style={{ fontSize: 11, color: '#CCC' }}>n8n 파이프라인</span>
+                <span style={{ fontSize: 10, color: '#22C55E', marginLeft: 'auto' }}>연결됨</span>
+              </div>
+            </div>
+            {/* 연결 계정 */}
+            <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 8 }}>연결 채널</div>
+              {accounts.filter(a => a.username === 'peerstory' || a.username === '유민혜-z2r').map((a, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0' }}>
+                  <CheckCircle2 size={10} color="#22C55E" />
+                  <span style={{ fontSize: 11, color: '#CCC' }}>@{a.username}</span>
+                  <span style={{ fontSize: 10, color: '#5E6AD2', textTransform: 'capitalize', marginLeft: 'auto' }}>{a.platform}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
-        {/* 콘텐츠 발행 */}
+        {tab === 'millimilli' && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <KpiCard label="오늘 발행" value={`${pub.total}건`} delta={`오전${pub.morning} 오후${pub.afternoon} 저녁${pub.evening}`} up icon={FileText} />
+              <KpiCard label="댓글 응대" value={`${inbox.replied}건`} delta={`스킵 ${inbox.skipped}`} up icon={MessageCircle} />
+              <KpiCard label="DM 응대" value={`${inbox.dm}건`} up icon={MessageCircle} />
+              <KpiCard label="다음 발행" value={nextPublish} icon={Clock} />
+            </div>
+
+            {/* 자동화 상태 */}
+            <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 8 }}>자동화 파이프라인</div>
+              {[
+                { label: '트랙A 크로스포스팅', status: '활성' },
+                { label: '트랙B AI 콘텐츠', status: '활성' },
+                { label: '댓글/DM 자동 응대', status: '활성' },
+              ].map((p, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0' }}>
+                  <CheckCircle2 size={10} color="#22C55E" />
+                  <span style={{ fontSize: 11, color: '#CCC' }}>{p.label}</span>
+                  <span style={{ fontSize: 10, color: '#22C55E', marginLeft: 'auto' }}>{p.status}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* 연결 채널 */}
+            <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 8 }}>연결 채널 (Zernio)</div>
+              {accounts.filter(a => a.username === 'millimilli.official' || a.username === 'choi_jacob').map((a, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0' }}>
+                  <CheckCircle2 size={10} color="#22C55E" />
+                  <span style={{ fontSize: 11, color: '#CCC' }}>@{a.username}</span>
+                  <span style={{ fontSize: 10, color: '#5E6AD2', textTransform: 'capitalize' }}>{a.platform}</span>
+                  <span style={{ fontSize: 10, color: '#777', marginLeft: 'auto' }}>{fmt(a.followers)}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* 수동 발행 */}
+            <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 8 }}>수동 발행</div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                {['instagram', 'tiktok', 'youtube'].map(p => (
+                  <button key={p} onClick={() => togglePlatform(p)} style={{ fontSize: 10, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: postPlatforms[p] ? 'rgba(94,106,210,0.15)' : '#1A1A1A', color: postPlatforms[p] ? '#5E6AD2' : '#555' }}>
+                    {p === 'instagram' ? 'IG' : p === 'tiktok' ? 'TT' : 'YT'}
+                  </button>
+                ))}
+              </div>
+              <textarea value={postText} onChange={e => setPostText(e.target.value)} placeholder="캡션 입력..." rows={2} style={{ width: '100%', background: '#1A1A1A', border: '1px solid #242424', borderRadius: 6, padding: 8, fontSize: 11, color: '#E8E8E8', fontFamily: 'inherit', resize: 'vertical', outline: 'none' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                <button onClick={publish} disabled={posting || !postText.trim()} style={{ fontSize: 10, padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: posting ? '#333' : '#5E6AD2', color: '#FFF', opacity: !postText.trim() ? 0.4 : 1 }}>
+                  {posting ? '발행 중...' : '지금 발행'}
+                </button>
+                {postResult === 'success' && <span style={{ fontSize: 10, color: '#22C55E' }}>완료</span>}
+                {postResult && postResult !== 'success' && <span style={{ fontSize: 10, color: '#EF4444' }}>{postResult}</span>}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* 일일 보고 */}
         <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>콘텐츠 발행</div>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            {['instagram', 'tiktok', 'youtube'].map(p => (
-              <button key={p} onClick={() => togglePlatform(p)} style={{
-                fontSize: 10, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                background: postPlatforms[p] ? 'rgba(94,106,210,0.15)' : '#1A1A1A',
-                color: postPlatforms[p] ? '#5E6AD2' : '#555',
-              }}>
-                {p === 'instagram' ? 'Instagram' : p === 'tiktok' ? 'TikTok' : 'YouTube'}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5' }}>AI 크리에이터 일일 보고</div>
+            <span style={{ fontSize: 10, color: '#555' }}>매일 오후 6시 자동 업데이트</span>
+          </div>
+          {report ? (
+            <>
+              <div style={{ fontSize: 11, color: '#CCC', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                {showReport ? report.report : (report.report || '').split('\n').slice(0, 4).join('\n')}
+              </div>
+              <button onClick={() => setShowReport(!showReport)} style={{ fontSize: 10, color: '#5E6AD2', background: 'none', border: 'none', cursor: 'pointer', marginTop: 6, fontFamily: 'inherit' }}>
+                {showReport ? '접기' : '전체 보고서 보기'}
               </button>
-            ))}
-          </div>
-          <textarea
-            value={postText}
-            onChange={e => setPostText(e.target.value)}
-            placeholder="캡션을 입력하세요..."
-            rows={3}
-            style={{ width: '100%', background: '#1A1A1A', border: '1px solid #242424', borderRadius: 6, padding: 10, fontSize: 12, color: '#E8E8E8', fontFamily: 'inherit', resize: 'vertical', outline: 'none' }}
-          />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-            <button onClick={publish} disabled={posting || !postText.trim() || selectedPlatforms.length === 0} style={{
-              fontSize: 11, padding: '5px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-              background: posting ? '#333' : '#5E6AD2', color: '#FFF', opacity: (!postText.trim() || selectedPlatforms.length === 0) ? 0.4 : 1,
-            }}>
-              {posting ? '발행 중...' : '지금 발행'}
-            </button>
-            {postResult === 'success' && <span style={{ fontSize: 11, color: '#22C55E' }}>발행 완료</span>}
-            {postResult && postResult !== 'success' && <span style={{ fontSize: 11, color: '#EF4444' }}>{postResult}</span>}
-          </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 11, color: '#555' }}>
+              유민혜: 발행 {pub.total}건 | 댓글 {inbox.replied}건 | DM {inbox.dm}건{'\n'}
+              밀리밀리: 발행 {pub.total}건 | 댓글 {inbox.replied}건 | DM {inbox.dm}건
+            </div>
+          )}
         </div>
       </>
     );

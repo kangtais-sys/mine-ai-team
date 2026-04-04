@@ -1,29 +1,12 @@
 {
   "crons": [
-    {
-      "path": "/api/cron/upload-pipeline",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cs/daily-report",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/cron/instagram-comments",
-      "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/cron/instagram-comments",
-      "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/cron/instagram-comments",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/cron/instagram-comments",
-      "schedule": "0 13 * * *"
-    }
+    { "path": "/api/cron/publish-morning", "schedule": "0 2 * * *" },
+    { "path": "/api/cron/publish-afternoon", "schedule": "0 5 * * *" },
+    { "path": "/api/cron/publish-evening", "schedule": "0 10 * * *" },
+    { "path": "/api/cron/inbox", "schedule": "0 0,4,9,13 * * *" },
+    { "path": "/api/cron/daily-report", "schedule": "0 9 * * *" },
+    { "path": "/api/cron/upload-pipeline", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/instagram-comments", "schedule": "0 0,4,9,13 * * *" }
   ],
   "rewrites": [
     { "source": "/api/auth/google", "destination": "/api/auth/google" },
@@ -35,11 +18,18 @@
     { "source": "/api/orchestrate", "destination": "/api/orchestrate" },
     { "source": "/api/briefing", "destination": "/api/briefing" },
     { "source": "/api/upload-status", "destination": "/api/upload-status" },
+    { "source": "/api/creator-status", "destination": "/api/creator-status" },
+    { "source": "/api/instagram-logs", "destination": "/api/instagram-logs" },
     { "source": "/api/cron/upload-pipeline", "destination": "/api/cron/upload-pipeline" },
     { "source": "/api/cron/instagram-comments", "destination": "/api/cron/instagram-comments" },
-    { "source": "/api/instagram-logs", "destination": "/api/instagram-logs" },
+    { "source": "/api/cron/publish-morning", "destination": "/api/cron/publish-morning" },
+    { "source": "/api/cron/publish-afternoon", "destination": "/api/cron/publish-afternoon" },
+    { "source": "/api/cron/publish-evening", "destination": "/api/cron/publish-evening" },
+    { "source": "/api/cron/inbox", "destination": "/api/cron/inbox" },
+    { "source": "/api/cron/daily-report", "destination": "/api/cron/daily-report" },
     { "source": "/api/zernio/post", "destination": "/api/zernio/post" },
     { "source": "/api/zernio/accounts", "destination": "/api/zernio/accounts" },
+    { "source": "/api/zernio/inbox", "destination": "/api/zernio/inbox" },
     { "source": "/api/cs/kakao-webhook", "destination": "/api/cs/kakao-webhook" },
     { "source": "/api/cs/daily-report", "destination": "/api/cs/daily-report" },
     { "source": "/(.*)", "destination": "/index.html" }
