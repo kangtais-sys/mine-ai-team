@@ -136,37 +136,36 @@ export default async function handler(req, res) {
 
       if (!reply || reply === 'SKIP') return res.status(200).json({ skipped: true, reason: 'filtered' });
 
-      // Reply: Instagram → IG Graph API, YouTube/TikTok → Zernio API
+      // Reply via Zernio unified API (works for all platforms)
+      // Verified: POST /api/v1/inbox/comments/reply { commentId, message, accountId }
       let replyStatus = 'unsupported';
+      const accountId = account?.id || '';
 
-      if (platform === 'instagram') {
-        const igToken = await getInstagramToken();
-        if (igToken) {
-          try {
-            const igRes = await fetch(`https://graph.instagram.com/v21.0/${commentId}/replies`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ message: reply, access_token: igToken }),
-            });
-            const igData = await igRes.json();
-            replyStatus = igRes.ok ? 'sent' : `ig_error:${igData.error?.message || igRes.status}`;
-          } catch (e) { replyStatus = `ig_exception:${e.message}`; }
-        } else { replyStatus = 'no_ig_token'; }
-      } else if (platform === 'youtube' || platform === 'tiktok') {
-        // YouTube/TikTok: Zernio manages OAuth, try their comment reply
-        try {
-          const zRes = await fetch(`https://zernio.com/api/v1/inbox/comments/${commentId}/reply`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: reply }),
-          });
-          if (zRes.ok) {
-            replyStatus = 'sent_zernio';
-          } else {
-            // Fallback: log for manual reply
-            replyStatus = `zernio_${zRes.status}`;
+      try {
+        const zRes = await fetch('https://zernio.com/api/v1/inbox/comments/reply', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ commentId, message: reply, accountId }),
+        });
+        const zData = await zRes.json();
+        replyStatus = zRes.ok ? 'sent' : `zernio_error:${zData.error || zRes.status}`;
+        console.log(`[${platform}] Zernio reply: ${replyStatus}`, zData);
+      } catch (e) {
+        replyStatus = `exception:${e.message}`;
+        // Fallback for Instagram: try IG Graph API
+        if (platform === 'instagram') {
+          const igToken = await getInstagramToken();
+          if (igToken) {
+            try {
+              const igRes = await fetch(`https://graph.instagram.com/v21.0/${commentId}/replies`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: reply, access_token: igToken }),
+              });
+              replyStatus = igRes.ok ? 'sent_ig_fallback' : `ig_fallback_error:${igRes.status}`;
+            } catch (e2) { replyStatus = `ig_fallback_exception:${e2.message}`; }
           }
-        } catch (e) { replyStatus = `zernio_exception:${e.message}`; }
+        }
       }
 
       console.log(`[${platform}] ${persona} 댓글 응대: "${reply.substring(0, 40)}" → ${replyStatus}`);

@@ -20,6 +20,7 @@
     { "source": "/api/orchestrate", "destination": "/api/orchestrate" },
     { "source": "/api/briefing", "destination": "/api/briefing" },
     { "source": "/api/upload-status", "destination": "/api/upload-status" },
+    { "source": "/api/upload-check", "destination": "/api/upload-check" },
     { "source": "/api/creator-status", "destination": "/api/creator-status" },
     { "source": "/api/ai-content", "destination": "/api/ai-content" },
     { "source": "/api/instagram-logs", "destination": "/api/instagram-logs" },
