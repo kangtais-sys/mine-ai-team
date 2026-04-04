@@ -93,39 +93,51 @@ function ApiStatusPanel({ agent }) {
   );
 }
 
+// ─── API-connected sub-components ───────────────────────────
+
+function CommunityKpis() {
+  const [d, setD] = useState(null);
+  useEffect(() => { fetch('/api/agents/community').then(r => r.json()).then(setD).catch(() => {}); }, []);
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <KpiCard label="오늘 댓글" value={d ? `${d.today?.comments || 0}건` : '-'} delta={d?.today?.byPlatform ? `IG${d.today.byPlatform.instagram} YT${d.today.byPlatform.youtube} TT${d.today.byPlatform.tiktok}` : '로�� 중'} up icon={MessageCircle} />
+      <KpiCard label="오늘 DM" value={d ? `${d.today?.dm || 0}건` : '-'} up icon={MessageCircle} />
+      <KpiCard label="총 댓글" value={d ? `${d.totals?.comments || 0}건` : '-'} delta="KV 누적" up icon={CheckCircle2} />
+      <KpiCard label="총 DM" value={d ? `${d.totals?.dm || 0}건` : '-'} delta="KV 누적" up icon={Users} />
+    </div>
+  );
+}
+
 // ─── Agent KPI Dashboards ───────────────────────────────────
 
 const AGENT_DASHBOARDS = {
-  chief: () => (
-    <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <KpiCard label="오늘 처리 업무" value="47건" delta="+12건" up icon={FileText} />
-        <KpiCard label="활성 에이전트" value="10/10" delta="전원 가동" up icon={Users} />
-        <KpiCard label="긴급 이슈" value="2건" delta="+1건" up={false} icon={XCircle} />
-        <KpiCard label="주간 완료율" value="94%" delta="+3%" up icon={CheckCircle2} />
-      </div>
-      <div style={{ marginTop: 12, background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>팀 현황</div>
-        {[
-          { name: 'AI 크리에이터', status: '릴스 3개 제작 중', color: '#5E6AD2' },
-          { name: 'AI 커뮤니티', status: 'DM 24건 응대 완료', color: '#22C55E' },
-          { name: 'AI CS매니저', status: '교환 3건 처리 중', color: '#F59E0B' },
-          { name: 'AI 마케터', status: '주간 리포트 생성', color: '#22C55E' },
-          { name: 'AI 커머스MD', status: '가격 최적화 분석', color: '#5E6AD2' },
-          { name: 'AI 경영지원', status: '3월 정산 완료', color: '#22C55E' },
-          { name: 'AI 브랜드/상품', status: '신제품 기획 중', color: '#5E6AD2' },
-          { name: 'AI 수출', status: '일본 바이어 5건', color: '#5E6AD2' },
-          { name: 'AI 전략기획', status: 'Q2 전략안 작성', color: '#F59E0B' },
-        ].map((t, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < 8 ? '1px solid #1F1F1F' : 'none' }}>
-            <div style={{ width: 6, height: 6, borderRadius: 3, background: t.color, flexShrink: 0 }} />
-            <span style={{ fontSize: 11, color: '#CCC', width: 95 }}>{t.name}</span>
-            <span style={{ fontSize: 11, color: '#666' }}>{t.status}</span>
-          </div>
-        ))}
-      </div>
-    </>
-  ),
+  chief: () => {
+    const [data, setData] = useState(null);
+    useEffect(() => { fetch('/api/agents/strategy').then(r => r.json()).then(setData).catch(() => {}); }, []);
+    const s = data?.summary || {};
+    const c = data?.connections || {};
+    const connCount = Object.values(c).filter(v => v === 'connected').length;
+    return (
+      <>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <KpiCard label="활성 에이전트" value={`${connCount}/${Object.keys(c).length || 6}`} delta="실시간" up icon={Users} />
+          <KpiCard label="콘텐츠 발행" value={s.content ? `${s.content.thisMonth || 0}건/월` : '-'} up icon={FileText} />
+          <KpiCard label="댓글+DM" value={s.community ? `${(s.community.comments || 0) + (s.community.dm || 0)}건` : '-'} up icon={MessageCircle} />
+          <KpiCard label="광고비" value={s.adSpend ? `${fmt(s.adSpend)}원` : '-'} icon={DollarSign} />
+        </div>
+        <div style={{ marginTop: 12, background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>팀 연결 현황</div>
+          {Object.entries(c).map(([name, status], i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < Object.keys(c).length - 1 ? '1px solid #1F1F1F' : 'none' }}>
+              <div style={{ width: 6, height: 6, borderRadius: 3, background: status === 'connected' ? '#22C55E' : '#555', flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{name}</span>
+              <span style={{ fontSize: 10, color: status === 'connected' ? '#22C55E' : '#555' }}>{status === 'connected' ? '연결됨' : '미연결'}</span>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  },
 
   creator: () => {
     const [tab, setTab] = useState('millimilli');
@@ -366,12 +378,7 @@ const AGENT_DASHBOARDS = {
 
     return (
       <>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <KpiCard label="오늘 댓글" value="342건" delta="+28%" up icon={MessageCircle} />
-          <KpiCard label="오늘 DM" value="89건" delta="+15건" up icon={MessageCircle} />
-          <KpiCard label="응대 완료" value="98.2%" delta="+1.2%" up icon={CheckCircle2} />
-          <KpiCard label="팔로워 증가" value="+1,840" delta="+22%" up icon={Users} />
-        </div>
+        <CommunityKpis />
 
         {/* Instagram 댓글 자동화 */}
         <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
@@ -457,81 +464,167 @@ const AGENT_DASHBOARDS = {
     );
   },
 
-  cs: () => (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-      <KpiCard label="오늘 상담" value="67건" delta="+8건" up icon={Headphones} />
-      <KpiCard label="평균 응답시간" value="2.3분" delta="-0.5분" up icon={TrendingUp} />
-      <KpiCard label="만족도" value="4.8/5" delta="+0.2" up icon={Star} />
-      <KpiCard label="불만 접수" value="3건" delta="-2건" up icon={XCircle} />
-      <KpiCard label="교환/환불" value="5건" delta="-1건" up icon={ShoppingCart} />
-      <KpiCard label="FAQ 히트" value="234건" delta="+45건" up icon={FileText} />
-    </div>
-  ),
+  cs: () => {
+    const [d, setD] = useState(null);
+    useEffect(() => { fetch('/api/agents/cs').then(r => r.json()).then(setD).catch(() => {}); }, []);
+    if (d?.status === 'pending') return (
+      <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 20, textAlign: 'center' }}>
+        <div style={{ fontSize: 13, color: '#F59E0B', marginBottom: 8 }}>해피톡 API 연동 준비 중</div>
+        <div style={{ fontSize: 11, color: '#555' }}>HAPPYTALK_API_KEY 환경변수 설정 후 활성화됩니다</div>
+        <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'center' }}>
+          <span style={{ fontSize: 10, color: d.channels?.millimilli === 'configured' ? '#22C55E' : '#555' }}>밀리밀리: {d.channels?.millimilli || 'pending'}</span>
+          <span style={{ fontSize: 10, color: d.channels?.lalaLounge === 'configured' ? '#22C55E' : '#555' }}>랄라라운지: {d.channels?.lalaLounge || 'pending'}</span>
+        </div>
+      </div>
+    );
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <KpiCard label="상태" value={d?.status || '-'} icon={Headphones} />
+        <KpiCard label="채널" value={`${d?.channels?.length || 0}개`} icon={MessageCircle} />
+      </div>
+    );
+  },
 
-  marketer: () => (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-      <KpiCard label="월 매출" value={fmt(48500000) + '원'} delta="+12.8%" up icon={DollarSign} />
-      <KpiCard label="광고 ROAS" value="4.2x" delta="+0.8x" up icon={TrendingUp} />
-      <KpiCard label="CAC" value={fmt(8500) + '원'} delta="-12%" up icon={Users} />
-      <KpiCard label="전환율" value="3.8%" delta="+0.5%" up icon={ShoppingCart} />
-      <KpiCard label="메타 광고비" value={fmt(5200000) + '원'} delta="+8%" up={false} icon={DollarSign} />
-      <KpiCard label="네이버 SA" value={fmt(3100000) + '원'} delta="+15%" up={false} icon={BarChart3} />
-    </div>
-  ),
+  marketer: () => {
+    const [d, setD] = useState(null);
+    useEffect(() => { fetch('/api/agents/marketer').then(r => r.json()).then(setD).catch(() => {}); }, []);
+    const m = d?.meta || {};
+    return (
+      <>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <KpiCard label="Meta 광고비" value={m.totalSpend ? `${fmt(m.totalSpend)}원` : m.status === 'disconnected' ? '미연결' : '-'} delta={m.status === 'connected' ? `${m.accounts?.length || 0}개 계정` : ''} up icon={DollarSign} />
+          <KpiCard label="노출수" value={m.impressions ? fmt(m.impressions) : '-'} icon={Eye} />
+          <KpiCard label="클릭수" value={m.clicks ? fmt(m.clicks) : '-'} icon={Target} />
+          <KpiCard label="CTR" value={m.ctr ? `${m.ctr}%` : '-'} icon={Percent} />
+        </div>
+        <div style={{ marginTop: 12, background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>광고 채널 상태</div>
+          {['meta', 'naver', 'google', 'tiktok', 'ga'].map((ch, i) => {
+            const s = d?.[ch] || {};
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < 4 ? '1px solid #1F1F1F' : 'none' }}>
+                <span style={{ fontSize: 11 }}>{s.status === 'connected' ? '🟢' : '🔴'}</span>
+                <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{ch === 'meta' ? 'Meta Ads' : ch === 'naver' ? '네이버 광고' : ch === 'google' ? '구글 광고' : ch === 'tiktok' ? '틱톡 광고' : 'GA4'}</span>
+                <span style={{ fontSize: 10, color: s.status === 'connected' ? '#22C55E' : '#555' }}>{s.status === 'connected' ? '연결됨' : s.message || '미연결'}</span>
+              </div>
+            );
+          })}
+        </div>
+      </>
+    );
+  },
 
-  commerce: () => (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-      <KpiCard label="총 주문" value="1,847건" delta="+14%" up icon={ShoppingCart} />
-      <KpiCard label="총 매출" value={fmt(48500000) + '원'} delta="+12.8%" up icon={DollarSign} />
-      <KpiCard label="올리브영" value={fmt(21000000) + '원'} delta="+8%" up icon={DollarSign} />
-      <KpiCard label="스마트스토어" value={fmt(16000000) + '원'} delta="+15%" up icon={DollarSign} />
-      <KpiCard label="카페24/자사몰" value={fmt(7500000) + '원'} delta="+22%" up icon={DollarSign} />
-      <KpiCard label="해외(아마존/쇼피)" value={fmt(4500000) + '원'} delta="+32%" up icon={Globe} />
-      <KpiCard label="평균 객단가" value="32,400원" delta="+8%" up icon={TrendingUp} />
-      <KpiCard label="재구매율" value="34.2%" delta="+2.1%" up icon={Users} />
-    </div>
-  ),
+  commerce: () => {
+    const [d, setD] = useState(null);
+    useEffect(() => { fetch('/api/agents/commerce').then(r => r.json()).then(setD).catch(() => {}); }, []);
+    const channels = ['oliveyoung', 'smartstore', 'cafe24', 'amazon', 'shopee', 'qoo10', 'tiktokShop'];
+    const labels = { oliveyoung: '올리브영', smartstore: '스마트스토어', cafe24: '카페24', amazon: '아마존', shopee: '쇼피', qoo10: '큐텐', tiktokShop: '틱톡샵' };
+    return (
+      <>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <KpiCard label="올리브영" value={d?.oliveyoung?.status === 'connected' ? `${d.oliveyoung.rowCount}행` : '미연결'} delta={d?.oliveyoung?.status === 'connected' ? '구글시트 연동' : ''} up icon={ShoppingCart} />
+        </div>
+        <div style={{ marginTop: 12, background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>판매 채널 연결 현황</div>
+          {channels.map((ch, i) => {
+            const s = d?.[ch] || {};
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < channels.length - 1 ? '1px solid #1F1F1F' : 'none' }}>
+                <span style={{ fontSize: 11 }}>{s.status === 'connected' ? '🟢' : '🔴'}</span>
+                <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{labels[ch]}</span>
+                <span style={{ fontSize: 10, color: s.status === 'connected' ? '#22C55E' : '#555' }}>{s.status === 'connected' ? '연결됨' : s.message || '미연결'}</span>
+              </div>
+            );
+          })}
+        </div>
+      </>
+    );
+  },
 
-  admin: () => (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-      <KpiCard label="월 매출" value={fmt(48500000) + '원'} delta="+12.8%" up icon={DollarSign} />
-      <KpiCard label="월 비용" value={fmt(31200000) + '원'} delta="+5%" up={false} icon={DollarSign} />
-      <KpiCard label="영업이익" value={fmt(17300000) + '원'} delta="+28%" up icon={TrendingUp} />
-      <KpiCard label="재고 SKU" value="48종" delta="-2종" up icon={Package} />
-      <KpiCard label="정부지원 신청" value="3건" delta="마감 D-7" up icon={FileText} />
-      <KpiCard label="미수금" value={fmt(2400000) + '원'} delta="-15%" up icon={DollarSign} />
-    </div>
-  ),
+  admin: () => {
+    const [d, setD] = useState(null);
+    useEffect(() => { fetch('/api/agents/management').then(r => r.json()).then(setD).catch(() => {}); }, []);
+    return (
+      <>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <KpiCard label="직원 (재직)" value={d?.employees?.status === 'connected' ? `${d.employees.active}명` : '미연결'} delta={d?.employees?.expiringSoon?.length ? `만료임박 ${d.employees.expiringSoon.length}명` : ''} up icon={Users} />
+          <KpiCard label="이달 결제" value={d?.payments?.status === 'connected' ? `${d.payments.thisMonth}건` : '미연결'} delta={d?.payments?.pending ? `미지급 ${d.payments.pending}건` : ''} icon={DollarSign} />
+          <KpiCard label="환불" value={d?.refunds?.status === 'connected' ? `${d.refunds.thisMonth?.count || 0}건` : '미연결'} icon={DollarSign} />
+          <KpiCard label="프리랜서" value={d?.freelancers?.status === 'connected' ? `${d.freelancers.thisMonth?.count || 0}건` : '미연결'} icon={FileText} />
+        </div>
+        {d?.employees?.expiringSoon?.length > 0 && (
+          <div style={{ marginTop: 12, background: '#141414', border: '1px solid #F59E0B33', borderRadius: 8, padding: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#F59E0B', marginBottom: 8 }}>계약만료 임박</div>
+            {d.employees.expiringSoon.map((e, i) => (
+              <div key={i} style={{ fontSize: 11, color: '#CCC', padding: '3px 0' }}>{e.name} — {e.endDate}</div>
+            ))}
+          </div>
+        )}
+      </>
+    );
+  },
 
-  product: () => (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-      <KpiCard label="신제품 기획" value="3건" delta="+1건" up icon={Package} />
-      <KpiCard label="평균 리뷰 평점" value="4.6/5" delta="+0.1" up icon={Star} />
-      <KpiCard label="리뷰 분석" value="2,847건" delta="+342건" up icon={MessageCircle} />
-      <KpiCard label="경쟁사 모니터링" value="12 브랜드" delta="+2" up icon={Eye} />
-      <KpiCard label="평균 원가율" value="32%" delta="-2%" up icon={TrendingUp} />
-      <KpiCard label="예상 마진율" value="58%" delta="+3%" up icon={DollarSign} />
-    </div>
-  ),
+  product: () => {
+    const [d, setD] = useState(null);
+    useEffect(() => { fetch('/api/agents/brand').then(r => r.json()).then(setD).catch(() => {}); }, []);
+    return (
+      <>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <KpiCard label="제품 데이터" value={d?.products?.status === 'connected' ? '연동됨' : '대기 중'} icon={Package} />
+          <KpiCard label="리뷰" value={d?.reviews?.status === 'connected' ? d.reviews.source : '미연결'} icon={Star} />
+          <KpiCard label="경쟁사" value={d?.competitors?.status === 'connected' ? '수집됨' : '대기 중'} icon={Eye} />
+        </div>
+        <div style={{ marginTop: 12, background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>경쟁사 모니터링</div>
+          {['롬앤', '클리오', '페리페라', '바닐라코', '마뗑킴'].map((c, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < 4 ? '1px solid #1F1F1F' : 'none' }}>
+              <div style={{ width: 6, height: 6, borderRadius: 3, background: '#5E6AD2', flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{c}</span>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  },
 
-  global: () => (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-      <KpiCard label="해외 매출" value={fmt(4500000) + '원'} delta="+24%" up icon={Globe} />
-      <KpiCard label="일본" value={fmt(2100000) + '원'} delta="+18%" up icon={DollarSign} />
-      <KpiCard label="미국" value={fmt(1400000) + '원'} delta="+32%" up icon={DollarSign} />
-      <KpiCard label="동남아" value={fmt(1000000) + '원'} delta="+45%" up icon={DollarSign} />
-      <KpiCard label="바이어 컨택" value="23건" delta="+8건" up icon={Users} />
-      <KpiCard label="환율 USD" value="1,342원" delta="-0.8%" up icon={TrendingDown} />
-    </div>
-  ),
+  global: () => {
+    const [d, setD] = useState(null);
+    useEffect(() => { fetch('/api/agents/export').then(r => r.json()).then(setD).catch(() => {}); }, []);
+    const rates = d?.exchangeRates || {};
+    return (
+      <>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <KpiCard label="수출 오더" value={d?.exports?.status === 'connected' ? `${d.exports.totalOrders}건` : '미연결'} delta="구글시트 연동" up icon={Globe} />
+          <KpiCard label="수출공급가" value={d?.prices?.status === 'connected' ? `${d.prices.products}개` : '미연결'} icon={DollarSign} />
+          <KpiCard label="USD" value={rates.USD ? `${rates.USD.toLocaleString()}원` : '-'} icon={DollarSign} />
+          <KpiCard label="JPY" value={rates.JPY ? `${rates.JPY.toLocaleString()}원` : '-'} icon={DollarSign} />
+        </div>
+        <div style={{ marginTop: 12, background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>해외 채널</div>
+          {Object.entries(d?.channels || {}).map(([ch, s], i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < Object.keys(d?.channels || {}).length - 1 ? '1px solid #1F1F1F' : 'none' }}>
+              <span style={{ fontSize: 11 }}>{s.status === 'connected' ? '🟢' : '🔴'}</span>
+              <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{ch}</span>
+              <span style={{ fontSize: 10, color: s.status === 'connected' ? '#22C55E' : '#555' }}>{s.message || (s.status === 'connected' ? '연결됨' : '미연결')}</span>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  },
 
-  strategy: () => (
+  strategy: () => {
+    const [d, setD] = useState(null);
+    useEffect(() => { fetch('/api/agents/strategy').then(r => r.json()).then(setD).catch(() => {}); }, []);
+    const s = d?.summary || {};
+    const c = d?.connections || {};
+    return (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <KpiCard label="매출 목표 달성률" value="78%" delta="+5%" up icon={Target} />
-        <KpiCard label="비용절감 실적" value={fmt(4200000) + '원'} delta="+18%" up icon={TrendingUp} />
-        <KpiCard label="진행 전략 프로젝트" value="5건" delta="+2건" up icon={FileText} />
-        <KpiCard label="작성 문서/제안서" value="12건" delta="+3건" up icon={FileText} />
+        <KpiCard label="콘텐츠" value={s.content ? `${s.content.thisMonth || 0}건/월` : '-'} up icon={FileText} />
+        <KpiCard label="커뮤니티" value={s.community ? `${(s.community.comments||0)+(s.community.dm||0)}건` : '-'} up icon={MessageCircle} />
+        <KpiCard label="광고비" value={s.adSpend ? `${fmt(s.adSpend)}원` : '-'} icon={DollarSign} />
+        <KpiCard label="수출 오더" value={s.exports ? `${s.exports}건` : '-'} icon={Globe} />
       </div>
       <div style={{ marginTop: 12, background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>진행 중 프로젝트</div>
@@ -564,7 +657,8 @@ const AGENT_DASHBOARDS = {
         ))}
       </div>
     </>
-  ),
+    );
+  },
 };
 
 // ─── Main ChatView ──────────────────────────────────────────

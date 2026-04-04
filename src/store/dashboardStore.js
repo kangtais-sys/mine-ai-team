@@ -1,14 +1,10 @@
 import { create } from 'zustand';
 
 const useDashboardStore = create((set) => ({
-  stats: {
-    totalFollowers: 312400,
-    monthlyRevenue: 48500000,
-    contentCount: 156,
-    engagementRate: 4.8,
-  },
+  stats: null,
+  loading: false,
   revenueData: [
-    { month: '10월', 스마트스토어: 12000000, 올리브영: 18000000, 자사몰: 5000000, 해외: 3000000 },
+    { month: '10월', 스마트스토어: 12000000, 올리브영: 18000000, ���사몰: 5000000, 해외: 3000000 },
     { month: '11월', 스마트스토어: 14000000, 올리브영: 20000000, 자사몰: 6000000, 해외: 4000000 },
     { month: '12월', 스마트스토어: 18000000, 올리브영: 25000000, 자사몰: 8000000, 해외: 5000000 },
     { month: '1월', 스마트스토어: 15000000, 올리브영: 22000000, 자사몰: 7000000, 해외: 4500000 },
@@ -29,7 +25,16 @@ const useDashboardStore = create((set) => ({
     { name: '자사몰', value: 7500000, percentage: 15.3 },
     { name: '해외', value: 4500000, percentage: 9.1 },
   ],
-  setStats: (stats) => set({ stats }),
+  fetchStats: async () => {
+    set({ loading: true });
+    try {
+      const res = await fetch('/api/stats');
+      const data = await res.json();
+      set({ stats: data, loading: false });
+    } catch {
+      set({ loading: false });
+    }
+  },
 }));
 
 export default useDashboardStore;
