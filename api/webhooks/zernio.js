@@ -171,6 +171,21 @@ export default async function handler(req, res) {
 
       console.log(`[${platform}] ${persona} 댓글 응대: "${reply.substring(0, 40)}" → ${replyStatus}`);
 
+      // KV stats + activity log
+      if (replyStatus.startsWith('sent')) {
+        const today = new Date().toISOString().slice(0, 10);
+        const platLabel = platform === 'instagram' ? '인스타' : platform === 'youtube' ? '유튜브' : '틱톡';
+        await Promise.all([
+          redis.incr('stat:comment:total'),
+          redis.incr(`stat:comment:${platform}:${today}`),
+          redis.lpush('activity:log', JSON.stringify({
+            agent: 'AI 커뮤니티', action: `${platLabel} 댓글 자동 답글`,
+            detail: `@${comment.author?.username}의 댓글에 답글`, timestamp: Date.now(),
+          })),
+        ]);
+        await redis.ltrim('activity:log', 0, 49);
+      }
+
       await redis.lpush('webhook-logs', JSON.stringify({
         type: 'comment', commentId, author: comment.author?.username, text: text.substring(0, 50),
         reply, replyStatus, persona, platform, timestamp: new Date().toISOString(),
@@ -246,6 +261,20 @@ export default async function handler(req, res) {
             replyStatus = `fallback_exception:${e.message}`;
           }
         }
+      }
+
+      // KV stats + activity log
+      if (replyStatus.startsWith('sent')) {
+        const today = new Date().toISOString().slice(0, 10);
+        await Promise.all([
+          redis.incr('stat:dm:total'),
+          redis.incr(`stat:dm:${today}`),
+          redis.lpush('activity:log', JSON.stringify({
+            agent: 'AI 커뮤니티', action: 'DM 자동 응대',
+            detail: `${platform} DM 응대`, timestamp: Date.now(),
+          })),
+        ]);
+        await redis.ltrim('activity:log', 0, 49);
       }
 
       await redis.lpush('webhook-logs', JSON.stringify({

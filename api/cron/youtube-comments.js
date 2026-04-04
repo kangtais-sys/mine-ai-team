@@ -225,6 +225,18 @@ export default async function handler(req, res) {
                 const replyId = await postReply(youtube, comment.commentId, reply);
                 await redis.set(dupeKey, replyId, { ex: 86400 * 7 }); // 7일 보관
 
+                // KV stats + activity log
+                const today = new Date().toISOString().slice(0, 10);
+                await Promise.all([
+                  redis.incr('stat:comment:total'),
+                  redis.incr(`stat:comment:youtube:${today}`),
+                  redis.lpush('activity:log', JSON.stringify({
+                    agent: 'AI 커뮤니티', action: '유튜브 댓글 자동 답글',
+                    detail: `@${comment.author}의 댓글에 답글`, timestamp: Date.now(),
+                  })),
+                ]);
+                await redis.ltrim('activity:log', 0, 49);
+
                 console.log(`[YT-COMMENTS] 답글 달성: ${comment.commentId} → "${reply.substring(0, 40)}" (${replyId})`);
                 results.replied++;
               } catch (commentError) {
