@@ -58,6 +58,12 @@ export default async function handler(req, res) {
           const { id: commentId, text, from } = change.value;
           if (!commentId || !text) continue;
 
+          // Skip duplicates (24h TTL)
+          const dupeKey = `ig:replied:${commentId}`;
+          const alreadyDone = await redis.get(dupeKey);
+          if (alreadyDone) { console.log(`[Meta] Duplicate skip: ${commentId}`); continue; }
+          await redis.set(dupeKey, true, { ex: 86400 });
+
           // Skip spam
           if (SPAM.some(k => text.toLowerCase().includes(k))) {
             console.log(`[Meta] Skipped spam: "${text.substring(0, 30)}"`);

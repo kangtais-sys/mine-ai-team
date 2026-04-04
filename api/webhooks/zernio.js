@@ -86,6 +86,14 @@ export default async function handler(req, res) {
       const accountUsername = account?.username || '';
       const platform = account?.platform || comment.platform || 'instagram';
 
+      // Skip duplicates (24h TTL)
+      const dupeKey = `replied:${commentId}`;
+      const alreadyProcessed = await redis.get(dupeKey);
+      if (alreadyProcessed) {
+        return res.status(200).json({ skipped: true, reason: 'duplicate' });
+      }
+      await redis.set(dupeKey, true, { ex: 86400 });
+
       // Skip own replies, spam, and reply comments
       if (comment.isReply) return res.status(200).json({ skipped: true, reason: 'is_reply' });
       if (comment.author?.username === accountUsername) return res.status(200).json({ skipped: true, reason: 'self' });
