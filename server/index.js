@@ -85,9 +85,10 @@ app.get('/api/briefing', async (req, res) => {
 
 // Zernio webhook - 댓글/DM 실시간 자동 응대
 app.post('/api/webhooks/zernio', async (req, res) => {
+  console.log('[Webhook] Received:', JSON.stringify(req.body, null, 2));
   res.status(200).json({ received: true });
 
-  const { event, comment, message } = req.body;
+  const { event, comment, message, account } = req.body;
 
   try {
     if (event === 'comment.received' && comment) {
