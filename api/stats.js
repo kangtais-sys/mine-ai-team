@@ -32,13 +32,20 @@ export default async function handler(req, res) {
 
     if (process.env.ZERNIO_API_KEY) {
       try {
-        const zData = await zFetch('/accounts');
+        const zRes = await fetch(`${ZERNIO}/accounts`, {
+          headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}` },
+        });
+        const zText = await zRes.text();
+        console.log(`[Stats] Zernio /accounts status=${zRes.status} len=${zText.length}`);
+        const zData = JSON.parse(zText);
         const accounts = zData.accounts || [];
+        console.log(`[Stats] Zernio accounts: ${accounts.length}`);
 
         for (const acc of accounts) {
           const followers = acc.metadata?.profileData?.followersCount || 0;
           const plat = acc.platform;
           const username = acc.username;
+          console.log(`[Stats] account: ${plat} ${username} followers=${followers}`);
 
           // Match by username (reliable, no env var needed)
           if (username === YUMINHYE_ACCOUNTS[plat]) {
@@ -53,8 +60,10 @@ export default async function handler(req, res) {
         const igFollowers = await redis.get('followers:yuminhye:instagram');
         yuminhye.instagram = { count: igFollowers?.count || 0, source: 'scrape' };
       } catch (e) {
-        console.error('[Stats] Zernio error:', e.message);
+        console.error('[Stats] Zernio error:', e.message, e.stack);
       }
+    } else {
+      console.log('[Stats] ZERNIO_API_KEY not set');
     }
 
     yuminhye.total = (yuminhye.instagram?.count || 0) + (yuminhye.tiktok?.count || 0) + (yuminhye.youtube?.count || 0);
