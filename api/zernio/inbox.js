@@ -73,12 +73,15 @@ export default async function handler(req, res) {
 
       for (const c of comments) {
         try {
+          const cPlatform = c.platform || c.account?.platform || 'unknown';
           const persona = getPersona(c.accountUsername || c.account?.username || '');
+          console.log(`[Inbox] comment: platform=${cPlatform}, id=${c._id || c.id}, account=${c.accountUsername || c.account?.username}, text="${(c.text || c.content || '').substring(0, 30)}"`);
           const reply = await generateReply(c.text || c.content || '', persona);
           if (reply === 'SKIP' || !reply) { results.skipped++; continue; }
-          await zFetch(`/inbox/comments/${c._id || c.id}/reply`, { method: 'POST', body: JSON.stringify({ text: reply }) });
+          const replyRes = await zFetch(`/inbox/comments/${c._id || c.id}/reply`, { method: 'POST', body: JSON.stringify({ text: reply }) });
+          console.log(`[Inbox] reply result: platform=${cPlatform}, response=${JSON.stringify(replyRes)}`);
           results.replied++;
-        } catch { results.errors++; }
+        } catch (e) { console.error(`[Inbox] comment error:`, e.message); results.errors++; }
       }
 
       for (const m of messages) {

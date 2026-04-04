@@ -119,6 +119,7 @@ export default async function handler(req, res) {
       if (SPAM.some(k => text.toLowerCase().includes(k))) return res.status(200).json({ skipped: true, reason: 'spam' });
 
       const persona = ACCOUNT_PERSONA[accountId] || 'millimilli';
+      console.log(`[DEBUG] comment.received → platform=${platform}, commentId=${commentId}, accountId=${accountId}, persona=${persona}, isReply=${comment.isReply}, author=${comment.author?.username}`);
 
       // Generate reply with Claude
       const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -137,21 +138,20 @@ export default async function handler(req, res) {
       if (!reply || reply === 'SKIP') return res.status(200).json({ skipped: true, reason: 'filtered' });
 
       // Reply via Zernio unified API (works for all platforms)
-      // Verified: POST /api/v1/inbox/comments/reply { commentId, message, accountId }
       let replyStatus = 'unsupported';
-      const accountId = account?.id || '';
 
       try {
-        const zRes = await fetch('https://zernio.com/api/v1/inbox/comments/reply', {
+        const zRes = await fetch(`https://zernio.com/api/v1/inbox/comments/${commentId}/reply`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ commentId, message: reply, accountId }),
+          body: JSON.stringify({ text: reply, accountId }),
         });
         const zData = await zRes.json();
         replyStatus = zRes.ok ? 'sent' : `zernio_error:${zData.error || zRes.status}`;
-        console.log(`[${platform}] Zernio reply: ${replyStatus}`, zData);
+        console.log(`[${platform}] Zernio reply: ${replyStatus}`, JSON.stringify(zData));
       } catch (e) {
         replyStatus = `exception:${e.message}`;
+        console.error(`[${platform}] Zernio reply exception:`, e.message);
         // Fallback for Instagram: try IG Graph API
         if (platform === 'instagram') {
           const igToken = await getInstagramToken();
