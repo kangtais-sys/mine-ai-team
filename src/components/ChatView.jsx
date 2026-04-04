@@ -136,6 +136,9 @@ const AGENT_DASHBOARDS = {
     const [posting, setPosting] = useState(false);
     const [postResult, setPostResult] = useState(null);
     const [showReport, setShowReport] = useState(false);
+    const [aiKeyword, setAiKeyword] = useState('');
+    const [aiGenerating, setAiGenerating] = useState(false);
+    const [aiResult, setAiResult] = useState(null);
 
     useEffect(() => {
       fetch('/api/zernio/accounts').then(r => r.json()).then(setZAccounts).catch(() => {});
@@ -227,6 +230,30 @@ const AGENT_DASHBOARDS = {
                   <span style={{ fontSize: 10, color: '#22C55E', marginLeft: 'auto' }}>{p.status}</span>
                 </div>
               ))}
+            </div>
+
+            {/* 트랙B AI 콘텐츠 생성 */}
+            <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 8 }}>트랙B: AI 콘텐츠 생성</div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                <input value={aiKeyword} onChange={e => setAiKeyword(e.target.value)} placeholder="주제 키워드 (예: 프로틴 세럼 루틴)" style={{ flex: 1, background: '#1A1A1A', border: '1px solid #242424', borderRadius: 4, padding: '5px 8px', fontSize: 11, color: '#E8E8E8', fontFamily: 'inherit', outline: 'none' }} />
+                <button onClick={() => {
+                  setAiGenerating(true); setAiResult(null);
+                  fetch('/api/ai-content', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keyword: aiKeyword || 'protein skincare' }) })
+                    .then(r => r.json()).then(setAiResult).catch(e => setAiResult({ error: e.message })).finally(() => setAiGenerating(false));
+                }} disabled={aiGenerating} style={{ fontSize: 10, padding: '4px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: aiGenerating ? '#333' : '#5E6AD2', color: '#FFF' }}>
+                  {aiGenerating ? '생성 중...' : '지금 생성'}
+                </button>
+              </div>
+              {aiGenerating && (
+                <div style={{ fontSize: 10, color: '#5E6AD2' }}>이미지 소싱 → 캡션 생성 → 발행 중...</div>
+              )}
+              {aiResult?.success && (
+                <div style={{ fontSize: 10, color: '#22C55E', marginTop: 4 }}>발행 완료: {aiResult.caption}</div>
+              )}
+              {aiResult?.error && (
+                <div style={{ fontSize: 10, color: '#EF4444', marginTop: 4 }}>{aiResult.error}</div>
+              )}
             </div>
 
             {/* 연결 채널 */}
