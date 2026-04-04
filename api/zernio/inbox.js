@@ -36,7 +36,7 @@ async function generateReply(text, persona) {
 
 function getPersona(accountUsername) {
   if (accountUsername === 'millimilli.official') return 'millimilli';
-  if (accountUsername === 'peerstory' || accountUsername === '유민혜-z2r') return 'yuminhye';
+  if (accountUsername === 'peerstory' || accountUsername === 'millimilli.official') return 'yuminhye';
   return 'millimilli';
 }
 

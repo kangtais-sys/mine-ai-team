@@ -40,7 +40,7 @@ export default async function handler(req, res) {
         source: 'scrape',
       },
       tiktok: { count: getFollowers('peerstory'), source: 'zernio' },
-      youtube: { count: getFollowers('유민혜-z2r') || getFollowers('choi_jacob'), source: 'zernio' },
+      youtube: { count: getFollowers('millimilli.official') || getFollowers('choi_jacob'), source: 'zernio' },
     };
     yuminhye.total = yuminhye.instagram.count + yuminhye.tiktok.count + yuminhye.youtube.count;
 

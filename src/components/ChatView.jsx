@@ -196,7 +196,7 @@ const AGENT_DASHBOARDS = {
             {/* 연결 계정 */}
             <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 8 }}>연결 채널</div>
-              {accounts.filter(a => a.username === 'peerstory' || a.username === '유민혜-z2r').map((a, i) => (
+              {accounts.filter(a => a.username === 'peerstory' || a.username === 'millimilli.official').map((a, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0' }}>
                   <CheckCircle2 size={10} color="#22C55E" />
                   <span style={{ fontSize: 11, color: '#CCC' }}>@{a.username}</span>
