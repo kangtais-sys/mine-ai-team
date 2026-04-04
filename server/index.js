@@ -83,6 +83,76 @@ app.get('/api/briefing', async (req, res) => {
   }
 });
 
+// Zernio webhook - 댓글/DM 실시간 자동 응대
+app.post('/api/webhooks/zernio', async (req, res) => {
+  res.status(200).json({ received: true });
+
+  const { event, comment, message } = req.body;
+
+  try {
+    if (event === 'comment.received' && comment) {
+      const commentText = comment.text || '';
+      const commentId = comment.id;
+      const profileId = comment.profileId;
+
+      const spamKeywords = ['팔로우', '맞팔', 'follow', 'http', '홍보', 'dm주세요'];
+      if (spamKeywords.some(k => commentText.toLowerCase().includes(k))) return;
+
+      const isMillimilli = profileId === '69d08cc1986d57bb8f733102';
+      const systemPrompt = isMillimilli
+        ? '당신은 밀리밀리 브랜드 SNS 담당자입니다. 500달톤 초저분자 단백질 화장품 전문가로서 따뜻하고 친근하게 응대합니다. 이모지 1-2개, 2문장 이내. 제품/성분 문의 → 카카오채널 @밀리밀리 안내. 구매/이벤트 → 프로필 링크 안내. 가격 직접 언급 금지. 악성/광고/스팸이면 SKIP만 반환.'
+        : '당신은 유민혜 인플루언서입니다. 친근하고 따뜻하게. 짧게. 이모지 자연스럽게. 악성이면 SKIP만 반환.';
+
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 200,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: `댓글: "${commentText}"` }],
+      });
+
+      const reply = response.content[0]?.text?.trim();
+      if (!reply || reply === 'SKIP' || reply === 'null') return;
+
+      await fetch(`https://zernio.com/api/v1/inbox/comments/${commentId}/reply`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: reply }),
+      });
+      console.log(`✅ 댓글 자동 응대: "${reply}"`);
+    }
+
+    if (event === 'message.received' && message) {
+      const messageText = message.text || '';
+      const messageId = message.id;
+      const profileId = message.profileId;
+
+      const isMillimilli = profileId === '69d08cc1986d57bb8f733102';
+      const systemPrompt = isMillimilli
+        ? '밀리밀리 DM 상담원. 따뜻하고 전문적으로. 3문장 이내. 제품 문의 → 카카오채널 @밀리밀리. 구매 → 프로필 링크. 가격 미언급.'
+        : '유민혜 인플루언서. 친근하게. 3문장 이내. 협찬문의는 이메일 안내.';
+
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 300,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: `DM: "${messageText}"` }],
+      });
+
+      const reply = response.content[0]?.text?.trim();
+      if (!reply || reply === 'SKIP') return;
+
+      await fetch(`https://zernio.com/api/v1/inbox/messages/${messageId}/reply`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: reply }),
+      });
+      console.log(`✅ DM 자동 응대: "${reply}"`);
+    }
+  } catch (error) {
+    console.error('Webhook 처리 오류:', error.message);
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`MINE AI Team server running on port ${PORT}`);
