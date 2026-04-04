@@ -5,26 +5,34 @@ export default function handler(req, res) {
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
 
-    if (mode === 'subscribe' && token === process.env.META_WEBHOOK_VERIFY_TOKEN) {
+    console.log('[Meta Webhook] Verification request:', { mode, token: token?.substring(0, 5) + '...', challenge });
+
+    const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN || 'millimilli2024secret';
+
+    if (mode === 'subscribe' && token === verifyToken) {
       console.log('[Meta Webhook] Verified!');
-      return res.status(200).send(challenge);
+      // Must return challenge as plain text, not JSON
+      res.setHeader('Content-Type', 'text/plain');
+      return res.status(200).end(String(challenge));
     }
-    return res.status(403).send('Forbidden');
+
+    console.log('[Meta Webhook] Verification failed - token mismatch');
+    return res.status(403).end('Forbidden');
   }
 
   // POST: Receive webhook events
   if (req.method === 'POST') {
     const body = req.body;
-    console.log('[Meta Webhook] Received:', JSON.stringify(body, null, 2));
+    console.log('[Meta Webhook] Event:', JSON.stringify(body, null, 2));
 
     if (body.object === 'instagram') {
       body.entry?.forEach(entry => {
         entry.changes?.forEach(change => {
           if (change.field === 'comments') {
-            console.log('[Meta] New comment:', JSON.stringify(change.value));
+            console.log('[Meta] Comment:', JSON.stringify(change.value));
           }
           if (change.field === 'messages') {
-            console.log('[Meta] New message:', JSON.stringify(change.value));
+            console.log('[Meta] Message:', JSON.stringify(change.value));
           }
         });
       });

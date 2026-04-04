@@ -83,6 +83,26 @@ app.get('/api/briefing', async (req, res) => {
   }
 });
 
+// Meta Instagram Webhook 인증
+app.get('/api/webhooks/instagram', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+  console.log('[Meta Webhook] Verification:', { mode, challenge });
+  if (mode === 'subscribe' && token === (process.env.META_WEBHOOK_VERIFY_TOKEN || 'millimilli2024secret')) {
+    console.log('✅ Meta webhook verified!');
+    res.setHeader('Content-Type', 'text/plain');
+    return res.status(200).end(String(challenge));
+  }
+  return res.status(403).end('Forbidden');
+});
+
+// Meta Instagram Webhook 이벤트 수신
+app.post('/api/webhooks/instagram', (req, res) => {
+  console.log('[Meta Webhook] Event:', JSON.stringify(req.body, null, 2));
+  res.status(200).json({ received: true });
+});
+
 // Zernio webhook - 댓글/DM 실시간 자동 응대
 app.post('/api/webhooks/zernio', async (req, res) => {
   console.log('[Webhook] Received:', JSON.stringify(req.body, null, 2));
