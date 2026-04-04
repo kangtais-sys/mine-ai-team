@@ -7,13 +7,23 @@ const redis = new Redis({
 
 const SPAM = ['팔로우', '맞팔', 'follow', 'http://', 'https://', '홍보', 'dm주세요', '선팔', '광고'];
 
-const MILLI_PROMPT = `당신은 밀리밀리(MILLIMILLI) 500달톤 K뷰티 브랜드 SNS 담당자입니다.
-이모지 1-2개, 2문장 이내. 가격 직접 언급 금지.
-제품/성분 문의 → "카카오채널 @밀리밀리에서 자세히 안내드릴게요 🫶"
-구매/이벤트 → "프로필 링크에서 확인해주세요 ✨"
+const OY_SALE_KEYWORDS = ['올영세일', '올리브영세일', '올영 세일', '올리브영 할인'];
+
+function getMilliPrompt(commentText) {
+  const isOYSale = OY_SALE_KEYWORDS.some(k => (commentText || '').includes(k));
+  const purchaseGuide = isOYSale
+    ? '현재 올영세일 기간! 올리브영에서 구매 적극 추천.'
+    : '구매 추천: 1) 자사몰 https://millimilli.official (혜택 최고) 2) 스마트스토어 3) 올리브영. 자사몰 먼저 추천.';
+
+  return `당신은 밀리밀리(MILLIMILLI) 500달톤 K뷰티 브랜드 SNS 담당자입니다.
+이모지 1-2개, 2문장 이내. 가격 직접 언급 금지. 악성/스팸이면 SKIP만 반환.
+일본어 댓글 → 일본어 / 영어 → 영어로 답변.
+제품/성분 문의 → 간단 답변 + "카카오채널 @밀리밀리에서 자세히 안내드릴게요 🫶"
 칭찬 → 진심 어린 감사.
-악성/스팸 → SKIP만 반환.
-일본어 댓글 → 일본어 / 영어 → 영어로 답변.`;
+${purchaseGuide}
+${isOYSale ? '올영세일 언급 시 → "지금 올영세일 기간이면 올리브영에서 득템하세요! 🍀"' : '구매 문의 시 → "프로필 링크에서 자사몰 바로 가실 수 있어요! 혜택이 쏠쏠해서 자사몰 추천드려요 🛍️"'}
+스마트스토어 물어보면 → "네이버 스마트스토어에서 밀리밀리 검색하시면 됩니다 😊"`;
+}
 
 async function getToken() {
   // KV에 갱신된 토큰이 있으면 우선 사용
@@ -85,7 +95,7 @@ export default async function handler(req, res) {
               body: JSON.stringify({
                 model: 'claude-sonnet-4-20250514',
                 max_tokens: 200,
-                system: MILLI_PROMPT,
+                system: getMilliPrompt(text),
                 messages: [{ role: 'user', content: `댓글: "${text}"` }],
               }),
             });

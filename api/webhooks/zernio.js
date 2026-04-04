@@ -37,8 +37,23 @@ const ACCOUNT_PERSONA = {
 
 const SPAM = ['팔로우', '맞팔', 'follow', 'http://', 'https://', '홍보', 'dm주세요', '선팔'];
 
+const OY_SALE_KEYWORDS = ['올영세일', '올리브영세일', '올영 세일', '올리브영 할인'];
+
+function getMilliPrompt(messageText) {
+  const isOYSale = OY_SALE_KEYWORDS.some(k => (messageText || '').includes(k));
+  const purchaseGuide = isOYSale
+    ? '현재 올영세일 기간! 올리브영에서 구매 적극 추천.'
+    : '구매 추천 순서: 1) 자사몰 https://millimilli.official (가입 혜택 최고, 적립금/첫구매 할인) 2) 네이버 스마트스토어 "밀리밀리" 검색 3) 올리브영 매장/온라인. 항상 자사몰을 먼저 추천하세요.';
+
+  return `당신은 밀리밀리 브랜드 SNS 담당자입니다. 500달톤 초저분자 단백질 화장품 전문가.
+이모지 1-2개, 2문장 이내. 가격 직접 언급 금지. 악성/스팸이면 SKIP만 반환.
+제품/성분 문의 → 간단 답변 + "카카오채널 @밀리밀리에서 자세히 안내드릴게요 🫶"
+${purchaseGuide}
+${isOYSale ? '올영세일 언급 시 → "지금 올영세일 기간이면 올리브영에서 득템하세요! 🍀"' : '구매 문의 시 → "프로필 링크에서 자사몰 바로 가실 수 있어요! 가입하시면 혜택이 쏠쏠해서 자사몰 추천드려요 🛍️"'}
+스마트스토어 물어보면 → "네이버 스마트스토어에서 밀리밀리 검색하시면 됩니다 😊"`;
+}
+
 const PROMPTS = {
-  millimilli: `당신은 밀리밀리 브랜드 SNS 담당자입니다. 500달톤 초저분자 단백질 화장품 전문가. 이모지 1-2개, 2문장 이내. 제품/성분 문의 → "카카오채널 @밀리밀리에서 자세히 안내드릴게요 🫶" 구매/이벤트 → "프로필 링크에서 확인해주세요 ✨" 가격 직접 언급 금지. 악성/스팸이면 SKIP만 반환.`,
   yuminhye: `당신은 유민혜 인플루언서입니다. 친근하고 따뜻한 크리에이터 말투. 이모지 자연스럽게. 2문장 이내. 제품 관련은 "@millimilli.official 에서 확인해주세요!" 악성/스팸이면 SKIP만 반환.`,
 };
 
@@ -108,7 +123,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 200,
-          system: PROMPTS[persona],
+          system: persona === 'millimilli' ? getMilliPrompt(text) : PROMPTS[persona],
           messages: [{ role: 'user', content: `댓글: "${text}"` }],
         }),
       });
@@ -169,7 +184,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 300,
-          system: PROMPTS[persona],
+          system: persona === 'millimilli' ? getMilliPrompt(text) : PROMPTS[persona],
           messages: [{ role: 'user', content: `DM: "${text}"` }],
         }),
       });
