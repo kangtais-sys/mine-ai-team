@@ -9,27 +9,32 @@ export default function handler(req, res) {
     const challenge = params['hub.challenge'];
     const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN || 'millimilli2024secret';
 
-    // Debug: return all parsed info
-    if (!mode && !token) {
-      return res.status(200).json({
-        debug: true,
-        url: req.url,
-        queryString,
-        params,
-        reqQuery: req.query,
-      });
-    }
-
     if (mode === 'subscribe' && token === verifyToken) {
+      console.log('[Meta Webhook] Verified!');
       res.setHeader('Content-Type', 'text/plain');
       return res.status(200).end(String(challenge));
     }
 
-    return res.status(403).json({ error: 'Forbidden', mode, tokenMatch: token === verifyToken, envToken: verifyToken?.substring(0, 5) });
+    return res.status(403).end('Forbidden');
   }
 
   if (req.method === 'POST') {
     console.log('[Meta Webhook] Event:', JSON.stringify(req.body, null, 2));
+
+    const body = req.body;
+    if (body.object === 'instagram') {
+      body.entry?.forEach(entry => {
+        entry.changes?.forEach(change => {
+          if (change.field === 'comments') {
+            console.log('[Meta] Comment:', JSON.stringify(change.value));
+          }
+          if (change.field === 'messages') {
+            console.log('[Meta] Message:', JSON.stringify(change.value));
+          }
+        });
+      });
+    }
+
     return res.status(200).json({ received: true });
   }
 
