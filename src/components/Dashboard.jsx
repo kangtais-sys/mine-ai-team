@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, DollarSign, FileText, TrendingUp, ArrowUpRight, ArrowDownRight, Link2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Users, DollarSign, FileText, TrendingUp, ArrowUpRight, ArrowDownRight, Link2, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import useDashboardStore from '../store/dashboardStore';
 import { agents } from '../lib/agents';
@@ -22,7 +22,9 @@ const tip = {
 
 export default function Dashboard() {
   const { stats, revenueData, followerData, channelRevenue } = useDashboardStore();
-  const [googleStatus, setGoogleStatus] = useState(null); // null=loading, object=result
+  const [googleStatus, setGoogleStatus] = useState(null);
+  const [followerStats, setFollowerStats] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -60,10 +62,21 @@ export default function Dashboard() {
         })
         .catch(() => setGoogleStatus({ connected: false, reason: 'fetch_error' }));
     }
+    fetch('/api/stats').then(r => r.json()).then(setFollowerStats).catch(() => {});
   }, []);
 
+  const refreshIG = () => {
+    setRefreshing(true);
+    fetch('/api/scrape/instagram-followers')
+      .then(() => fetch('/api/stats').then(r => r.json()).then(setFollowerStats))
+      .catch(() => {})
+      .finally(() => setRefreshing(false));
+  };
+
+  const ym = followerStats?.yuminhye;
+  const ml = followerStats?.millimilli;
+
   const kpis = [
-    { label: '총 팔로워', value: fmt(stats.totalFollowers), icon: Users, delta: '+2.4%', up: true },
     { label: '월 매출', value: `${fmt(stats.monthlyRevenue)}원`, icon: DollarSign, delta: '+12.8%', up: true },
     { label: '콘텐츠 발행', value: `${stats.contentCount}건`, icon: FileText, delta: '+8건', up: true },
     { label: '인게이지먼트', value: `${stats.engagementRate}%`, icon: TrendingUp, delta: '+0.3%', up: true },
@@ -123,6 +136,58 @@ export default function Dashboard() {
 
       {/* Scrollable Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
+        {/* Follower Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+          {/* 유민혜 */}
+          <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5' }}>유민혜</span>
+              <button onClick={refreshIG} disabled={refreshing} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+                <RefreshCw size={12} color={refreshing ? '#555' : '#5E6AD2'} style={refreshing ? { animation: 'spin 1s linear infinite' } : {}} />
+              </button>
+            </div>
+            {[
+              { icon: 'IG', label: '인스타', value: ym?.instagram?.count, color: '#E1306C' },
+              { icon: 'TT', label: '틱톡', value: ym?.tiktok?.count, color: '#69C9D0' },
+              { icon: 'YT', label: '유튜브', value: ym?.youtube?.count, color: '#FF0000' },
+            ].map((ch, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < 2 ? '1px solid #1F1F1F' : 'none' }}>
+                <span style={{ fontSize: 10, color: ch.color, fontWeight: 600, width: 18 }}>{ch.icon}</span>
+                <span style={{ fontSize: 12, color: '#CCC', flex: 1 }}>{ch.label}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#FFF' }}>{ch.value ? fmt(ch.value) : '-'}</span>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 8, borderTop: '1px solid #242424' }}>
+              <span style={{ fontSize: 11, color: '#777' }}>합계</span>
+              <span style={{ fontSize: 16, fontWeight: 700, color: '#FFF' }}>{ym?.total ? fmt(ym.total) : '-'}</span>
+            </div>
+            <div style={{ fontSize: 9, color: '#444', marginTop: 6 }}>
+              매일 자정 자동 업데이트 {ym?.instagram?.updatedAt ? `· ${new Date(ym.instagram.updatedAt).toLocaleString('ko-KR')}` : ''}
+            </div>
+          </div>
+
+          {/* 밀리밀리 */}
+          <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 20 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5', marginBottom: 14 }}>밀리밀리</div>
+            {[
+              { icon: 'IG', label: '인스타', value: ml?.instagram?.count, color: '#E1306C' },
+              { icon: 'TT', label: '틱톡', value: ml?.tiktok?.count, color: '#69C9D0' },
+              { icon: 'YT', label: '유튜브', value: ml?.youtube?.count, color: '#FF0000' },
+            ].map((ch, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < 2 ? '1px solid #1F1F1F' : 'none' }}>
+                <span style={{ fontSize: 10, color: ch.color, fontWeight: 600, width: 18 }}>{ch.icon}</span>
+                <span style={{ fontSize: 12, color: '#CCC', flex: 1 }}>{ch.label}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#FFF' }}>{ch.value ? fmt(ch.value) : '-'}</span>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 8, borderTop: '1px solid #242424' }}>
+              <span style={{ fontSize: 11, color: '#777' }}>합계</span>
+              <span style={{ fontSize: 16, fontWeight: 700, color: '#FFF' }}>{ml?.total ? fmt(ml.total) : '-'}</span>
+            </div>
+            <div style={{ fontSize: 9, color: '#444', marginTop: 6 }}>Zernio 실시간 연동</div>
+          </div>
+        </div>
+
         {/* KPI Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20, marginBottom: 24 }}>
           {kpis.map((kpi, i) => {
