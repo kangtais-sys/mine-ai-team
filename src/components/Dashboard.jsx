@@ -125,13 +125,16 @@ export default function Dashboard() {
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < 2 ? '1px solid #1F1F1F' : 'none' }}>
                 <span style={{ fontSize: 10, color: ch.color, fontWeight: 600, width: 18 }}>{ch.icon}</span>
                 <span style={{ fontSize: 12, color: '#CCC', flex: 1 }}>{ch.label}</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#FFF' }}>{ch.value ? fmt(ch.value) : '-'}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#FFF' }}>{ch.value != null && ch.value > 0 ? fmt(ch.value) : ch.value === 0 ? '0' : '-'}</span>
               </div>
             ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 8, borderTop: '1px solid #242424' }}>
               <span style={{ fontSize: 11, color: '#777' }}>합계</span>
               <span style={{ fontSize: 16, fontWeight: 700, color: '#FFF' }}>{ym?.total ? fmt(ym.total) : '-'}</span>
             </div>
+            {ym?.instagram?.source === 'not_connected' && (
+              <div style={{ fontSize: 9, color: '#F59E0B', marginTop: 6 }}>IG: Zernio 미연결 — 연결 시 자동 표시</div>
+            )}
           </div>
           <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 20 }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5', marginBottom: 14 }}>밀리밀리</div>
@@ -143,7 +146,7 @@ export default function Dashboard() {
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < 2 ? '1px solid #1F1F1F' : 'none' }}>
                 <span style={{ fontSize: 10, color: ch.color, fontWeight: 600, width: 18 }}>{ch.icon}</span>
                 <span style={{ fontSize: 12, color: '#CCC', flex: 1 }}>{ch.label}</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#FFF' }}>{ch.value ? fmt(ch.value) : '-'}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#FFF' }}>{ch.value != null && ch.value > 0 ? fmt(ch.value) : ch.value === 0 ? '0' : '-'}</span>
               </div>
             ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 8, borderTop: '1px solid #242424' }}>

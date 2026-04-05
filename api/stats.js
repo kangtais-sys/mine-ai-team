@@ -11,15 +11,16 @@ const zFetch = (path) => fetch(`${ZERNIO}${path}`, {
   headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}` },
 }).then(r => r.json());
 
-// Username-based matching as fallback (no env var dependency)
+// Username-based matching (from Zernio API 2026-04-05 확인)
 const YUMINHYE_ACCOUNTS = {
   tiktok: 'peerstory',
   youtube: '15초유민혜',
+  // instagram: Zernio 미연결 → 스크래핑으로 대체
 };
 const MILLIMILLI_ACCOUNTS = {
   instagram: 'millimilli.official',
   tiktok: 'millimilli.official',
-  youtube: '유민혜-z2r',
+  youtube: 'millimilli.official', // Zernio에서 username=millimilli.official로 등록됨
 };
 
 export default async function handler(req, res) {
@@ -56,9 +57,15 @@ export default async function handler(req, res) {
           }
         }
 
-        // 유민혜 인스타 from scrape (not in Zernio)
+        // 유민혜 인스타: Zernio 미연결 → KV 스크래핑 데이터 or 수동 입력값
         const igFollowers = await redis.get('followers:yuminhye:instagram');
-        yuminhye.instagram = { count: igFollowers?.count || 0, source: 'scrape' };
+        const igCount = igFollowers?.count || 0;
+        yuminhye.instagram = {
+          count: igCount,
+          source: igCount > 0 ? 'scrape' : 'not_connected',
+          note: igCount === 0 ? 'Zernio 미연결 + 스크래핑 차단. KV에 수동 입력 또는 Zernio에 인스타 연결 필요' : undefined,
+          username: igFollowers?.username || 'lala_lounge_',
+        };
       } catch (e) {
         console.error('[Stats] Zernio error:', e.message, e.stack);
       }
