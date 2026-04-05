@@ -11,10 +11,18 @@ const anthropic = new Anthropic();
 export const config = { maxDuration: 120 };
 
 const ZERNIO = 'https://zernio.com/api/v1';
-const zFetch = (path, opts = {}) => fetch(`${ZERNIO}${path}`, {
-  ...opts,
-  headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`, 'Content-Type': 'application/json', ...opts.headers },
-}).then(r => r.json());
+const zFetch = async (path, opts = {}) => {
+  const r = await fetch(`${ZERNIO}${path}`, {
+    ...opts,
+    headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`, 'Content-Type': 'application/json', ...opts.headers },
+  });
+  const ct = r.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    console.warn(`[Inbox Cron] Zernio ${path} returned non-JSON (${r.status} ${ct})`);
+    return {};
+  }
+  return r.json();
+};
 
 const PROMPTS = {
   millimilli: `당신은 밀리밀리(MILLIMILLI) 500달톤 K뷰티 브랜드 SNS 담당자입니다.
@@ -58,13 +66,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const [commentsData, messagesData] = await Promise.all([
-      zFetch('/inbox/comments?status=unanswered&limit=30'),
-      zFetch('/inbox/messages?status=unanswered&limit=15'),
-    ]);
-
-    const comments = Array.isArray(commentsData.comments || commentsData) ? (commentsData.comments || commentsData) : [];
-    const messages = Array.isArray(messagesData.messages || messagesData) ? (messagesData.messages || messagesData) : [];
+    // Zernio /inbox/comments returns { data: [...] }
+    // Zernio /inbox/messages endpoint doesn't exist (returns HTML 404) — skip
+    const commentsData = await zFetch('/inbox/comments?status=unanswered&limit=30');
+    const comments = commentsData.data || commentsData.comments || (Array.isArray(commentsData) ? commentsData : []);
+    const messages = []; // DM is handled by webhooks, not polling
     const results = { replied: 0, skipped: 0, dmReplied: 0, dmSkipped: 0, errors: 0 };
 
     for (const c of comments) {
