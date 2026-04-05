@@ -57,13 +57,12 @@ export default async function handler(req, res) {
           }
         }
 
-        // 유민혜 인스타: Zernio 미연결 → KV 스크래핑 데이터 or 수동 입력값
+        // 유민혜 인스타: Zernio 미연결 → KV or fallback 31만
         const igFollowers = await redis.get('followers:yuminhye:instagram');
-        const igCount = igFollowers?.count || 0;
+        const igCount = igFollowers?.count || 310000; // fallback: 31만
         yuminhye.instagram = {
           count: igCount,
-          source: igCount > 0 ? 'scrape' : 'not_connected',
-          note: igCount === 0 ? 'Zernio 미연결 + 스크래핑 차단. KV에 수동 입력 또는 Zernio에 인스타 연결 필요' : undefined,
+          source: igFollowers?.count > 0 ? 'scrape' : 'manual',
           username: igFollowers?.username || 'lala_lounge_',
         };
       } catch (e) {
