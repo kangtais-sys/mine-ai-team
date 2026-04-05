@@ -1,4 +1,5 @@
 import { readSheet } from '../utils/sheets.js';
+import { getOrders, getOrderCount } from '../utils/cafe24.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
@@ -38,9 +39,30 @@ export default async function handler(req, res) {
     ? { status: 'connected', message: '스마트스토어 연결됨' }
     : { status: 'disconnected', message: '스마트���토어 연결 필요' };
 
-  result.cafe24 = process.env.CAFE24_CLIENT_ID && process.env.CAFE24_CLIENT_SECRET && process.env.CAFE24_MALL_ID
-    ? { status: 'connected', mallId: process.env.CAFE24_MALL_ID }
-    : { status: 'disconnected', message: '카페24 연결 필요' };
+  // C. Cafe24 (OAuth - real data)
+  if (process.env.CAFE24_CLIENT_ID && process.env.CAFE24_MALL_ID) {
+    try {
+      const now = new Date();
+      const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+      const endDate = now.toISOString().slice(0, 10);
+      const countData = await getOrderCount(startDate, endDate);
+      const ordersData = await getOrders(startDate, endDate, 10);
+      const orders = ordersData.orders || [];
+      const totalAmount = orders.reduce((s, o) => s + (Number(o.order_price_amount) || 0), 0);
+      result.cafe24 = {
+        status: 'connected',
+        mallId: process.env.CAFE24_MALL_ID,
+        thisMonth: { orders: countData.count || orders.length, sampleAmount: totalAmount },
+        recent: orders.slice(0, 5).map(o => ({ orderId: o.order_id, date: o.order_date, amount: o.order_price_amount })),
+      };
+    } catch (e) {
+      result.cafe24 = e.message.includes('인증 필요')
+        ? { status: 'auth_required', message: '카페24 OAuth 인증 필요', authUrl: '/api/auth/cafe24' }
+        : { status: 'error', error: e.message, mallId: process.env.CAFE24_MALL_ID };
+    }
+  } else {
+    result.cafe24 = { status: 'disconnected', message: '카페24 연결 필요' };
+  }
 
   result.amazon = process.env.AMAZON_SELLER_ID && process.env.AMAZON_REFRESH_TOKEN
     ? { status: 'connected', sellerId: process.env.AMAZON_SELLER_ID }
