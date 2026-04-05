@@ -109,17 +109,26 @@ export default async function handler(req, res) {
       const dupeKey = `replied:${platform}:${commentId}`;
       const alreadyProcessed = await redis.get(dupeKey);
       if (alreadyProcessed) {
+        console.log(`[REPLY] 스킵: duplicate commentId=${commentId} value=${alreadyProcessed}`);
         return res.status(200).json({ skipped: true, reason: 'duplicate' });
       }
-      // NOTE: dupeKey is set AFTER successful reply (not before) to allow retry on failure
 
       // Skip own replies, spam, and reply comments
-      if (comment.isReply) return res.status(200).json({ skipped: true, reason: 'is_reply' });
-      if (comment.author?.username === accountUsername) return res.status(200).json({ skipped: true, reason: 'self' });
-      if (SPAM.some(k => text.toLowerCase().includes(k))) return res.status(200).json({ skipped: true, reason: 'spam' });
+      if (comment.isReply) {
+        console.log(`[REPLY] 스킵: is_reply commentId=${commentId}`);
+        return res.status(200).json({ skipped: true, reason: 'is_reply' });
+      }
+      if (comment.author?.username === accountUsername) {
+        console.log(`[REPLY] 스킵: self commentId=${commentId} author=${comment.author?.username}`);
+        return res.status(200).json({ skipped: true, reason: 'self' });
+      }
+      if (SPAM.some(k => text.toLowerCase().includes(k))) {
+        console.log(`[REPLY] 스킵: spam commentId=${commentId} text="${text.substring(0, 30)}"`);
+        return res.status(200).json({ skipped: true, reason: 'spam' });
+      }
 
       const persona = ACCOUNT_PERSONA[accountId] || 'millimilli';
-      console.log(`[DEBUG] comment.received → platform=${platform}, commentId=${commentId}, accountId=${accountId}, persona=${persona}, isReply=${comment.isReply}, author=${comment.author?.username}`);
+      console.log(`[REPLY] 시작: platform=${platform}, commentId=${commentId}, author=${comment.author?.username}, persona=${persona}, text="${text.substring(0, 30)}"`);
 
       // Generate reply with Claude
       const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -132,10 +141,19 @@ export default async function handler(req, res) {
           messages: [{ role: 'user', content: `댓글: "${text}"` }],
         }),
       });
+      if (!claudeRes.ok) {
+        const errText = await claudeRes.text();
+        console.error(`[REPLY] Claude API 에러: ${claudeRes.status} ${errText.substring(0, 200)}`);
+        return res.status(200).json({ error: `claude_${claudeRes.status}` });
+      }
       const claudeData = await claudeRes.json();
       const reply = claudeData.content?.[0]?.text?.trim();
+      console.log(`[REPLY] Claude 답변: "${(reply || '').substring(0, 40)}"`)
 
-      if (!reply || reply === 'SKIP') return res.status(200).json({ skipped: true, reason: 'filtered' });
+      if (!reply || reply === 'SKIP') {
+        console.log(`[REPLY] 스킵: filtered (SKIP 또는 빈 응답)`);
+        return res.status(200).json({ skipped: true, reason: 'filtered' });
+      }
 
       // Reply via Zernio unified API (works for all platforms)
       // Webhook provides platform comment ID, not Zernio _id → use flat endpoint
@@ -291,7 +309,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ received: true, event });
   } catch (error) {
-    console.error('[Webhook Error]', error.message);
+    console.error('[Webhook Error]', error.message, error.stack?.split('\n').slice(0, 3).join(' '));
     return res.status(200).json({ error: error.message });
   }
 }
