@@ -8,7 +8,8 @@ const redis = new Redis({
 
 export const config = { maxDuration: 120 };
 
-// 채널 설정: @15초유민혜 + @유민혜-z2r (밀리밀리)
+// 채널 설정: @15초유민혜만 (구독자 2,350명)
+// @유민혜-z2r은 구독자 4명으로 댓글이 거의 없어 quota 절약 위해 제외
 const CHANNELS = [
   {
     handle: '@15초유민혜',
@@ -18,16 +19,6 @@ const CHANNELS = [
 시청자와 소통하는 느낌으로 자연스럽게.
 제품 관련 문의는 @millimilli.official 안내.
 2문장 이내, 친근하게, 이모지 1-2개.
-가격 직접 언급 금지. 악성/스팸이면 SKIP만 반환.`,
-  },
-  {
-    handle: '@유민혜-z2r',
-    persona: 'millimilli',
-    prompt: `당신은 밀리밀리 유튜브 채널 담당자입니다.
-500달톤 초저분자 단백질 화장품 브랜드.
-영상 내용에 공감하며 따뜻하게 답글.
-제품 문의 → 자사몰 또는 카카오채널 @밀리밀리.
-2문장 이내, 이모지 1-2개.
 가격 직접 언급 금지. 악성/스팸이면 SKIP만 반환.`,
   },
 ];
@@ -247,12 +238,23 @@ export default async function handler(req, res) {
 
             results.newComments += comments.length;
           } catch (videoError) {
+            if (videoError.message?.includes('quota') || videoError.code === 403) {
+              console.warn(`[YT-COMMENTS] quota 초과 — 중단`);
+              results.quotaExceeded = true;
+              break;
+            }
             console.error(`[YT-COMMENTS] 영상 에러 (${videoId}):`, videoError.message);
             results.errors++;
           }
         }
       } catch (channelError) {
-        console.error(`[YT-COMMENTS] 채널 에러 (${channel.handle}):`, channelError.message);
+        const msg = channelError.message || '';
+        if (msg.includes('quota') || msg.includes('rateLimitExceeded') || channelError.code === 403) {
+          console.warn(`[YT-COMMENTS] YouTube API quota 초과 — 다음 실행까지 대기`);
+          results.quotaExceeded = true;
+          break; // 다른 채널도 같은 quota이므로 전체 중단
+        }
+        console.error(`[YT-COMMENTS] 채널 에러 (${channel.handle}):`, msg);
         results.errors++;
       }
     }

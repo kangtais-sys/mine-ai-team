@@ -111,7 +111,7 @@ export default async function handler(req, res) {
       if (alreadyProcessed) {
         return res.status(200).json({ skipped: true, reason: 'duplicate' });
       }
-      await redis.set(dupeKey, true, { ex: 86400 });
+      // NOTE: dupeKey is set AFTER successful reply (not before) to allow retry on failure
 
       // Skip own replies, spam, and reply comments
       if (comment.isReply) return res.status(200).json({ skipped: true, reason: 'is_reply' });
@@ -171,11 +171,12 @@ export default async function handler(req, res) {
 
       console.log(`[${platform}] ${persona} 댓글 응대: "${reply.substring(0, 40)}" → ${replyStatus}`);
 
-      // KV stats + activity log
+      // KV stats + activity log + dedup mark (only on success)
       if (replyStatus.startsWith('sent')) {
         const today = new Date().toISOString().slice(0, 10);
         const platLabel = platform === 'instagram' ? '인스타' : platform === 'youtube' ? '유튜브' : '틱톡';
         await Promise.all([
+          redis.set(dupeKey, true, { ex: 86400 }), // Mark as replied AFTER success
           redis.incr('stat:comment:total'),
           redis.incr(`stat:comment:${platform}:${today}`),
           redis.lpush('activity:log', JSON.stringify({
@@ -184,6 +185,9 @@ export default async function handler(req, res) {
           })),
         ]);
         await redis.ltrim('activity:log', 0, 49);
+      } else {
+        // Reply failed — set shorter TTL so it retries sooner
+        await redis.set(dupeKey, `failed:${replyStatus}`, { ex: 3600 }); // 1시간 후 재시도 가능
       }
 
       await redis.lpush('webhook-logs', JSON.stringify({
