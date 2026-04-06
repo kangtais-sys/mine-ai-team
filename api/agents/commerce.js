@@ -1,10 +1,11 @@
 import { readSheet } from '../utils/sheets.js';
 import { getOrders, getOrderCount } from '../utils/cafe24.js';
+import { getEcommerceData } from '../utils/ga4.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  const result = { oliveyoung: null, smartstore: null, cafe24: null, amazon: null, shopee: null, qoo10: null, tiktokShop: null };
+  const result = { oliveyoung: null, ga4: null, smartstore: null, cafe24: null, amazon: null, shopee: null, qoo10: null, tiktokShop: null };
 
   // A. Olive Young (Google Sheets)
   // 시트: [빈열, 기준일, 기간계상품코드, 상품코드, 상품명, 올리브영 매출, 판매수량, 홍천 납품 기준 매출]
@@ -34,7 +35,19 @@ export default async function handler(req, res) {
     result.oliveyoung = { status: 'disconnected', message: '올리브영 시트 연결 필요' };
   }
 
-  // B-G. Channel connection status
+  // B. GA4 자사몰 매출 (Google Analytics Data API)
+  if (process.env.GA4_PROPERTY_ID) {
+    try {
+      const ecom = await getEcommerceData(process.env.GA4_PROPERTY_ID);
+      result.ga4 = { status: 'connected', propertyId: process.env.GA4_PROPERTY_ID, ...ecom };
+    } catch (e) {
+      result.ga4 = { status: 'error', error: e.message };
+    }
+  } else {
+    result.ga4 = { status: 'disconnected', message: 'GA4 Property ID 연결 필요 — /api/auth/google 재인증 후 GA4_PROPERTY_ID 환경변수 추가' };
+  }
+
+  // C-G. Channel connection status
   result.smartstore = process.env.NAVER_COMMERCE_CLIENT_ID && process.env.NAVER_COMMERCE_CLIENT_SECRET
     ? { status: 'connected', message: '스마트스토어 연결됨' }
     : { status: 'disconnected', message: '스마트���토어 연결 필요' };

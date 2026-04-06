@@ -14,6 +14,8 @@ export default function handler(req, res) {
     'https://www.googleapis.com/auth/youtube.upload',
     'https://www.googleapis.com/auth/youtube.force-ssl',
     'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/analytics.readonly',
+    'https://www.googleapis.com/auth/spreadsheets.readonly',
   ];
 
   const url = oauth2Client.generateAuthUrl({

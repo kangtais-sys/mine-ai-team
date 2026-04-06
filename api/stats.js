@@ -1,5 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { readSheet } from './utils/sheets.js';
+import { getEcommerceData } from './utils/ga4.js';
 
 const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
@@ -128,7 +129,15 @@ export default async function handler(req, res) {
       }
     }
 
-    // === E. Follower growth (daily snapshots from KV) ===
+    // === E. GA4 자사몰 매출 ===
+    let ga4Revenue = null;
+    if (process.env.GA4_PROPERTY_ID) {
+      try {
+        ga4Revenue = { status: 'connected', ...(await getEcommerceData(process.env.GA4_PROPERTY_ID)) };
+      } catch (e) { ga4Revenue = { status: 'error', error: e.message }; }
+    }
+
+    // === F. Follower growth (daily snapshots from KV) ===
     const followerHistory = [];
     const now = new Date();
     for (let i = 6; i >= 0; i--) {
@@ -171,6 +180,7 @@ export default async function handler(req, res) {
       contentCount,
       engagement: { comments: Number(commentTotal) || 0, dm: Number(dmTotal) || 0 },
       oliveyoungRevenue,
+      ga4Revenue,
       followerHistory,
       activityLog: parsedLog,
       connections,
