@@ -68,12 +68,13 @@ export default function Sidebar({ page, onNavigate }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          fontSize: 15,
         }}>
-          <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>M</span>
+          💎
         </div>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5', lineHeight: 1.2 }}>MINE AI</div>
-          <div style={{ fontSize: 11, color: '#555', lineHeight: 1.2 }}>MILLIMILLI Team</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5', lineHeight: 1.2 }}>MILLI AI</div>
+          <div style={{ fontSize: 11, color: '#555', lineHeight: 1.2 }}>Millius Corp.</div>
         </div>
       </div>
 

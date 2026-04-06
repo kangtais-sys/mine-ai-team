@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Users, DollarSign, FileText, TrendingUp, ArrowUpRight, ArrowDownRight, Link2, CheckCircle2, AlertCircle, RefreshCw, MessageCircle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import useDashboardStore from '../store/dashboardStore';
 import { agents } from '../lib/agents';
 
@@ -32,7 +32,7 @@ function timeAgo(ts) {
 }
 
 export default function Dashboard() {
-  const { stats, revenueData, followerData, channelRevenue, fetchStats } = useDashboardStore();
+  const { stats, revenueData, channelRevenue, fetchStats } = useDashboardStore();
   const [googleStatus, setGoogleStatus] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -89,7 +89,7 @@ export default function Dashboard() {
     <>
       {/* Header */}
       <div style={{ height: 48, minHeight: 48, padding: '0 28px', display: 'flex', alignItems: 'center', borderBottom: '1px solid #1A1A1A', flexShrink: 0 }}>
-        <span style={{ fontSize: 15, fontWeight: 600, color: '#F5F5F5' }}>대시보드</span>
+        <span style={{ fontSize: 15, fontWeight: 600, color: '#F5F5F5' }}>MILLI AI 대시보드</span>
         <div style={{ flex: 1 }} />
         {googleStatus?.connected ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -108,8 +108,22 @@ export default function Dashboard() {
 
       {/* Scrollable Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
-        {/* Follower Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+        {/* Total Revenue Card */}
+        <div style={{ background: 'linear-gradient(135deg, #1a1a2e, #16213e)', border: '1px solid #5E6AD244', borderRadius: 10, padding: '24px 28px', marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>당월 누적 매출</div>
+              <div style={{ fontSize: 36, fontWeight: 700, color: '#FFF', letterSpacing: '-0.02em' }}>
+                {stats?.oliveyoungRevenue?.totalSales ? fmt(stats.oliveyoungRevenue.totalSales) + '원' : '-'}
+              </div>
+              <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>올리브영 실데이터 기준 (당월 누적)</div>
+            </div>
+            <DollarSign size={40} color="#5E6AD2" strokeWidth={1} />
+          </div>
+        </div>
+
+        {/* Follower Cards — 3 columns */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, marginBottom: 20 }}>
           <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <span style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5' }}>유민혜</span>
@@ -155,6 +169,23 @@ export default function Dashboard() {
             </div>
             <div style={{ fontSize: 9, color: '#444', marginTop: 6 }}>Zernio 실시간 연동</div>
           </div>
+          {/* 얼쎄라 */}
+          <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 20 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5', marginBottom: 14 }}>얼쎄라 (ULSERA)</div>
+            {[
+              { icon: 'IG', label: '인스타', value: null, color: '#E1306C' },
+              { icon: 'TT', label: '틱톡', value: null, color: '#69C9D0' },
+              { icon: 'TH', label: '쓰레드', value: null, color: '#999' },
+              { icon: 'YT', label: '유튜브', value: null, color: '#FF0000' },
+            ].map((ch, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < 3 ? '1px solid #1F1F1F' : 'none' }}>
+                <span style={{ fontSize: 10, color: ch.color, fontWeight: 600, width: 18 }}>{ch.icon}</span>
+                <span style={{ fontSize: 12, color: '#CCC', flex: 1 }}>{ch.label}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#FFF' }}>{ch.value != null && ch.value > 0 ? fmt(ch.value) : '-'}</span>
+              </div>
+            ))}
+            <div style={{ fontSize: 9, color: '#F59E0B', marginTop: 8 }}>Zernio 연결 대기 중</div>
+          </div>
         </div>
 
         {/* KPI Cards */}
@@ -178,7 +209,7 @@ export default function Dashboard() {
         </div>
 
         {/* Charts */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20, marginBottom: 24 }}>
           <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '24px 24px 16px' }}>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#F5F5F5', marginBottom: 16 }}>채널별 매출 추이</div>
             <ResponsiveContainer width="100%" height={220}>
@@ -197,31 +228,6 @@ export default function Dashboard() {
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div style={{ width: 8, height: 8, borderRadius: 2, background: barColors[i] }} />
                   <span style={{ fontSize: 12, color: '#666' }}>{name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '24px 24px 16px' }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#F5F5F5', marginBottom: 16 }}>팔로워 성장 추이</div>
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={followerData}>
-                <defs>
-                  <linearGradient id="gInsta" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#5E6AD2" stopOpacity={0.25} /><stop offset="100%" stopColor="#5E6AD2" stopOpacity={0} /></linearGradient>
-                  <linearGradient id="gTiktok" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7C6BDE" stopOpacity={0.15} /><stop offset="100%" stopColor="#7C6BDE" stopOpacity={0} /></linearGradient>
-                </defs>
-                <XAxis dataKey="month" stroke="#444" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#444" fontSize={12} tickLine={false} axisLine={false} width={36} tickFormatter={(v) => `${v / 10000}만`} />
-                <Tooltip contentStyle={tip} formatter={(v) => [fmt(v)]} cursor={{ stroke: '#333' }} />
-                <Area type="monotone" dataKey="인스타그램" stroke="#5E6AD2" strokeWidth={2} fill="url(#gInsta)" dot={false} />
-                <Area type="monotone" dataKey="틱톡" stroke="#7C6BDE" strokeWidth={2} fill="url(#gTiktok)" dot={false} />
-                <Area type="monotone" dataKey="유튜브" stroke="#9D8AE9" strokeWidth={1.5} fill="transparent" dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-            <div style={{ display: 'flex', gap: 16, marginTop: 8, paddingLeft: 36 }}>
-              {[{ name: '인스타그램', color: '#5E6AD2' }, { name: '틱톡', color: '#7C6BDE' }, { name: '유튜브', color: '#9D8AE9' }].map((ch, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 8, height: 3, borderRadius: 2, background: ch.color }} />
-                  <span style={{ fontSize: 12, color: '#666' }}>{ch.name}</span>
                 </div>
               ))}
             </div>

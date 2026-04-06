@@ -8,36 +8,39 @@ const redis = new Redis({
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  const result = { products: null, reviews: null, competitors: null };
+  const result = { rankings: null, reviews: null, suggestions: null };
 
-  // A. Millimilli products (from KV cache, populated by cron)
+  // A. Rankings (from KV cache)
   try {
-    const cached = await redis.get('brand:products');
-    if (cached) {
-      result.products = { status: 'connected', ...(typeof cached === 'string' ? JSON.parse(cached) : cached) };
-    } else {
-      result.products = { status: 'no_data', message: '크롤링 데이터 없음 - 다음 크론 실행 대기' };
-    }
-  } catch (e) { result.products = { status: 'error', error: e.message }; }
+    const cached = await redis.get('ranking:data');
+    result.rankings = cached
+      ? { status: 'connected', ...(typeof cached === 'string' ? JSON.parse(cached) : cached) }
+      : { status: 'no_data', message: '랭킹 데이터 수집 대기 중' };
+  } catch { result.rankings = { status: 'error' }; }
 
-  // B. Reviews
-  if (process.env.SNAPREVIEW_API_KEY) {
-    result.reviews = { status: 'connected', source: 'snapreview' };
-  } else if (process.env.CAFE24_CLIENT_ID) {
-    result.reviews = { status: 'connected', source: 'cafe24' };
-  } else {
-    result.reviews = { status: 'disconnected', message: '리뷰 API 연결 필요' };
-  }
-
-  // C. Competitors (from KV cache)
+  // B. Reviews (from KV, populated by review-monitor cron)
   try {
-    const competitors = await redis.get('brand:competitors');
-    if (competitors) {
-      result.competitors = { status: 'connected', ...(typeof competitors === 'string' ? JSON.parse(competitors) : competitors) };
-    } else {
-      result.competitors = { status: 'no_data', message: '경쟁사 데이터 수집 대기 중' };
-    }
-  } catch (e) { result.competitors = { status: 'error', error: e.message }; }
+    const cached = await redis.get('review:monitor');
+    result.reviews = cached
+      ? { status: 'connected', ...(typeof cached === 'string' ? JSON.parse(cached) : cached) }
+      : { status: 'no_data', message: '리뷰 모니터링 대기 중' };
+  } catch { result.reviews = { status: 'error' }; }
+
+  // C. Product suggestions (from KV, weekly AI analysis)
+  try {
+    const cached = await redis.get('product:suggestions');
+    result.suggestions = cached
+      ? { status: 'connected', ...(typeof cached === 'string' ? JSON.parse(cached) : cached) }
+      : { status: 'no_data', message: '주간 제안 대기 중' };
+  } catch { result.suggestions = { status: 'error' }; }
+
+  // Connection status summary
+  result.connections = {
+    oliveyoung: !!process.env.OLIVEYOUNG_SHEET_ID,
+    smartstore: !!process.env.NAVER_COMMERCE_CLIENT_ID,
+    cafe24: !!process.env.CAFE24_CLIENT_ID,
+    amazon: !!process.env.AMAZON_SELLER_ID,
+  };
 
   return res.status(200).json(result);
 }

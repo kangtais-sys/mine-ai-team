@@ -8,7 +8,10 @@
     { "path": "/api/cron/upload-pipeline", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/youtube-comments", "schedule": "*/30 * * * *" },
     { "path": "/api/scrape/instagram-followers", "schedule": "0 0 * * *" },
-    { "path": "/api/cron/refresh-token", "schedule": "0 0 1 * *" }
+    { "path": "/api/cron/refresh-token", "schedule": "0 0 1 * *" },
+    { "path": "/api/cron/gov-announcements", "schedule": "0 1 * * 1" },
+    { "path": "/api/cron/review-monitor", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/promo-calendar", "schedule": "0 2 * * 1" }
   ],
   "rewrites": [
     { "source": "/api/auth/google", "destination": "/api/auth/google" },
@@ -50,6 +53,9 @@
     { "source": "/api/agents/strategy", "destination": "/api/agents/strategy" },
     { "source": "/api/webhooks/zernio", "destination": "/api/webhooks/zernio" },
     { "source": "/api/cron/refresh-token", "destination": "/api/cron/refresh-token" },
+    { "source": "/api/cron/gov-announcements", "destination": "/api/cron/gov-announcements" },
+    { "source": "/api/cron/review-monitor", "destination": "/api/cron/review-monitor" },
+    { "source": "/api/cron/promo-calendar", "destination": "/api/cron/promo-calendar" },
     { "source": "/api/cs/kakao-webhook", "destination": "/api/cs/kakao-webhook" },
     { "source": "/api/cs/daily-report", "destination": "/api/cs/daily-report" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
