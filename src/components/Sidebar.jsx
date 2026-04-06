@@ -60,18 +60,10 @@ export default function Sidebar({ page, onNavigate }) {
         borderBottom: '1px solid #1A1A1A',
         flexShrink: 0,
       }}>
-        <div style={{
-          width: 28,
-          height: 28,
-          borderRadius: 8,
-          background: 'linear-gradient(135deg, #5E6AD2, #8B5CF6)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 15,
-        }}>
-          💎
-        </div>
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="28" height="28" rx="8" fill="white" fillOpacity="0.12"/>
+          <path d="M7 20V8L14 16L21 8V20" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
         <div>
           <div style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5', lineHeight: 1.2 }}>MILLI AI</div>
           <div style={{ fontSize: 11, color: '#555', lineHeight: 1.2 }}>Millius Corp.</div>
