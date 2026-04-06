@@ -158,26 +158,71 @@ const AGENT_DASHBOARDS = {
   chief: () => {
     const [data, setData] = useState(null);
     useEffect(() => { fetch('/api/agents/strategy').then(r => r.json()).then(setData).catch(() => {}); }, []);
-    const s = data?.summary || {};
     const c = data?.connections || {};
-    const connCount = Object.values(c).filter(v => v === 'connected').length;
+    const costs = data?.costs || {};
+    const report = data?.dailyReport;
     return (
       <>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <KpiCard label="활성 에이전트" value={`${connCount}/${Object.keys(c).length || 6}`} delta="실시간" up icon={Users} />
-          <KpiCard label="콘텐츠 발행" value={s.content ? `${s.content.thisMonth || 0}건/월` : '-'} up icon={FileText} />
-          <KpiCard label="댓글+DM" value={s.community ? `${(s.community.comments || 0) + (s.community.dm || 0)}건` : '-'} up icon={MessageCircle} />
-          <KpiCard label="광고비" value={s.adSpend ? `${fmt(s.adSpend)}원` : '-'} icon={DollarSign} />
+        {/* Core KPIs */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+          <KpiCard label="연결 상태" value={`${data?.connCount || 0}/${data?.totalConnections || 9}`} delta="실시간" up icon={Users} />
+          <KpiCard label="댓글+DM" value={data?.summary?.community ? `${(data.summary.community.comments||0)+(data.summary.community.dm||0)}건` : '-'} delta="누적" up icon={MessageCircle} />
+          <KpiCard label="API 호출" value={`${data?.claudeCalls?.today || 0}회`} delta="오늘" icon={Target} />
         </div>
-        <div style={{ marginTop: 12, background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>팀 연결 현황</div>
-          {Object.entries(c).map(([name, status], i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < Object.keys(c).length - 1 ? '1px solid #1F1F1F' : 'none' }}>
-              <div style={{ width: 6, height: 6, borderRadius: 3, background: status === 'connected' ? '#22C55E' : '#555', flexShrink: 0 }} />
-              <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{name}</span>
-              <span style={{ fontSize: 10, color: status === 'connected' ? '#22C55E' : '#555' }}>{status === 'connected' ? '연결됨' : '미연결'}</span>
+
+        {/* Connection status */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>API 연결 현황</div>
+          {Object.entries(c).map(([name, val], i) => {
+            const st = val?.status || val;
+            const color = st === 'connected' ? '#22C55E' : st === 'pending' ? '#F59E0B' : '#555';
+            const icon = st === 'connected' ? '🟢' : st === 'pending' ? '🟡' : '🔴';
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < Object.keys(c).length - 1 ? '1px solid #1F1F1F' : 'none' }}>
+                <span style={{ fontSize: 10 }}>{icon}</span>
+                <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{name}</span>
+                <span style={{ fontSize: 10, color }}>{st === 'connected' ? '정상' : st === 'pending' ? '대기' : '미연결'}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Monthly costs */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5' }}>월간 비용 현황</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#F59E0B' }}>${data?.totalCostUSD || '-'}/월</span>
+          </div>
+          {Object.values(costs).map((item, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < Object.values(costs).length - 1 ? '1px solid #1F1F1F' : 'none' }}>
+              <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{item.name}</span>
+              <span style={{ fontSize: 11, color: '#888' }}>
+                {item.currency === 'EUR' ? '\u20AC' : '$'}{item.amount}
+              </span>
+              {item.note && <span style={{ fontSize: 9, color: '#555' }}>{item.note}</span>}
             </div>
           ))}
+        </div>
+
+        {/* Token usage */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 8 }}>Claude API 사용량</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: '#FFF' }}>{data?.claudeCalls?.today || 0}<span style={{ fontSize: 12, color: '#555', fontWeight: 400 }}> calls today</span></div>
+          <div style={{ fontSize: 10, color: '#555', marginTop: 4 }}>예상 일비용: ~${((data?.claudeCalls?.today || 0) * 0.002).toFixed(3)}</div>
+          <div style={{ fontSize: 9, color: '#444', marginTop: 6 }}>절감 팁: 반복 댓글 캐싱, 배치 처리, 짧은 프롬프트</div>
+        </div>
+
+        {/* Daily report */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 8 }}>종합 일간 보고</div>
+          {report ? (
+            <>
+              <div style={{ fontSize: 11, color: '#CCC', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{report.report}</div>
+              <div style={{ fontSize: 9, color: '#444', marginTop: 6 }}>{report.date} · 매일 오전 8시 자동 생성</div>
+            </>
+          ) : (
+            <div style={{ fontSize: 11, color: '#555' }}>매일 오전 8시 자동 생성 (첫 보고 대기 중)</div>
+          )}
         </div>
       </>
     );

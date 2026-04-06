@@ -130,7 +130,8 @@ export default async function handler(req, res) {
       const persona = ACCOUNT_PERSONA[accountId] || 'millimilli';
       console.log(`[REPLY] 시작: platform=${platform}, commentId=${commentId}, author=${comment.author?.username}, persona=${persona}, text="${text.substring(0, 30)}"`);
 
-      // Generate reply with Claude
+      // Generate reply with Claude (track calls)
+      await redis.incr(`stat:claude:calls:${new Date().toISOString().slice(0, 10)}`);
       const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },

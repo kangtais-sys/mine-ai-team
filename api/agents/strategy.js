@@ -9,39 +9,59 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const baseUrl = `https://${req.headers.host || 'mine-ai-team.vercel.app'}`;
+    const today = new Date().toISOString().slice(0, 10);
 
-    const [creator, community, marketer, commerce, management, exportData] = await Promise.all([
-      fetch(`${baseUrl}/api/agents/creator`).then(r => r.json()).catch(() => null),
-      fetch(`${baseUrl}/api/agents/community`).then(r => r.json()).catch(() => null),
-      fetch(`${baseUrl}/api/agents/marketer`).then(r => r.json()).catch(() => null),
-      fetch(`${baseUrl}/api/agents/commerce`).then(r => r.json()).catch(() => null),
-      fetch(`${baseUrl}/api/agents/management`).then(r => r.json()).catch(() => null),
-      fetch(`${baseUrl}/api/agents/export`).then(r => r.json()).catch(() => null),
+    // Agent summaries (direct KV reads instead of self-fetch to avoid HTML issues)
+    const [commentTotal, dmTotal, claudeCallsToday] = await Promise.all([
+      redis.get('stat:comment:total'),
+      redis.get('stat:dm:total'),
+      redis.get(`stat:claude:calls:${today}`),
     ]);
 
-    const latestInsight = await redis.get('strategy:weekly-insight');
+    // Chief daily report
+    let dailyReport = null;
+    try {
+      const cached = await redis.get('chief:daily-report');
+      dailyReport = cached ? (typeof cached === 'string' ? JSON.parse(cached) : cached) : null;
+    } catch {}
+
+    // Connection status (from env vars)
+    const connections = {
+      zernio: { status: !!process.env.ZERNIO_API_KEY ? 'connected' : 'disconnected' },
+      google: { status: !!process.env.GOOGLE_REFRESH_TOKEN ? 'connected' : 'disconnected' },
+      meta: { status: !!process.env.INSTAGRAM_ACCESS_TOKEN ? 'connected' : 'disconnected' },
+      anthropic: { status: !!process.env.ANTHROPIC_API_KEY ? 'connected' : 'disconnected' },
+      cafe24: { status: !!(process.env.CAFE24_CLIENT_ID && process.env.CAFE24_MALL_ID) ? 'connected' : 'disconnected' },
+      ga4: { status: !!process.env.GA4_PROPERTY_ID ? 'connected' : 'disconnected' },
+      oliveyoung: { status: !!process.env.OLIVEYOUNG_SHEET_ID ? 'connected' : 'disconnected' },
+      naverAds: { status: !!process.env.NAVER_AD_API_KEY ? 'connected' : 'disconnected' },
+      happytalk: { status: !!process.env.HAPPYTALK_API_KEY ? 'connected' : 'pending' },
+    };
+
+    const connCount = Object.values(connections).filter(v => v.status === 'connected').length;
+
+    // Monthly costs estimate
+    const claudeCalls = Number(claudeCallsToday) || 0;
+    const costs = {
+      vercel: { name: 'Vercel Pro', amount: 20, currency: 'USD' },
+      n8n: { name: 'n8n Starter', amount: 24, currency: 'EUR' },
+      zernio: { name: 'Zernio', amount: 0, currency: 'USD', note: '플랜 확인 필요' },
+      anthropic: { name: 'Anthropic API', amount: Math.round(claudeCalls * 30 * 0.002 * 100) / 100, currency: 'USD', note: `~${claudeCalls}calls/day` },
+    };
+    const totalCostUSD = costs.vercel.amount + costs.n8n.amount * 1.1 + costs.anthropic.amount;
 
     return res.status(200).json({
       status: 'connected',
       summary: {
-        content: creator?.counts || null,
-        community: community?.totals || null,
-        adSpend: marketer?.totalSpend || 0,
-        metaAccounts: marketer?.meta?.accounts?.length || 0,
-        oliveyoung: commerce?.oliveyoung?.status || 'unknown',
-        employees: management?.employees?.active || 0,
-        exports: exportData?.exports?.totalOrders || 0,
+        community: { comments: Number(commentTotal) || 0, dm: Number(dmTotal) || 0 },
       },
-      connections: {
-        creator: creator?.status || 'unknown',
-        community: community?.status || 'unknown',
-        marketer: marketer?.meta?.status || 'unknown',
-        commerce: commerce?.oliveyoung?.status || 'unknown',
-        management: management?.employees?.status || 'unknown',
-        export: exportData?.exports?.status || 'unknown',
-      },
-      latestInsight: latestInsight ? (typeof latestInsight === 'string' ? JSON.parse(latestInsight) : latestInsight) : null,
+      connections,
+      connCount,
+      totalConnections: Object.keys(connections).length,
+      claudeCalls: { today: claudeCalls },
+      costs,
+      totalCostUSD: Math.round(totalCostUSD * 100) / 100,
+      dailyReport,
     });
   } catch (error) {
     return res.status(200).json({ status: 'error', error: error.message });
