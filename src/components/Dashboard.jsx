@@ -108,39 +108,54 @@ export default function Dashboard() {
 
       {/* Scrollable Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
-        {/* Total Revenue Card */}
-        <div style={{ background: 'linear-gradient(135deg, #1a1a2e, #16213e)', border: '1px solid #5E6AD244', borderRadius: 10, padding: '24px 28px', marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        {/* Revenue Card — unified */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '20px 24px', marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div>
-              <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>총 매출 (전체 채널 합산)</div>
-              <div style={{ fontSize: 40, fontWeight: 700, color: '#FFF', letterSpacing: '-0.02em' }}>
+              <div style={{ fontSize: 11, color: '#777' }}>당월 총 매출</div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: '#FFF', letterSpacing: '-0.02em', marginTop: 4 }}>
                 {stats?.totalRevenue ? fmt(stats.totalRevenue) + '원' : '-'}
               </div>
-              <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>당월 누적</div>
             </div>
-            <DollarSign size={44} color="#5E6AD2" strokeWidth={1} />
+            <DollarSign size={28} color="#5E6AD2" strokeWidth={1.5} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+            {[
+              { label: '올리브영', value: stats?.channelSales?.oliveyoung, color: '#5E6AD2' },
+              { label: '자사몰', value: stats?.channelSales?.ga4, color: '#7C6BDE' },
+              { label: '스마트스토어', value: stats?.channelSales?.smartstore, color: '#9D8AE9' },
+              { label: '해외수출', value: stats?.channelSales?.export, color: '#BBA8F4' },
+            ].map((ch, i) => (
+              <div key={i} style={{ background: '#1A1A1A', borderRadius: 6, padding: '8px 10px' }}>
+                <div style={{ fontSize: 9, color: '#666', marginBottom: 3 }}>{ch.label}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#FFF' }}>{ch.value ? fmt(ch.value) + '원' : '-'}</div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Channel Revenue Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
-          {[
-            { label: '올리브영', value: stats?.channelSales?.oliveyoung, color: '#5E6AD2' },
-            { label: '자사몰 (GA4)', value: stats?.channelSales?.ga4, color: '#7C6BDE' },
-            { label: '스마트스토어', value: stats?.channelSales?.smartstore, color: '#9D8AE9' },
-            { label: '해외수출', value: stats?.channelSales?.export, color: '#BBA8F4' },
-          ].map((ch, i) => (
-            <div key={i} style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '16px 18px' }}>
-              <div style={{ fontSize: 11, color: '#777', marginBottom: 6 }}>{ch.label}</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#FFF', letterSpacing: '-0.01em' }}>
-                {ch.value ? fmt(ch.value) + '원' : '-'}
+        {/* Monthly Revenue Chart */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '20px 24px 14px', marginBottom: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5', marginBottom: 14 }}>월별 매출 추이</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={revenueData} barGap={2}>
+              <XAxis dataKey="month" stroke="#444" fontSize={11} tickLine={false} axisLine={false} />
+              <YAxis stroke="#444" fontSize={10} tickLine={false} axisLine={false} width={40} tickFormatter={(v) => `${v / 10000000}천만`} />
+              <Tooltip contentStyle={tip} formatter={(v) => [`${fmt(v)}원`]} cursor={{ fill: 'rgba(255,255,255,0.02)' }} />
+              <Bar dataKey="올리브영" fill="#5E6AD2" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="스마트스토어" fill="#7C6BDE" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="자사몰" fill="#9D8AE9" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="해외" fill="#BBA8F4" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+          <div style={{ display: 'flex', gap: 14, marginTop: 6, paddingLeft: 40 }}>
+            {[['올리브영','#5E6AD2'],['스마트스토어','#7C6BDE'],['자사몰','#9D8AE9'],['해외','#BBA8F4']].map(([n,c],i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ width: 6, height: 6, borderRadius: 2, background: c }} />
+                <span style={{ fontSize: 10, color: '#555' }}>{n}</span>
               </div>
-              <div style={{ fontSize: 9, color: '#444', marginTop: 4 }}>당월 누적</div>
-              <div style={{ height: 3, background: '#1F1F1F', borderRadius: 2, marginTop: 8, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: stats?.totalRevenue ? `${Math.min((ch.value || 0) / stats.totalRevenue * 100, 100)}%` : '0%', background: ch.color, borderRadius: 2 }} />
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         {/* Follower Cards — 3 columns */}
@@ -227,32 +242,6 @@ export default function Dashboard() {
               </div>
             );
           })}
-        </div>
-
-        {/* Charts */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20, marginBottom: 24 }}>
-          <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '24px 24px 16px' }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#F5F5F5', marginBottom: 16 }}>채널별 매출 추이</div>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={revenueData} barGap={2}>
-                <XAxis dataKey="month" stroke="#444" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#444" fontSize={12} tickLine={false} axisLine={false} width={42} tickFormatter={(v) => `${v / 10000000}천만`} />
-                <Tooltip contentStyle={tip} formatter={(v) => [`${fmt(v)}원`]} cursor={{ fill: 'rgba(255,255,255,0.02)' }} />
-                <Bar dataKey="올리브영" fill={barColors[0]} radius={[3, 3, 0, 0]} />
-                <Bar dataKey="스마트스토어" fill={barColors[1]} radius={[3, 3, 0, 0]} />
-                <Bar dataKey="자사몰" fill={barColors[2]} radius={[3, 3, 0, 0]} />
-                <Bar dataKey="해외" fill={barColors[3]} radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-            <div style={{ display: 'flex', gap: 16, marginTop: 8, paddingLeft: 42 }}>
-              {['올리브영', '스마트스토어', '자사몰', '해외'].map((name, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: 2, background: barColors[i] }} />
-                  <span style={{ fontSize: 12, color: '#666' }}>{name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Bottom Row */}
