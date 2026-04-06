@@ -7,12 +7,14 @@ const redis = new Redis({
 });
 
 async function getRefreshToken() {
-  // 1. Try env var first
+  // 1. KV first (updated by OAuth callback, has latest scopes)
+  try {
+    const kvToken = await redis.get('google:refresh_token');
+    if (kvToken) return kvToken;
+  } catch {}
+  // 2. Fallback to env var
   if (process.env.GOOGLE_REFRESH_TOKEN) return process.env.GOOGLE_REFRESH_TOKEN;
-  // 2. Fallback to KV (updated by OAuth callback)
-  const kvToken = await redis.get('google:refresh_token');
-  if (kvToken) return kvToken;
-  throw new Error('Google refresh token not found (env or KV)');
+  throw new Error('Google refresh token not found (KV or env)');
 }
 
 let cachedToken = null;

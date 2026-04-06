@@ -83,9 +83,13 @@ export default async function handler(req, res) {
       if (!saved) {
         console.log('[OAuth] refresh_token (manual update needed):', tokens.refresh_token.substring(0, 20) + '...');
       }
-      // Also save to KV as backup (ga4.js can read from here)
-      await redis.set('google:refresh_token', tokens.refresh_token);
-      console.log('[OAuth] refresh_token saved to KV');
+      // Save to KV (primary source for GA4/Sheets with latest scopes)
+      try {
+        await redis.set('google:refresh_token', tokens.refresh_token);
+        console.log('[OAuth] refresh_token saved to KV, length:', tokens.refresh_token.length);
+      } catch (kvErr) {
+        console.error('[OAuth] KV save failed:', kvErr.message);
+      }
     }
 
     // Also store in cookies for immediate use
