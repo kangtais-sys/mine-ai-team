@@ -7,19 +7,18 @@ export default function handler(req, res) {
       return res.status(500).json({ error: 'CAFE24_CLIENT_ID not set' });
     }
 
-    const host = (req.headers?.host || 'mine-ai-team.vercel.app').trim();
-    const redirectUri = encodeURIComponent(`https://${host}/api/auth/cafe24-callback`);
-    const scope = 'mall.read_order,mall.read_product,mall.read_store,mall.read_analytics';
+    const redirectUri = encodeURIComponent('https://mine-ai-team.vercel.app/api/auth/cafe24-callback');
+    const scope = encodeURIComponent('mall.read_order,mall.read_product,mall.read_store,mall.read_analytics');
 
-    const url = `https://${mallId}.cafe24.com/disp/common/oauth/authorize?response_type=code&client_id=${clientId}&state=mine-ai-team&redirect_uri=${redirectUri}&scope=${scope}`;
+    const authUrl = `https://${mallId}.cafe24.com/disp/common/oauth/authorize?response_type=code&client_id=${clientId}&state=mine-ai-team&redirect_uri=${redirectUri}&scope=${scope}`;
 
-    // Ensure URL is ASCII-safe for Location header
-    const safeUrl = new URL(url).href;
+    console.log('[Cafe24 Auth] URL:', authUrl);
 
-    console.log('[Cafe24 Auth] Redirecting to:', safeUrl.substring(0, 120));
-    return res.redirect(302, safeUrl);
+    // HTML meta refresh — Location 헤더 문제 우회
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.end(`<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=${authUrl}"><title>Redirecting...</title></head><body><p>Redirecting to Cafe24...</p><p><a href="${authUrl}">Click here</a></p></body></html>`);
   } catch (error) {
     console.error('[Cafe24 Auth] Error:', error.message);
-    return res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message });
   }
 }
