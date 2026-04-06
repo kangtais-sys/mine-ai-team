@@ -435,21 +435,66 @@ const AGENT_DASHBOARDS = {
   cs: () => {
     const [d, setD] = useState(null);
     useEffect(() => { fetch('/api/agents/cs').then(r => r.json()).then(setD).catch(() => {}); }, []);
-    if (d?.status === 'pending') return (
-      <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 20, textAlign: 'center' }}>
-        <div style={{ fontSize: 13, color: '#F59E0B', marginBottom: 8 }}>해피톡 API 연동 준비 중</div>
-        <div style={{ fontSize: 11, color: '#555' }}>HAPPYTALK_API_KEY 환경변수 설정 후 활성화됩니다</div>
-        <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'center' }}>
-          <span style={{ fontSize: 10, color: d.channels?.millimilli === 'configured' ? '#22C55E' : '#555' }}>밀리밀리: {d.channels?.millimilli || 'pending'}</span>
-          <span style={{ fontSize: 10, color: d.channels?.lalaLounge === 'configured' ? '#22C55E' : '#555' }}>랄라라운지: {d.channels?.lalaLounge || 'pending'}</span>
-        </div>
-      </div>
-    );
+    const ts = d?.typeStats || {};
+    const typeTotal = ts.exchange + ts.delivery + ts.product + ts.other || 1;
+    const ch = d?.channels || {};
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <KpiCard label="상태" value={d?.status || '-'} icon={Headphones} />
-        <KpiCard label="채널" value={`${d?.channels?.length || 0}개`} icon={MessageCircle} />
-      </div>
+      <>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <KpiCard label="오늘 문의" value={`${d?.today?.total || 0}건`} delta="오늘 누적" up icon={Headphones} />
+          <KpiCard label="당월 문의" value={`${d?.monthly?.total || 0}건`} delta="당월 누적" up icon={Headphones} />
+          <KpiCard label="완료" value={`${d?.today?.done || 0}건`} delta="오늘" up icon={CheckCircle2} />
+          <KpiCard label="미완료" value={`${d?.today?.pending || 0}건`} delta="오늘" up={false} icon={Clock} />
+        </div>
+        {/* Type breakdown */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>상담 유형 (오늘)</div>
+          {[
+            { label: '교환/반품', key: 'exchange', color: '#EF4444' },
+            { label: '배송문의', key: 'delivery', color: '#F59E0B' },
+            { label: '제품문의', key: 'product', color: '#5E6AD2' },
+            { label: '기타', key: 'other', color: '#555' },
+          ].map((t, i) => (
+            <div key={i} style={{ marginBottom: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                <span style={{ fontSize: 11, color: '#CCC' }}>{t.label}</span>
+                <span style={{ fontSize: 11, color: '#888' }}>{ts[t.key] || 0}건</span>
+              </div>
+              <div style={{ height: 3, background: '#1F1F1F', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${((ts[t.key] || 0) / typeTotal) * 100}%`, background: t.color, borderRadius: 2 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Commerce CS channels */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>채널별 CS 현황</div>
+          {[
+            { label: '카페24', key: 'cafe24' },
+            { label: '스마트스토어', key: 'smartstore' },
+            { label: '아마존', key: 'amazon' },
+            { label: '쇼피', key: 'shopee' },
+          ].map((c, i) => {
+            const s = ch[c.key] || {};
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < 3 ? '1px solid #1F1F1F' : 'none' }}>
+                <span style={{ fontSize: 11 }}>{s.status === 'connected' ? '🟢' : '🔴'}</span>
+                <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{c.label}</span>
+                <span style={{ fontSize: 10, color: s.status === 'connected' ? '#888' : '#555' }}>
+                  {s.status === 'connected' ? `미처리 ${s.pending || '-'}건` : '미연결'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        {/* Happytalk + Kakao banner */}
+        <div style={{ background: '#141414', border: '1px solid #F59E0B33', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 11, color: '#F59E0B', marginBottom: 4 }}>
+            {d?.happytalk?.status === 'connected' ? '🟢 해피톡 연동됨' : '🟡 해피톡 연동 준비 중'}
+          </div>
+          <div style={{ fontSize: 10, color: '#555' }}>카카오톡 채널 CS: 추후 검토 예정</div>
+        </div>
+      </>
     );
   },
 
