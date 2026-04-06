@@ -8,7 +8,7 @@ export default function handler(req, res) {
     }
 
     const redirectUri = 'https://mine-ai-team.vercel.app/api/auth/cafe24-callback';
-    const scope = 'mall.read_order,mall.read_product,mall.read_store';
+    const scope = 'mall.read_order';
 
     const params = new URLSearchParams({
       response_type: 'code',
