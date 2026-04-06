@@ -109,17 +109,38 @@ export default function Dashboard() {
       {/* Scrollable Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
         {/* Total Revenue Card */}
-        <div style={{ background: 'linear-gradient(135deg, #1a1a2e, #16213e)', border: '1px solid #5E6AD244', borderRadius: 10, padding: '24px 28px', marginBottom: 20 }}>
+        <div style={{ background: 'linear-gradient(135deg, #1a1a2e, #16213e)', border: '1px solid #5E6AD244', borderRadius: 10, padding: '24px 28px', marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>당월 누적 매출</div>
-              <div style={{ fontSize: 36, fontWeight: 700, color: '#FFF', letterSpacing: '-0.02em' }}>
-                {stats?.oliveyoungRevenue?.totalSales ? fmt(stats.oliveyoungRevenue.totalSales) + '원' : '-'}
+              <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>총 매출 (전체 채널 합산)</div>
+              <div style={{ fontSize: 40, fontWeight: 700, color: '#FFF', letterSpacing: '-0.02em' }}>
+                {stats?.totalRevenue ? fmt(stats.totalRevenue) + '원' : '-'}
               </div>
-              <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>올리브영 실데이터 기준 (당월 누적)</div>
+              <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>당월 누적</div>
             </div>
-            <DollarSign size={40} color="#5E6AD2" strokeWidth={1} />
+            <DollarSign size={44} color="#5E6AD2" strokeWidth={1} />
           </div>
+        </div>
+
+        {/* Channel Revenue Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+          {[
+            { label: '올리브영', value: stats?.channelSales?.oliveyoung, color: '#5E6AD2' },
+            { label: '자사몰 (GA4)', value: stats?.channelSales?.ga4, color: '#7C6BDE' },
+            { label: '스마트스토어', value: stats?.channelSales?.smartstore, color: '#9D8AE9' },
+            { label: '해외수출', value: stats?.channelSales?.export, color: '#BBA8F4' },
+          ].map((ch, i) => (
+            <div key={i} style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '16px 18px' }}>
+              <div style={{ fontSize: 11, color: '#777', marginBottom: 6 }}>{ch.label}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#FFF', letterSpacing: '-0.01em' }}>
+                {ch.value ? fmt(ch.value) + '원' : '-'}
+              </div>
+              <div style={{ fontSize: 9, color: '#444', marginTop: 4 }}>당월 누적</div>
+              <div style={{ height: 3, background: '#1F1F1F', borderRadius: 2, marginTop: 8, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: stats?.totalRevenue ? `${Math.min((ch.value || 0) / stats.totalRevenue * 100, 100)}%` : '0%', background: ch.color, borderRadius: 2 }} />
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Follower Cards — 3 columns */}

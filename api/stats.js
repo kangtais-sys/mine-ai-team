@@ -174,6 +174,15 @@ export default async function handler(req, res) {
       ga4: { connected: !!process.env.GA4_PROPERTY_ID },
     };
 
+    // === Total Revenue (all channels) ===
+    const channelSales = {
+      oliveyoung: oliveyoungRevenue?.totalSales || 0,
+      ga4: ga4Revenue?.revenue || 0,
+      smartstore: 0, // 연동 전
+      export: 0, // 수출 시트에서 별도 계산 필요
+    };
+    const totalRevenue = channelSales.oliveyoung + channelSales.ga4 + channelSales.smartstore + channelSales.export;
+
     return res.status(200).json({
       yuminhye,
       millimilli,
@@ -181,6 +190,8 @@ export default async function handler(req, res) {
       engagement: { comments: Number(commentTotal) || 0, dm: Number(dmTotal) || 0 },
       oliveyoungRevenue,
       ga4Revenue,
+      totalRevenue,
+      channelSales,
       followerHistory,
       activityLog: parsedLog,
       connections,
