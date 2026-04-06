@@ -1,4 +1,10 @@
 import { google } from 'googleapis';
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
 // Save env var to Vercel via REST API
 async function saveToVercelEnv(key, value) {
@@ -73,7 +79,13 @@ export default async function handler(req, res) {
 
     // Save refresh_token to Vercel env vars (so Cron can use it)
     if (tokens.refresh_token) {
-      await saveToVercelEnv('GOOGLE_REFRESH_TOKEN', tokens.refresh_token);
+      const saved = await saveToVercelEnv('GOOGLE_REFRESH_TOKEN', tokens.refresh_token);
+      if (!saved) {
+        console.log('[OAuth] refresh_token (manual update needed):', tokens.refresh_token.substring(0, 20) + '...');
+      }
+      // Also save to KV as backup (ga4.js can read from here)
+      await redis.set('google:refresh_token', tokens.refresh_token);
+      console.log('[OAuth] refresh_token saved to KV');
     }
 
     // Also store in cookies for immediate use
