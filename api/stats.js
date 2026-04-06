@@ -111,6 +111,17 @@ export default async function handler(req, res) {
           byDate[date].qty += Number(r[6]) || 0;
         }
 
+        // 월별 집계 (2026년)
+        const byMonth = {};
+        for (const r of dataRows) {
+          const date = r[1] || '';
+          if (date.length >= 6) {
+            const ym = date.slice(0, 6); // YYYYMM
+            const monthKey = `${ym.slice(0, 4)}-${ym.slice(4, 6)}`;
+            byMonth[monthKey] = (byMonth[monthKey] || 0) + (Number((r[5] || '0').replace(/,/g, '')) || 0);
+          }
+        }
+
         oliveyoungRevenue = {
           status: 'connected',
           totalRows: dataRows.length,
@@ -118,6 +129,7 @@ export default async function handler(req, res) {
           totalQty,
           totalShipment,
           byDate,
+          byMonth,
         };
       } catch (e) {
         const msg = e.message || '';
@@ -183,6 +195,13 @@ export default async function handler(req, res) {
     };
     const totalRevenue = channelSales.oliveyoung + channelSales.ga4 + channelSales.smartstore + channelSales.export;
 
+    // Monthly revenue array for chart (Jan-Dec 2026)
+    const monthNames = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+    const monthlyRevenue = monthNames.map((name, i) => {
+      const key = `2026-${String(i + 1).padStart(2, '0')}`;
+      return { month: name, total: (oliveyoungRevenue?.byMonth?.[key] || 0) + (i + 1 <= new Date().getMonth() + 1 ? (ga4Revenue?.revenue || 0) / Math.max(new Date().getMonth() + 1, 1) : 0) };
+    }).filter((_, i) => i < new Date().getMonth() + 1);
+
     return res.status(200).json({
       yuminhye,
       millimilli,
@@ -192,6 +211,7 @@ export default async function handler(req, res) {
       ga4Revenue,
       totalRevenue,
       channelSales,
+      monthlyRevenue,
       followerHistory,
       activityLog: parsedLog,
       connections,

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Users, DollarSign, FileText, TrendingUp, ArrowUpRight, ArrowDownRight, Link2, CheckCircle2, AlertCircle, RefreshCw, MessageCircle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import useDashboardStore from '../store/dashboardStore';
 import { agents } from '../lib/agents';
 
@@ -108,15 +108,15 @@ export default function Dashboard() {
 
       {/* Scrollable Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
-        {/* Revenue — 2 column layout */}
-        <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 16, marginBottom: 20 }}>
-          {/* Left: Total + Channel breakdown */}
+        {/* Revenue — 2 column: left 40% summary, right 60% line chart */}
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 3fr', gap: 16, marginBottom: 20 }}>
+          {/* Left: Total + channels */}
           <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '20px 22px', display: 'flex', flexDirection: 'column' }}>
             <div style={{ fontSize: 11, color: '#777' }}>당월 총 매출</div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: '#FFF', letterSpacing: '-0.02em', marginTop: 6, marginBottom: 16 }}>
+            <div style={{ fontSize: 28, fontWeight: 700, color: '#FFF', letterSpacing: '-0.02em', marginTop: 6, marginBottom: 16 }}>
               {stats?.totalRevenue ? fmt(stats.totalRevenue) + '원' : '-'}
             </div>
-            <div style={{ borderTop: '1px solid #242424', paddingTop: 12, flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ borderTop: '1px solid #242424', paddingTop: 12, flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {[
                 { label: '올리브영', value: stats?.channelSales?.oliveyoung, color: '#5E6AD2' },
                 { label: '자사몰', value: stats?.channelSales?.ga4, color: '#7C6BDE' },
@@ -134,27 +134,18 @@ export default function Dashboard() {
             </div>
             <div style={{ fontSize: 9, color: '#444', marginTop: 10 }}>당월 누적</div>
           </div>
-          {/* Right: Monthly chart */}
-          <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '20px 22px 12px' }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#F5F5F5', marginBottom: 12 }}>월별 매출 추이</div>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={revenueData} barGap={2}>
-                <XAxis dataKey="month" stroke="#444" fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis stroke="#444" fontSize={9} tickLine={false} axisLine={false} width={36} tickFormatter={(v) => `${v / 10000000}천만`} />
-                <Tooltip contentStyle={tip} formatter={(v) => [`${fmt(v)}원`]} cursor={{ fill: 'rgba(255,255,255,0.02)' }} />
-                <Bar dataKey="올리브영" fill="#5E6AD2" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="스마트스토어" fill="#7C6BDE" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="자사몰" fill="#9D8AE9" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="해외" fill="#BBA8F4" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-            <div style={{ display: 'flex', gap: 12, marginTop: 4, paddingLeft: 36 }}>
-              {[['올리브영','#5E6AD2'],['스마트스토어','#7C6BDE'],['자사몰','#9D8AE9'],['해외','#BBA8F4']].map(([n,c],i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <div style={{ width: 5, height: 5, borderRadius: 2, background: c }} />
-                  <span style={{ fontSize: 9, color: '#555' }}>{n}</span>
-                </div>
-              ))}
+          {/* Right: 2026 monthly line chart */}
+          <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '20px 22px 12px', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#F5F5F5', marginBottom: 12 }}>2026 월별 매출 추이</div>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <ResponsiveContainer width="100%" height={170}>
+                <LineChart data={stats?.monthlyRevenue || revenueData.map(d => ({ month: d.month, total: (d['올리브영']||0) + (d['스마트스토어']||0) + (d['자사몰']||0) + (d['해외']||0) }))}>
+                  <XAxis dataKey="month" stroke="#444" fontSize={10} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#444" fontSize={9} tickLine={false} axisLine={false} width={36} tickFormatter={(v) => v >= 10000 ? `${(v/10000).toFixed(0)}만` : v} />
+                  <Tooltip contentStyle={tip} formatter={(v) => [`${fmt(v)}원`, '총매출']} cursor={{ stroke: '#333' }} />
+                  <Line type="monotone" dataKey="total" stroke="#5E6AD2" strokeWidth={2} dot={{ r: 3, fill: '#5E6AD2' }} activeDot={{ r: 5 }} />
+                </LineChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>
