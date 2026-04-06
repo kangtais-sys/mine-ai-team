@@ -1,6 +1,12 @@
 import { readSheet } from '../utils/sheets.js';
 import { getOrders, getOrderCount } from '../utils/cafe24.js';
 import { getEcommerceData } from '../utils/ga4.js';
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
@@ -92,6 +98,18 @@ export default async function handler(req, res) {
   result.tiktokShop = process.env.TIKTOK_SHOP_APP_KEY && process.env.TIKTOK_SHOP_ACCESS_TOKEN
     ? { status: 'connected' }
     : { status: 'disconnected', message: '틱톡샵 연결 필요' };
+
+  // Promotions calendar (from KV)
+  try {
+    const cached = await redis.get('commerce:promotions');
+    result.promotions = cached ? (typeof cached === 'string' ? JSON.parse(cached) : cached) : null;
+  } catch {}
+
+  // Daily suggestions (from KV)
+  try {
+    const cached = await redis.get('md:daily-suggestions');
+    result.dailySuggestions = cached ? (typeof cached === 'string' ? JSON.parse(cached) : cached) : null;
+  } catch {}
 
   return res.status(200).json(result);
 }

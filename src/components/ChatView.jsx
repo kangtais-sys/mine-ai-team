@@ -584,20 +584,84 @@ const AGENT_DASHBOARDS = {
     useEffect(() => { fetch('/api/agents/commerce').then(r => r.json()).then(setD).catch(() => {}); }, []);
     const channels = ['oliveyoung', 'smartstore', 'cafe24', 'amazon', 'shopee', 'qoo10', 'tiktokShop'];
     const labels = { oliveyoung: '올리브영', smartstore: '스마트스토어', cafe24: '카페24', amazon: '아마존', shopee: '쇼피', qoo10: '큐텐', tiktokShop: '틱톡샵' };
+    const now = new Date();
+    const year = now.getFullYear(), month = now.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDay = new Date(year, month, 1).getDay();
+    const promos = d?.promotions?.upcoming || d?.promotions?.thisMonth || [];
+    const importColor = { high: '#EF4444', medium: '#F59E0B', low: '#555' };
+    // Map promos to calendar dates
+    const promoByDate = {};
+    for (const p of promos) {
+      const pd = p.date?.slice(8, 10);
+      if (pd && p.date?.startsWith(`${year}-${String(month+1).padStart(2,'0')}`)) promoByDate[Number(pd)] = p;
+    }
     return (
       <>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <KpiCard label="올리브영" value={d?.oliveyoung?.status === 'connected' ? `${d.oliveyoung.rowCount}행` : '미연결'} delta={d?.oliveyoung?.status === 'connected' ? '구글시트 연동' : ''} up icon={ShoppingCart} />
+        {/* Promo Calendar */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>
+            {year}년 {month+1}월 프로모션 캘린더
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, textAlign: 'center' }}>
+            {['일','월','화','수','목','금','토'].map(dd => (
+              <div key={dd} style={{ fontSize: 9, color: '#555', padding: '2px 0' }}>{dd}</div>
+            ))}
+            {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} />)}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const day = i + 1;
+              const promo = promoByDate[day];
+              const isToday = day === now.getDate();
+              return (
+                <div key={day} title={promo?.name || ''} style={{
+                  padding: '3px 0', borderRadius: 4, fontSize: 10, cursor: promo ? 'pointer' : 'default',
+                  background: isToday ? '#5E6AD222' : promo ? `${importColor[promo.importance] || '#555'}15` : 'transparent',
+                  color: isToday ? '#5E6AD2' : promo ? '#FFF' : '#444',
+                  fontWeight: isToday || promo ? 600 : 400,
+                  border: promo ? `1px solid ${importColor[promo.importance] || '#555'}44` : '1px solid transparent',
+                }}>
+                  {day}
+                  {promo && <div style={{ width: 4, height: 4, borderRadius: 2, background: importColor[promo.importance] || '#555', margin: '1px auto 0' }} />}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 9, color: '#555' }}>
+            <span><span style={{ color: '#EF4444' }}>●</span> 대형</span>
+            <span><span style={{ color: '#F59E0B' }}>●</span> 중요</span>
+            <span><span style={{ color: '#555' }}>●</span> 보통</span>
+          </div>
         </div>
-        <div style={{ marginTop: 12, background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>판매 채널 연결 현황</div>
+
+        {/* Upcoming promos list */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>다가오는 프로모션</div>
+          {promos.slice(0, 5).map((p, i) => {
+            const pDate = new Date(p.date);
+            const dDay = Math.ceil((pDate - now) / 86400000);
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < Math.min(promos.length, 5) - 1 ? '1px solid #1F1F1F' : 'none' }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: importColor[p.importance] || '#555', width: 32 }}>
+                  {dDay >= 0 ? `D-${dDay}` : 'END'}
+                </span>
+                <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{p.name}</span>
+                <span style={{ fontSize: 9, color: '#555' }}>{p.channel}</span>
+              </div>
+            );
+          })}
+          {promos.length === 0 && <div style={{ fontSize: 11, color: '#555' }}>매주 월요일 자동 업데이트</div>}
+        </div>
+
+        {/* Channel status */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>판매 채널</div>
           {channels.map((ch, i) => {
             const s = d?.[ch] || {};
             return (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < channels.length - 1 ? '1px solid #1F1F1F' : 'none' }}>
                 <span style={{ fontSize: 11 }}>{s.status === 'connected' ? '🟢' : '🔴'}</span>
                 <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{labels[ch]}</span>
-                <span style={{ fontSize: 10, color: s.status === 'connected' ? '#22C55E' : '#555' }}>{s.status === 'connected' ? '연결됨' : s.message || '미연결'}</span>
+                <span style={{ fontSize: 10, color: s.status === 'connected' ? '#22C55E' : '#555' }}>{s.status === 'connected' ? '연결됨' : '미연결'}</span>
               </div>
             );
           })}
