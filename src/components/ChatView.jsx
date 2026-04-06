@@ -97,14 +97,58 @@ function ApiStatusPanel({ agent }) {
 
 function CommunityKpis() {
   const [d, setD] = useState(null);
+  const [platTab, setPlatTab] = useState('all');
   useEffect(() => { fetch('/api/agents/community').then(r => r.json()).then(setD).catch(() => {}); }, []);
+  const ts = d?.typeStats || {};
+  const typeTotal = ts.event + ts.product + ts.claim + ts.other || 1;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-      <KpiCard label="오늘 댓글" value={d ? `${d.today?.comments || 0}건` : '-'} delta={d?.today?.byPlatform ? `IG${d.today.byPlatform.instagram} YT${d.today.byPlatform.youtube} TT${d.today.byPlatform.tiktok}` : '로딩 중'} up icon={MessageCircle} />
-      <KpiCard label="오늘 DM" value={d ? `${d.today?.dm || 0}건` : '-'} up icon={MessageCircle} />
-      <KpiCard label="총 댓글" value={d ? `${d.totals?.comments || 0}건` : '-'} delta="KV 누적" up icon={CheckCircle2} />
-      <KpiCard label="총 DM" value={d ? `${d.totals?.dm || 0}건` : '-'} delta="KV 누적" up icon={Users} />
-    </div>
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <KpiCard label="오늘 댓글" value={d ? `${d.today?.comments || 0}건` : '-'} delta="오늘 누적" up icon={MessageCircle} />
+        <KpiCard label="오늘 DM" value={d ? `${d.today?.dm || 0}건` : '-'} delta="오늘 누적" up icon={MessageCircle} />
+        <KpiCard label="당월 댓글" value={d ? `${d.monthly?.comments || 0}건` : '-'} delta="당월 누적" up icon={CheckCircle2} />
+        <KpiCard label="당월 DM" value={d ? `${d.monthly?.dm || 0}건` : '-'} delta="당월 누적" up icon={Users} />
+      </div>
+      {/* Type breakdown */}
+      <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>댓글 유형 분류 (오늘)</div>
+        {[
+          { label: '이벤트 참여', key: 'event', color: '#5E6AD2' },
+          { label: '상품/배송 문의', key: 'product', color: '#7C6BDE' },
+          { label: '클레임', key: 'claim', color: '#EF4444' },
+          { label: '기타', key: 'other', color: '#555' },
+        ].map((t, i) => (
+          <div key={i} style={{ marginBottom: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+              <span style={{ fontSize: 11, color: '#CCC' }}>{t.label}</span>
+              <span style={{ fontSize: 11, color: '#888' }}>{ts[t.key] || 0}건</span>
+            </div>
+            <div style={{ height: 3, background: '#1F1F1F', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${((ts[t.key] || 0) / typeTotal) * 100}%`, background: t.color, borderRadius: 2 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Platform tabs + recent comments */}
+      <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          {[['all','전체'],['instagram','인스타'],['youtube','유튜브'],['threads','쓰레드']].map(([id,label]) => (
+            <button key={id} onClick={() => setPlatTab(id)} style={{ fontSize: 10, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: platTab === id ? '#5E6AD2' : '#1A1A1A', color: platTab === id ? '#FFF' : '#777' }}>{label}</button>
+          ))}
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 8 }}>최근 댓글</div>
+        {(d?.recentComments || []).filter(c => platTab === 'all' || c.platform === platTab).slice(0, 6).map((c, i) => (
+          <div key={i} style={{ display: 'flex', gap: 8, padding: '5px 0', borderBottom: i < 5 ? '1px solid #1F1F1F' : 'none' }}>
+            <span style={{ fontSize: 9, color: '#5E6AD2', width: 16, flexShrink: 0 }}>{c.platform?.slice(0,2).toUpperCase()}</span>
+            <span style={{ fontSize: 10, color: '#CCC', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.text}</span>
+            <span style={{ fontSize: 9, color: '#555', flexShrink: 0 }}>{c.date?.slice(5,10)}</span>
+          </div>
+        ))}
+        {(!d?.recentComments || d.recentComments.length === 0) && (
+          <div style={{ fontSize: 11, color: '#555', padding: '8px 0' }}>댓글 데이터 로딩 중...</div>
+        )}
+      </div>
+    </>
   );
 }
 

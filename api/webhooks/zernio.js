@@ -189,14 +189,22 @@ export default async function handler(req, res) {
 
       console.log(`[${platform}] ${persona} 댓글 응대: "${reply.substring(0, 40)}" → ${replyStatus}`);
 
+      // Classify comment type
+      const lowerText = text.toLowerCase();
+      const commentType = /이벤트|당첨|참여|응모|태그/.test(lowerText) ? 'event'
+        : /배송|주문|구매|가격|환불|교환|반품/.test(lowerText) ? 'product'
+        : /불량|불만|클레임|사기|신고/.test(lowerText) ? 'claim'
+        : 'other';
+
       // KV stats + activity log + dedup mark (only on success)
       if (replyStatus.startsWith('sent')) {
         const today = new Date().toISOString().slice(0, 10);
         const platLabel = platform === 'instagram' ? '인스타' : platform === 'youtube' ? '유튜브' : '틱톡';
         await Promise.all([
-          redis.set(dupeKey, true, { ex: 86400 }), // Mark as replied AFTER success
+          redis.set(dupeKey, true, { ex: 86400 }),
           redis.incr('stat:comment:total'),
           redis.incr(`stat:comment:${platform}:${today}`),
+          redis.incr(`stat:comment:type:${commentType}:${today}`),
           redis.lpush('activity:log', JSON.stringify({
             agent: 'AI 커뮤니티', action: `${platLabel} 댓글 자동 답글`,
             detail: `@${comment.author?.username}의 댓글에 답글`, timestamp: Date.now(),
