@@ -557,22 +557,66 @@ const AGENT_DASHBOARDS = {
   admin: () => {
     const [d, setD] = useState(null);
     useEffect(() => { fetch('/api/agents/management').then(r => r.json()).then(setD).catch(() => {}); }, []);
+    const voucher = d?.exportVoucher;
+    const govItems = d?.govAnnouncements?.items || [];
+    const now = new Date();
     return (
       <>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <KpiCard label="직원 (재직)" value={d?.employees?.status === 'connected' ? `${d.employees.active}명` : '미연결'} delta={d?.employees?.expiringSoon?.length ? `만료임박 ${d.employees.expiringSoon.length}명` : ''} up icon={Users} />
-          <KpiCard label="이달 결제" value={d?.payments?.status === 'connected' ? `${d.payments.thisMonth}건` : '미연결'} delta={d?.payments?.pending ? `미지급 ${d.payments.pending}건` : ''} icon={DollarSign} />
-          <KpiCard label="환불" value={d?.refunds?.status === 'connected' ? `${d.refunds.thisMonth?.count || 0}건` : '미연결'} icon={DollarSign} />
-          <KpiCard label="프리랜서" value={d?.freelancers?.status === 'connected' ? `${d.freelancers.thisMonth?.count || 0}건` : '미연결'} icon={FileText} />
-        </div>
-        {d?.employees?.expiringSoon?.length > 0 && (
-          <div style={{ marginTop: 12, background: '#141414', border: '1px solid #F59E0B33', borderRadius: 8, padding: 14 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#F59E0B', marginBottom: 8 }}>계약만료 임박</div>
-            {d.employees.expiringSoon.map((e, i) => (
-              <div key={i} style={{ fontSize: 11, color: '#CCC', padding: '3px 0' }}>{e.name} — {e.endDate}</div>
+        {/* Export voucher flow */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 12 }}>수출바우처 현황</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 14 }}>
+            {(voucher?.steps || [{ name: '신청', status: 'done' }, { name: '선정', status: 'done' }, { name: '계획제출', status: 'done' }, { name: '진행중', status: 'active' }, { name: '정산', status: 'pending' }]).map((s, i, arr) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center' }}>
+                <div style={{
+                  padding: '4px 10px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                  background: s.status === 'done' ? '#22C55E22' : s.status === 'active' ? '#5E6AD222' : '#1A1A1A',
+                  color: s.status === 'done' ? '#22C55E' : s.status === 'active' ? '#5E6AD2' : '#555',
+                  border: `1px solid ${s.status === 'done' ? '#22C55E44' : s.status === 'active' ? '#5E6AD244' : '#242424'}`,
+                }}>
+                  {s.status === 'done' ? '✅' : s.status === 'active' ? '🟢' : '⬜'} {s.name}
+                </div>
+                {i < arr.length - 1 && <span style={{ color: '#333', margin: '0 4px', fontSize: 10 }}>→</span>}
+              </div>
             ))}
           </div>
-        )}
+          <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>사용 계획</div>
+          {(voucher?.programs || [{ name: '해외마케팅', status: 'active', color: '#22C55E' }, { name: 'IP/인증 획득', status: 'active', color: '#22C55E' }]).map((p, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0' }}>
+              <div style={{ width: 6, height: 6, borderRadius: 3, background: p.color }} />
+              <span style={{ fontSize: 11, color: '#CCC' }}>{p.name}</span>
+              <span style={{ fontSize: 10, color: p.color, marginLeft: 'auto' }}>진행중</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Gov announcements */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 16, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>정부지원사업 공고</div>
+          {govItems.length > 0 ? govItems.slice(0, 8).map((item, i) => {
+            const deadline = item.deadline ? new Date(item.deadline) : null;
+            const daysLeft = deadline ? Math.ceil((deadline - now) / 86400000) : null;
+            const urgent = daysLeft !== null && daysLeft <= 7 && daysLeft >= 0;
+            return (
+              <div key={i} style={{ padding: '6px 0', borderBottom: i < Math.min(govItems.length, 8) - 1 ? '1px solid #1F1F1F' : 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {urgent && <span style={{ fontSize: 8, background: '#EF4444', color: '#FFF', padding: '1px 4px', borderRadius: 3, fontWeight: 600 }}>D-{daysLeft}</span>}
+                  <span style={{ fontSize: 11, color: '#CCC', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</span>
+                </div>
+                <div style={{ fontSize: 9, color: '#555', marginTop: 2 }}>
+                  {item.source}{item.deadline ? ` · 마감 ${item.deadline}` : ''}
+                </div>
+              </div>
+            );
+          }) : (
+            <div style={{ fontSize: 11, color: '#555', padding: '12px 0', textAlign: 'center' }}>
+              {d?.govAnnouncements?.status === 'no_data' ? '매주 월요일 자동 업데이트' : '공고 로딩 중...'}
+            </div>
+          )}
+          <div style={{ fontSize: 9, color: '#444', marginTop: 8 }}>
+            K-스타트업 · 코트라 · 중기부 공고 자동 수집 {d?.govAnnouncements?.updatedAt ? `· ${d.govAnnouncements.updatedAt.slice(0, 10)}` : ''}
+          </div>
+        </div>
       </>
     );
   },
