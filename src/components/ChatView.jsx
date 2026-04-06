@@ -500,29 +500,81 @@ const AGENT_DASHBOARDS = {
 
   marketer: () => {
     const [d, setD] = useState(null);
+    const [agencyTab, setAgencyTab] = useState('inhouse');
     useEffect(() => { fetch('/api/agents/marketer').then(r => r.json()).then(setD).catch(() => {}); }, []);
     const m = d?.meta || {};
+    const roasColor = (v) => { const n = Number(v); return n >= 3 ? '#22C55E' : n >= 2 ? '#F59E0B' : '#EF4444'; };
     return (
       <>
+        {/* Meta Ads KPIs */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <KpiCard label="Meta 광고비" value={m.totalSpend ? `${fmt(m.totalSpend)}원` : m.status === 'disconnected' ? '미연결' : '-'} delta={m.status === 'connected' ? `${m.accounts?.length || 0}개 계정` : ''} up icon={DollarSign} />
-          <KpiCard label="노출수" value={m.impressions ? fmt(m.impressions) : '-'} icon={Eye} />
-          <KpiCard label="클릭수" value={m.clicks ? fmt(m.clicks) : '-'} icon={Target} />
-          <KpiCard label="CTR" value={m.ctr ? `${m.ctr}%` : '-'} icon={Percent} />
+          <KpiCard label="Meta 광고비" value={m.totalSpend ? `${fmt(m.totalSpend)}원` : m.status === 'disconnected' ? '미연결' : '-'} delta="주간 누적" up icon={DollarSign} />
+          <KpiCard label="총 광고비" value={d?.totalSpend ? `${fmt(d.totalSpend)}원` : '-'} delta="당월 누적" icon={DollarSign} />
         </div>
-        <div style={{ marginTop: 12, background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>광고 채널 상태</div>
-          {['meta', 'naver', 'google', 'tiktok', 'ga'].map((ch, i) => {
+
+        {/* Meta accounts with ROAS */}
+        {m.accounts?.length > 0 && (
+          <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>Meta 계정별 ROAS</div>
+            {m.accounts.map((acc, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < m.accounts.length - 1 ? '1px solid #1F1F1F' : 'none' }}>
+                <span style={{ fontSize: 10, color: '#CCC', flex: 1 }}>{acc.name}</span>
+                <span style={{ fontSize: 10, color: '#888' }}>{acc.spend ? fmt(acc.spend) + '원' : '-'}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: acc.roas !== '-' ? roasColor(acc.roas) : '#555', width: 40, textAlign: 'right' }}>
+                  {acc.roas !== '-' ? `${acc.roas}x` : '-'}
+                </span>
+              </div>
+            ))}
+            <div style={{ fontSize: 9, color: '#444', marginTop: 6 }}>목표 ROAS 3.0x · 🟢3.0+ 🟡2.0~3.0 🔴2.0-</div>
+          </div>
+        )}
+
+        {/* Agency tabs */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>대행사별 현황</div>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+            {[['inhouse','인하우스'],['growth','그로스'],['en','이엔'],['epro','이프로']].map(([id,label]) => (
+              <button key={id} onClick={() => setAgencyTab(id)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: agencyTab === id ? '#5E6AD2' : '#1A1A1A', color: agencyTab === id ? '#FFF' : '#777' }}>{label}</button>
+            ))}
+          </div>
+          {(() => {
+            const ag = d?.agencies?.[agencyTab] || {};
+            return ag.status === 'connected' ? (
+              <div style={{ fontSize: 11, color: '#CCC' }}>🟢 {ag.name} 연동됨 · 데이터 {ag.rows}행</div>
+            ) : (
+              <div style={{ fontSize: 11, color: '#555' }}>🔴 {ag.name || agencyTab} 시트 미연결<div style={{ fontSize: 9, color: '#444', marginTop: 4 }}>AGENCY_SHEET_{agencyTab.toUpperCase()} 환경변수 필요</div></div>
+            );
+          })()}
+        </div>
+
+        {/* Ad channels */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>광고 채널</div>
+          {[['meta','Meta Ads'],['naver','네이버 광고'],['google','구글 광고'],['tiktok','틱톡 광고'],['ga','GA4']].map(([ch,label], i) => {
             const s = d?.[ch] || {};
             return (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < 4 ? '1px solid #1F1F1F' : 'none' }}>
                 <span style={{ fontSize: 11 }}>{s.status === 'connected' ? '🟢' : '🔴'}</span>
-                <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{ch === 'meta' ? 'Meta Ads' : ch === 'naver' ? '네이버 광고' : ch === 'google' ? '구글 광고' : ch === 'tiktok' ? '틱톡 광고' : 'GA4'}</span>
-                <span style={{ fontSize: 10, color: s.status === 'connected' ? '#22C55E' : '#555' }}>{s.status === 'connected' ? '연결됨' : s.message || '미연결'}</span>
+                <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{label}</span>
+                <span style={{ fontSize: 10, color: s.status === 'connected' ? '#22C55E' : '#555' }}>{s.status === 'connected' ? '연결됨' : '미연결'}</span>
               </div>
             );
           })}
         </div>
+
+        {/* Optimization suggestions */}
+        {d?.suggestions && (
+          <div style={{ background: '#141414', border: '1px solid #F59E0B33', borderRadius: 8, padding: 14, marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#F59E0B', marginBottom: 8 }}>광고 최적화 제안</div>
+            {d.suggestions.lowRoas?.length > 0 && (
+              <div style={{ fontSize: 10, color: '#EF4444', marginBottom: 6 }}>ROAS 2.0 미만 캠페인: {d.suggestions.lowRoas.length}개</div>
+            )}
+            {d.suggestions.suggestion && (
+              <div style={{ fontSize: 11, color: '#CCC', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{d.suggestions.suggestion}</div>
+            )}
+            <div style={{ fontSize: 9, color: '#444', marginTop: 6 }}>{d.suggestions.updatedAt?.slice(0, 10)}</div>
+          </div>
+        )}
       </>
     );
   },
