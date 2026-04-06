@@ -624,21 +624,79 @@ const AGENT_DASHBOARDS = {
   product: () => {
     const [d, setD] = useState(null);
     useEffect(() => { fetch('/api/agents/brand').then(r => r.json()).then(setD).catch(() => {}); }, []);
+    const rankings = d?.rankings;
+    const reviews = d?.reviews;
+    const proposal = d?.suggestions;
     return (
       <>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <KpiCard label="제품 데이터" value={d?.products?.status === 'connected' ? '연동됨' : '대기 중'} icon={Package} />
-          <KpiCard label="리뷰" value={d?.reviews?.status === 'connected' ? d.reviews.source : '미연결'} icon={Star} />
-          <KpiCard label="경쟁사" value={d?.competitors?.status === 'connected' ? '수집됨' : '대기 중'} icon={Eye} />
-        </div>
-        <div style={{ marginTop: 12, background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>경쟁사 모니터링</div>
-          {['롬앤', '클리오', '페리페라', '바닐라코', '마뗑킴'].map((c, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < 4 ? '1px solid #1F1F1F' : 'none' }}>
-              <div style={{ width: 6, height: 6, borderRadius: 3, background: '#5E6AD2', flexShrink: 0 }} />
-              <span style={{ fontSize: 11, color: '#CCC', flex: 1 }}>{c}</span>
+        {/* Category Rankings */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>카테고리 랭킹</div>
+          {[
+            { channel: '올리브영', category: '앰플/미스트', items: [
+              { rank: 1, name: '이니스프리 그린티 세럼', reviews: '12,450' },
+              { rank: 2, name: '토리든 다이브인 세럼', reviews: '9,832' },
+              { rank: 3, name: '밀리밀리 500달톤 미스트', reviews: '342', ours: true },
+              { rank: 4, name: '라운드랩 자작나무 세럼', reviews: '7,621' },
+              { rank: 5, name: '아누아 어성초 세럼', reviews: '8,190' },
+            ]},
+            { channel: '스마트스토어', category: '단백질 스킨케어', items: [
+              { rank: 1, name: '밀리밀리 500달톤 앰플', reviews: '156', ours: true },
+              { rank: 2, name: '서울시스터즈 프로틴 크림', reviews: '89' },
+              { rank: 3, name: '밀리밀리 500달톤 미스트', reviews: '124', ours: true },
+            ]},
+          ].map((section, si) => (
+            <div key={si} style={{ marginBottom: si < 1 ? 14 : 0 }}>
+              <div style={{ fontSize: 10, color: '#5E6AD2', marginBottom: 6 }}>{section.channel} · {section.category}</div>
+              {section.items.map((item, i) => (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', marginBottom: 2, borderRadius: 4,
+                  background: item.ours ? 'rgba(94,106,210,0.08)' : 'transparent',
+                  border: item.ours ? '1px solid #5E6AD233' : '1px solid transparent',
+                }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: item.ours ? '#5E6AD2' : '#555', width: 18 }}>{item.rank}</span>
+                  <span style={{ fontSize: 11, color: item.ours ? '#FFF' : '#CCC', flex: 1, fontWeight: item.ours ? 600 : 400 }}>{item.name}</span>
+                  <span style={{ fontSize: 10, color: '#555' }}>{item.reviews}</span>
+                </div>
+              ))}
             </div>
           ))}
+          <div style={{ fontSize: 9, color: '#444', marginTop: 8 }}>수동 업데이트 · 마지막: {rankings?.updatedAt || '대기 중'}</div>
+        </div>
+
+        {/* Product Reviews */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 10 }}>상품별 리뷰</div>
+          {[
+            { name: '500달톤 프로틴 미스트 55ml', rating: 4.6, count: 342, attention: 3 },
+            { name: '500달톤 프로틴 앰플 30ml', rating: 4.5, count: 156, attention: 1 },
+          ].map((p, i) => (
+            <div key={i} style={{ padding: '8px 0', borderBottom: i < 1 ? '1px solid #1F1F1F' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: '#CCC' }}>{p.name}</span>
+                {p.attention > 0 && <span style={{ fontSize: 8, background: '#EF4444', color: '#FFF', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>관리 {p.attention}건</span>}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 14, color: '#F59E0B' }}>{'★'.repeat(Math.floor(p.rating))}{'☆'.repeat(5 - Math.floor(p.rating))}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#FFF' }}>{p.rating}</span>
+                <span style={{ fontSize: 10, color: '#555' }}>({p.count}건)</span>
+              </div>
+            </div>
+          ))}
+          <div style={{ fontSize: 9, color: '#444', marginTop: 6 }}>별점 1-2점 / 환불·불만 키워드 → 관리 필요</div>
+        </div>
+
+        {/* Weekly Proposal */}
+        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 8 }}>주간 상품 제안</div>
+          {proposal?.status === 'connected' ? (
+            <div style={{ fontSize: 11, color: '#CCC', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+              {proposal.content || proposal.text || '제안 내용 로딩 중...'}
+              <div style={{ fontSize: 9, color: '#444', marginTop: 6 }}>{proposal.updatedAt?.slice(0, 10)}</div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: '#555' }}>매주 월요일 리뷰 분석 → AI 제안 자동 생성</div>
+          )}
         </div>
       </>
     );
@@ -761,7 +819,7 @@ export default function ChatView() {
     marketer: ['이번 달 성과 분석', '트렌드 리포트', '광고 ROI 분석'],
     commerce: ['채널별 매출 현황', '재고 부족 알림', '프로모션 분석'],
     admin: ['이번 달 매출 현황', '정부지원사업 공고', '재고 현황 체크'],
-    product: ['신제품 트렌드 분석', '경쟁사 신제품 모니터링', '상품 기획서 작성'],
+    product: ['카테고리 랭킹 분석', '리뷰 분석 리포트', '상품 개선 제안', '경쟁사 비교'],
     global: ['수출 현황 보고', '환율 변동 리포트', '바이어 컨택 메일 작성'],
     strategy: ['비용절감 방안 분석', 'Q2 전략 제안', '사업계획서 작성'],
   };
