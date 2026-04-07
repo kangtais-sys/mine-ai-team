@@ -110,39 +110,48 @@ export default function Dashboard() {
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
         {/* Revenue — 2 column: left 40% summary, right 60% line chart */}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 3fr', gap: 16, marginBottom: 20 }}>
-          {/* Left: Monthly + Yearly + channels */}
+          {/* Left: Monthly + Yearly + channel breakdown */}
           <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '20px 22px', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+            {/* Totals */}
+            <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 10, color: '#777' }}>당월 누적</div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: '#FFF', letterSpacing: '-0.02em', marginTop: 4 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#FFF', letterSpacing: '-0.02em', marginTop: 4 }}>
                   {stats?.totalRevenue ? fmt(stats.totalRevenue) + '원' : '-'}
                 </div>
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 10, color: '#777' }}>2026년 누적</div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: '#9D8AE9', letterSpacing: '-0.02em', marginTop: 4 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#9D8AE9', letterSpacing: '-0.02em', marginTop: 4 }}>
                   {stats?.totalRevenueYearly ? fmt(stats.totalRevenueYearly) + '원' : '-'}
                 </div>
               </div>
             </div>
-            <div style={{ borderTop: '1px solid #242424', paddingTop: 12, flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* Channel breakdown: monthly + yearly */}
+            <div style={{ borderTop: '1px solid #242424', paddingTop: 10, flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[
-                { label: '올리브영', value: stats?.channelSales?.oliveyoung, color: '#5E6AD2' },
-                { label: '자사몰', value: stats?.channelSales?.ga4, color: '#7C6BDE' },
-                { label: '스마트스토어', value: stats?.channelSales?.smartstore, color: '#9D8AE9' },
-                { label: '해외수출', value: stats?.channelSales?.export, color: '#BBA8F4' },
-              ].map((ch, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ width: 6, height: 6, borderRadius: 2, background: ch.color }} />
-                    <span style={{ fontSize: 11, color: '#888' }}>{ch.label}</span>
+                { label: '올리브영', key: 'oliveyoung', color: '#5E6AD2' },
+                { label: '자사몰', key: 'ga4', color: '#7C6BDE' },
+                { label: '스마트스토어', key: 'smartstore', color: '#9D8AE9' },
+                { label: '해외수출', key: 'export', color: '#BBA8F4' },
+              ].map((ch, i) => {
+                const m = stats?.channelSales?.[ch.key];
+                const y = stats?.channelSalesYearly?.[ch.key];
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 5, height: 5, borderRadius: 2, background: ch.color, flexShrink: 0 }} />
+                    <span style={{ fontSize: 10, color: '#777', width: 58 }}>{ch.label}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#FFF', flex: 1, textAlign: 'right' }}>{m ? fmt(m) : '-'}</span>
+                    <span style={{ fontSize: 10, color: '#9D8AE9', width: 60, textAlign: 'right' }}>{y ? fmt(y) : '-'}</span>
                   </div>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: '#FFF' }}>{ch.value ? fmt(ch.value) + '원' : '-'}</span>
-                </div>
-              ))}
+                );
+              })}
+              <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+                <span style={{ fontSize: 8, color: '#555', marginLeft: 11, width: 58 }}></span>
+                <span style={{ fontSize: 8, color: '#555', flex: 1, textAlign: 'right' }}>당월</span>
+                <span style={{ fontSize: 8, color: '#555', width: 60, textAlign: 'right' }}>연간</span>
+              </div>
             </div>
-            <div style={{ fontSize: 9, color: '#444', marginTop: 10 }}>당월 누적</div>
           </div>
           {/* Right: 2026 monthly line chart */}
           <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '20px 22px 12px', display: 'flex', flexDirection: 'column' }}>
