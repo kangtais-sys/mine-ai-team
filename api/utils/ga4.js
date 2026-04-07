@@ -24,17 +24,48 @@ export async function runGA4Report(propertyId, { startDate = '30daysAgo', endDat
 }
 
 export async function getEcommerceData(propertyId) {
-  const data = await runGA4Report(propertyId, {
-    startDate: '30daysAgo',
-    endDate: 'today',
-    metrics: ['ecommercePurchases', 'purchaseRevenue', 'sessions', 'totalUsers'],
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const yearStart = `${now.getFullYear()}-01-01`;
+
+  const token = await getGoogleAccessToken();
+  const body = {
+    dateRanges: [
+      { startDate: monthStart, endDate: 'today', name: 'month' },
+      { startDate: yearStart, endDate: 'today', name: 'year' },
+    ],
+    metrics: [
+      { name: 'ecommercePurchases' },
+      { name: 'purchaseRevenue' },
+      { name: 'sessions' },
+      { name: 'totalUsers' },
+    ],
+  };
+
+  const res = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
 
-  const row = data.rows?.[0]?.metricValues || [];
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`GA4 API ${res.status}: ${err.substring(0, 200)}`);
+  }
+  const data = await res.json();
+
+  const parseRow = (row) => {
+    const v = row?.metricValues || [];
+    return { purchases: Number(v[0]?.value) || 0, revenue: Number(v[1]?.value) || 0, sessions: Number(v[2]?.value) || 0, users: Number(v[3]?.value) || 0 };
+  };
+
+  const monthRow = data.rows?.find(r => r.dimensionValues?.[0]?.value === 'month') || data.rows?.[0];
+  const yearRow = data.rows?.find(r => r.dimensionValues?.[0]?.value === 'year') || data.rows?.[1];
+
   return {
-    purchases: Number(row[0]?.value) || 0,
-    revenue: Number(row[1]?.value) || 0,
-    sessions: Number(row[2]?.value) || 0,
-    users: Number(row[3]?.value) || 0,
+    month: parseRow(monthRow),
+    year: parseRow(yearRow || monthRow),
+    // Backward compat
+    ...parseRow(monthRow),
   };
 }

@@ -110,11 +110,21 @@ export default function Dashboard() {
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
         {/* Revenue — 2 column: left 40% summary, right 60% line chart */}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 3fr', gap: 16, marginBottom: 20 }}>
-          {/* Left: Total + channels */}
+          {/* Left: Monthly + Yearly + channels */}
           <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: '20px 22px', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ fontSize: 11, color: '#777' }}>당월 총 매출</div>
-            <div style={{ fontSize: 28, fontWeight: 700, color: '#FFF', letterSpacing: '-0.02em', marginTop: 6, marginBottom: 16 }}>
-              {stats?.totalRevenue ? fmt(stats.totalRevenue) + '원' : '-'}
+            <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: '#777' }}>당월 누적</div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: '#FFF', letterSpacing: '-0.02em', marginTop: 4 }}>
+                  {stats?.totalRevenue ? fmt(stats.totalRevenue) + '원' : '-'}
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: '#777' }}>2026년 누적</div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: '#9D8AE9', letterSpacing: '-0.02em', marginTop: 4 }}>
+                  {stats?.totalRevenueYearly ? fmt(stats.totalRevenueYearly) + '원' : '-'}
+                </div>
+              </div>
             </div>
             <div style={{ borderTop: '1px solid #242424', paddingTop: 12, flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {[
