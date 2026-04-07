@@ -92,33 +92,33 @@ export default async function handler(req, res) {
     ]);
 
     // === D. Olive Young revenue (Google Sheets) ===
-    // 시트 구조: [빈열, 기준일, 기간계상품코드, 상품코드, 상품명, 올리브영 매출, 판매수량, 홍천 납품 기준 매출]
+    // 시트: 스킨케어파트 [A:날짜(YYYYMMDD), B:기간계코드, C:상품코드, D:상품명, E:올리브영매출(₩), F:판매량, G:납품가매출(₩)]
+    const parseWon = (v) => Number((v || '0').replace(/[₩,\s]/g, '')) || 0;
     let oliveyoungRevenue = null;
     if (process.env.OLIVEYOUNG_SHEET_ID) {
       try {
-        const rows = await readSheet(process.env.OLIVEYOUNG_SHEET_ID);
-        const dataRows = rows.slice(1); // 헤더 제외
-        const totalSales = dataRows.reduce((s, r) => s + (Number((r[5] || '0').replace(/,/g, '')) || 0), 0);
-        const totalQty = dataRows.reduce((s, r) => s + (Number(r[6]) || 0), 0);
-        const totalShipment = dataRows.reduce((s, r) => s + (Number((r[7] || '0').replace(/,/g, '')) || 0), 0);
+        const rows = await readSheet(process.env.OLIVEYOUNG_SHEET_ID, '스킨케어파트!A1:G500');
+        const dataRows = rows.slice(1);
+        const totalSales = dataRows.reduce((s, r) => s + parseWon(r[4]), 0);
+        const totalQty = dataRows.reduce((s, r) => s + (Number(r[5]) || 0), 0);
+        const totalShipment = dataRows.reduce((s, r) => s + parseWon(r[6]), 0);
 
         // 날짜별 집계
         const byDate = {};
         for (const r of dataRows) {
-          const date = r[1] || '';
+          const date = r[0] || '';
           if (!byDate[date]) byDate[date] = { sales: 0, qty: 0 };
-          byDate[date].sales += Number((r[5] || '0').replace(/,/g, '')) || 0;
-          byDate[date].qty += Number(r[6]) || 0;
+          byDate[date].sales += parseWon(r[4]);
+          byDate[date].qty += Number(r[5]) || 0;
         }
 
-        // 월별 집계 (2026년)
+        // 월별 집계 (YYYYMMDD → YYYY-MM)
         const byMonth = {};
         for (const r of dataRows) {
-          const date = r[1] || '';
+          const date = r[0] || '';
           if (date.length >= 6) {
-            const ym = date.slice(0, 6); // YYYYMM
-            const monthKey = `${ym.slice(0, 4)}-${ym.slice(4, 6)}`;
-            byMonth[monthKey] = (byMonth[monthKey] || 0) + (Number((r[5] || '0').replace(/,/g, '')) || 0);
+            const monthKey = `${date.slice(0, 4)}-${date.slice(4, 6)}`;
+            byMonth[monthKey] = (byMonth[monthKey] || 0) + parseWon(r[4]);
           }
         }
 
