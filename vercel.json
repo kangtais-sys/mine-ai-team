@@ -43,6 +43,7 @@
     { "source": "/api/zernio/accounts", "destination": "/api/zernio/accounts" },
     { "source": "/api/zernio/inbox", "destination": "/api/zernio/inbox" },
     { "source": "/api/scrape/instagram-followers", "destination": "/api/scrape/instagram-followers" },
+    { "source": "/api/video-analyze", "destination": "/api/video-analyze" },
     { "source": "/api/stats", "destination": "/api/stats" },
     { "source": "/api/agents/creator", "destination": "/api/agents/creator" },
     { "source": "/api/agents/community", "destination": "/api/agents/community" },
