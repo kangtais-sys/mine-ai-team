@@ -106,6 +106,17 @@ export default async function handler(req, res) {
     }
 
     res.setHeader('Set-Cookie', cookies);
+
+    // If ?show_token=1, display token for manual env update (one-time use)
+    if (req.query.state === 'show_token' && tokens.refresh_token) {
+      return res.status(200).json({
+        message: 'Token saved. Copy refresh_token and update Vercel env.',
+        refresh_token: tokens.refresh_token,
+        scopes: tokens.scope,
+        email: userInfo.email,
+      });
+    }
+
     res.redirect('/?google_connected=true&email=' + encodeURIComponent(userInfo.email));
   } catch (error) {
     console.error('OAuth callback error:', error.message);

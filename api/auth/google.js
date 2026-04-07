@@ -18,10 +18,12 @@ export default function handler(req, res) {
     'https://www.googleapis.com/auth/spreadsheets.readonly',
   ];
 
+  const showToken = req.query?.show_token === '1';
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
     scope: scopes,
+    state: showToken ? 'show_token' : 'default',
   });
 
   res.redirect(url);
