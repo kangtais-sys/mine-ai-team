@@ -479,22 +479,49 @@ export default async function handler(req, res) {
           generateContentFromFrame(frameBuffer, file.name, 'youtube'),
         ]);
 
-        const [tiktokResult, youtubeResult] = await Promise.all([
-          uploadToTiktok(fileBuffer, file.name, tiktokContent).catch(e => {
-            console.error(`[Pipeline] TikTok upload error (${file.name}):`, e.message, e.response?.data || '');
-            return { success: false, error: e.message, tokenExpired: false };
-          }),
-          uploadToYoutube(auth, fileBuffer, file.name, youtubeContent, frameBuffer).catch(e => {
-            console.error(`[Pipeline] YouTube upload error (${file.name}):`, e.message, e.response?.data || '');
-            return { success: false, error: e.message };
-          }),
-        ]);
+        // 4. Zernio로 YouTube + TikTok 동시 업로드
+        let zernioResult = { success: false };
+        if (process.env.ZERNIO_API_KEY) {
+          try {
+            // Drive 파일 공개 공유 링크 생성
+            await drive.permissions.create({
+              fileId: file.id,
+              requestBody: { role: 'reader', type: 'anyone' },
+            });
+            const mediaUrl = `https://drive.google.com/uc?id=${file.id}&export=download`;
 
-        result.tiktok = { ...tiktokResult, content: tiktokContent };
-        result.youtube = { ...youtubeResult, content: youtubeContent };
+            // 캡션 + 해시태그 합치기
+            const tags = [...(youtubeContent.tags || []), ...(tiktokContent.hashtags || [])];
+            const uniqueTags = [...new Set(tags.map(t => t.startsWith('#') ? t : `#${t}`))].slice(0, 15);
+            const caption = `${youtubeContent.title || tiktokContent.caption || file.name}\n\n${youtubeContent.description || ''}\n\n${uniqueTags.join(' ')}`.trim();
 
-        // Only move to "완료" if at least one platform succeeded
-        if (tiktokResult.success || youtubeResult.success) {
+            const zRes = await fetch('https://zernio.com/api/v1/posts', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                profileId: process.env.ZERNIO_YUMINHYE_PROFILE_ID || '69d08807986d57bb8f72f7e6',
+                platforms: ['youtube', 'tiktok'],
+                text: caption.substring(0, 2200),
+                mediaUrl,
+              }),
+            });
+            const zData = await zRes.json();
+            zernioResult = { success: zRes.ok, data: zData };
+            console.log(`[Pipeline] Zernio upload (YT+TT): ${zRes.ok ? 'success' : 'failed'}`, JSON.stringify(zData).substring(0, 200));
+          } catch (e) {
+            console.error(`[Pipeline] Zernio upload error (${file.name}):`, e.message);
+            zernioResult = { success: false, error: e.message };
+          }
+        } else {
+          console.log('[Pipeline] ZERNIO_API_KEY not set, skipping');
+          zernioResult = { success: false, error: 'ZERNIO_API_KEY not set' };
+        }
+
+        result.zernio = zernioResult;
+        result.content = { youtube: youtubeContent, tiktok: tiktokContent };
+
+        // "완료" 폴더로 이동
+        if (zernioResult.success) {
           await drive.files.update({
             fileId: file.id,
             addParents: doneFolderId,
@@ -506,8 +533,9 @@ export default async function handler(req, res) {
         await logUpload(drive, uploadFolderId, {
           timestamp: new Date().toISOString(),
           fileName: file.name,
-          tiktok: { success: tiktokResult.success, error: tiktokResult.error, tokenExpired: tiktokResult.tokenExpired },
-          youtube: { success: youtubeResult.success, error: youtubeResult.error, videoId: youtubeResult.videoId },
+          zernio: { success: zernioResult.success, error: zernioResult.error },
+          platforms: ['youtube', 'tiktok'],
+          via: 'zernio',
         });
 
       } catch (fileError) {
