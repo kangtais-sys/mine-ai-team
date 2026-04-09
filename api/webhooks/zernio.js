@@ -35,6 +35,27 @@ const ACCOUNT_PERSONA = {
   '69d08acebf4d9161df545c66': 'yuminhye',   // @15초유민혜 YT
 };
 
+// 게시물 캡션 가져오기 (Instagram Graph API)
+async function getPostCaption(postId, igToken) {
+  if (!postId || !igToken) return null;
+  try {
+    const cacheKey = 'ig:caption:' + postId;
+    const cached = await redis.get(cacheKey).catch(() => null);
+    if (cached) return cached;
+    const res = await fetch(
+      'https://graph.instagram.com/v21.0/' + postId + '?fields=caption&access_token=' + igToken
+    );
+    const data = await res.json();
+    const caption = data.caption || null;
+    if (caption) await redis.set(cacheKey, caption, { ex: 86400 });
+    return caption;
+  } catch (e) {
+    console.error('[Caption] 가져오기 실패:', e.message);
+    return null;
+  }
+}
+
+// 이벤트 참여 댓글 감지
 function isEventComment(text) {
   const t = (text || '').trim();
   if (!t) return false;
@@ -49,26 +70,26 @@ const SPAM = ['팔로우', '맞팔', 'follow', 'http://', 'https://', '홍보', 
 
 const OY_SALE_KEYWORDS = ['올영세일', '올리브영세일', '올영 세일', '올리브영 할인'];
 
-function getPrompt(persona, platform, messageText) {
+function getPrompt(persona, platform, messageText, postCaption) {
   const isOYSale = OY_SALE_KEYWORDS.some(k => (messageText || '').includes(k));
   const purchaseGuide = isOYSale
     ? '현재 올영세일 기간! 올리브영 추천. "지금 올영세일 기간이면 올리브영에서 득템하세요! 🍀"'
     : '구매 추천: 1) 자사몰 (혜택 최고) 2) 스마트스토어 3) 올리브영. "프로필 링크에서 자사몰 바로 가실 수 있어요! 🛍️"';
 
   const base = '가격 직접 언급 금지. 악성/스팸이면 SKIP만 반환.';
+  const captionContext = postCaption ? '\n\n[이 게시물의 캡션]: ' + postCaption.substring(0, 200) : '';
 
   // 밀리밀리 + 플랫폼별
   if (persona === 'millimilli') {
-    if (platform === 'youtube') return `당신은 밀리밀리 유튜브 채널 담당자입니다. 500달톤 초저분자 단백질 화장품 브랜드. 영상 내용에 공감하며 따뜻하게 답글. 제품 문의 → 자사몰 또는 카카오채널 @밀리밀리. 2문장 이내, 이모지 1-2개. ${purchaseGuide} ${base}`;
-    if (platform === 'tiktok') return `당신은 밀리밀리 틱톡 채널 담당자입니다. 500달톤 초저분자 단백질 화장품. 틱톡 특유의 밝고 캐주얼한 말투! 짧고 임팩트 있게, 이모지 적극 활용. 제품 문의 → 프로필 링크 또는 카카오채널 @밀리밀리. 1-2문장. ${purchaseGuide} ${base}`;
-    // instagram (default)
-    return `당신은 밀리밀리 브랜드 SNS 담당자입니다. 500달톤 초저분자 단백질 화장품 전문가. 이모지 1-2개, 2문장 이내. 제품/성분 문의 → "카카오채널 @밀리밀리에서 자세히 안내드릴게요 🫶" ${purchaseGuide} 스마트스토어 문의 → "네이버에서 밀리밀리 검색하시면 됩니다 😊" ${base}`;
+    if (platform === 'youtube') return `당신은 밀리밀리 유튜브 채널 담당자입니다. 500달톤 초저분자 단백질 화장품 브랜드. 영상 내용에 공감하며 따뜻하게 답글. 제품 문의 → 자사몰 또는 카카오채널 @밀리밀리. 2문장 이내, 이모지 1-2개. ${purchaseGuide} ${base}${captionContext}`;
+    if (platform === 'tiktok') return `당신은 밀리밀리 틱톡 채널 담당자입니다. 500달톤 초저분자 단백질 화장품. 틱톡 특유의 밝고 캐주얼한 말투! 짧고 임팩트 있게, 이모지 적극 활용. 제품 문의 → 프로필 링크 또는 카카오채널 @밀리밀리. 1-2문장. ${purchaseGuide} ${base}${captionContext}`;
+    return `당신은 밀리밀리 브랜드 SNS 담당자입니다. 500달톤 초저분자 단백질 화장품 전문가. 이모지 1-2개, 2문장 이내. 제품/성분 문의 → "카카오채널 @밀리밀리에서 자세히 안내드릴게요 🫶" ${purchaseGuide} 스마트스토어 문의 → "네이버에서 밀리밀리 검색하시면 됩니다 😊" ${base}${captionContext}`;
   }
 
   // 유민혜 + 플랫폼별
-  if (platform === 'youtube') return `당신은 유민혜 유튜브 크리에이터입니다. 영상 봐줘서 진심 감사한 마음으로 따뜻하게. 시청자와 소통하는 느낌. 제품 관련 → @millimilli.official 안내. 2문장 이내, 친근하게. ${base}`;
-  if (platform === 'tiktok') return `당신은 유민혜 틱톡 크리에이터입니다. 짧고 임팩트 있는 답글. 팔로워와 친근하게 소통. 제품 관련 → @millimilli.official 안내. 1-2문장, 밝고 캐주얼. ${base}`;
-  return `당신은 유민혜 인플루언서입니다. 친근하고 따뜻한 크리에이터 말투. 이모지 자연스럽게. 2문장 이내. 제품 관련은 "@millimilli.official 에서 확인해주세요!" ${base}`;
+  if (platform === 'youtube') return `당신은 유민혜 유튜브 크리에이터입니다. 영상 봐줘서 진심 감사한 마음으로 따뜻하게. 시청자와 소통하는 느낌. 제품 관련 → @millimilli.official 안내. 2문장 이내, 친근하게. ${base}${captionContext}`;
+  if (platform === 'tiktok') return `당신은 유민혜 틱톡 크리에이터입니다. 짧고 임팩트 있는 답글. 팔로워와 친근하게 소통. 제품 관련 → @millimilli.official 안내. 1-2문장, 밝고 캐주얼. ${base}${captionContext}`;
+  return `당신은 유민혜 인플루언서입니다. 친근하고 따뜻한 크리에이터 말투. 이모지 자연스럽게. 2문장 이내. 제품 관련은 "@millimilli.official 에서 확인해주세요!" ${base}${captionContext}`;
 }
 
 async function getInstagramToken() {
@@ -166,6 +187,10 @@ export default async function handler(req, res) {
       const persona = ACCOUNT_PERSONA[accountId] || 'millimilli';
       console.log(`[REPLY] 시작: platform=${platform}, commentId=${commentId}, author=${comment.author?.username}, persona=${persona}, text="${text.substring(0, 30)}"`);
 
+      // Fetch post caption for context
+      const igToken = process.env.INSTAGRAM_ACCESS_TOKEN;
+      const postCaption = await getPostCaption(comment.platformPostId, igToken);
+
       // Generate reply with Claude (track calls)
       await redis.incr(`stat:claude:calls:${new Date().toISOString().slice(0, 10)}`);
       const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -174,7 +199,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 200,
-          system: getPrompt(persona, platform, text),
+          system: getPrompt(persona, platform, text, postCaption),
           messages: [{ role: 'user', content: `댓글: "${text}"` }],
         }),
       });
