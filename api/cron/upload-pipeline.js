@@ -82,52 +82,107 @@ function findOrCreateFolder(drive, name, parentId) {
   }, 1, 'Drive:findOrCreateFolder');
 }
 
-async function generateContent(fileName, platform) {
-  const prompts = {
-    tiktok: `당신은 MILLIMILLI 브랜드의 틱톡 콘텐츠 전문가입니다.
-파일명: "${fileName}"
+// 첫 프레임 추출: 영상 바이너리에서 Drive 썸네일 가져오기
+async function getFirstFrame(drive, fileId) {
+  try {
+    const meta = await drive.files.get({ fileId, fields: 'thumbnailLink,videoMediaMetadata' });
+    if (meta.data.thumbnailLink) {
+      // =s220 → =s1920 for high-res first frame
+      const thumbUrl = meta.data.thumbnailLink.replace(/=s\d+/, '=s1920');
+      const r = await fetch(thumbUrl);
+      if (r.ok) {
+        const buf = await r.arrayBuffer();
+        return Buffer.from(buf);
+      }
+    }
+  } catch (e) {
+    console.error('[Pipeline] First frame extraction failed:', e.message);
+  }
+  return null;
+}
 
-이 영상의 틱톡 업로드용 텍스트를 생성해주세요.
+// Claude Vision으로 첫 프레임 분석 → 캡션/해시태그 생성
+async function generateContentFromFrame(frameBuffer, fileName, platform) {
+  if (!frameBuffer) {
+    // Fallback: 파일명 기반
+    return generateContentFallback(fileName, platform);
+  }
 
+  const base64 = frameBuffer.toString('base64');
+  const prompt = platform === 'tiktok'
+    ? `이 영상의 첫 프레임 이미지를 분석해줘.
+
+1. 이미지에 보이는 텍스트를 모두 읽어줘 (한국어/영어 모두)
+2. 이 텍스트와 이미지 내용을 기반으로 틱톡 캡션을 만들어줘
+
+브랜드: 밀리밀리 (MILLIMILLI), 500달톤 프로틴 스킨케어
 규칙:
-- 첫 줄: 강렬한 훅 (한국어+영어 믹스, 15자 이내)
-- 본문: 2~3줄, 호기심 유발, 이모지 활용
-- 해시태그: 트렌드 태그 + 브랜드 태그, 최대 5개
-- 총 글자수 150자 이내 (틱톡 제한)
-- MILLIMILLI K뷰티 브랜드 톤: 친근한 언니 느낌
-- 영어 해시태그 필수 포함 (#kbeauty #millimilli)
+- 이미지에 있는 텍스트를 최대한 활용
+- 첫 줄: 강렬한 훅 (15자 이내)
+- 본문: 2~3줄, 이모지 활용
+- 해시태그: 5개 (#kbeauty #millimilli 포함)
+- 총 150자 이내
 
-JSON 형식으로만 응답:
-{"caption": "...", "hashtags": ["...", "..."]}`,
+JSON만 응답:
+{"caption": "...", "hashtags": ["...", "..."], "detected_text": "이미지에서 읽은 텍스트"}`
+    : `이 영상의 첫 프레임 이미지를 분석해줘.
 
-    youtube: `당신은 MILLIMILLI 브랜드의 유튜브 쇼츠 SEO 전문가입니다.
-파일명: "${fileName}"
+1. 이미지에 보이는 텍스트를 모두 읽어줘 (한국어/영어 모두)
+2. 이 텍스트와 이미지 내용을 기반으로 유튜브 쇼츠 메타데이터를 만들어줘
 
-이 영상의 유튜브 쇼츠 업로드용 텍스트를 생성해주세요.
-
+브랜드: 밀리밀리 (MILLIMILLI), 500달톤 프로틴 스킨케어
 규칙:
-- title: SEO 최적화 제목, 50자 이내, 키워드 포함
-- description: 3~5줄, 키워드 자연 삽입, 구매 링크 안내 포함
-  · 1줄: 영상 설명
-  · 2줄: 제품 포인트
-  · 3줄: "더 많은 K뷰티 팁은 밀리밀리에서! 🔗"
-  · 4줄: 관련 키워드
-- tags: SEO 태그 10개 (한국어+영어)
-- MILLIMILLI K뷰티 브랜드 톤: 전문적이면서 친근
+- 이미지의 텍스트를 제목에 반영
+- title: SEO 최적화, 50자 이내
+- description: 3~4줄 (영상 설명 + 제품 포인트 + "프로필 링크에서 더 알아보세요! 🔗")
+- tags: 10개 (한국어+영어)
 
-JSON 형식으로만 응답:
-{"title": "...", "description": "...", "tags": ["...", "..."]}`,
-  };
+JSON만 응답:
+{"title": "...", "description": "...", "tags": ["...", "..."], "detected_text": "이미지에서 읽은 텍스트"}`;
 
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+            { type: 'text', text: prompt },
+          ],
+        }],
+      }),
+    });
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '{}';
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      const result = JSON.parse(match[0]);
+      console.log(`[Pipeline] Vision detected text: "${result.detected_text || 'none'}"`);
+      return result;
+    }
+  } catch (e) {
+    console.error('[Pipeline] Vision analysis failed:', e.message);
+  }
+
+  return generateContentFallback(fileName, platform);
+}
+
+// Fallback: 파일명 기반 캡션 생성
+async function generateContentFallback(fileName, platform) {
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 1024,
-    messages: [{ role: 'user', content: prompts[platform] }],
+    messages: [{ role: 'user', content: platform === 'tiktok'
+      ? `파일명 "${fileName}" 기반 틱톡 캡션. JSON: {"caption":"...","hashtags":["#밀리밀리","#kbeauty",...]}`
+      : `파일명 "${fileName}" 기반 유튜브 쇼츠. JSON: {"title":"...","description":"...","tags":["밀리밀리","kbeauty",...]}` }],
   });
-
   const text = response.content[0]?.text || '{}';
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  return jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+  const match = text.match(/\{[\s\S]*\}/);
+  return match ? JSON.parse(match[0]) : {};
 }
 
 // TikTok: refresh access_token using refresh_token
@@ -263,8 +318,8 @@ async function uploadToTiktok(fileBuffer, fileName, content) {
   }, 2, `TikTok:${fileName}`);
 }
 
-// YouTube upload with token refresh and retry
-async function uploadToYoutube(auth, fileBuffer, fileName, content) {
+// YouTube upload with token refresh, retry, and thumbnail
+async function uploadToYoutube(auth, fileBuffer, fileName, content, thumbnailBuffer) {
   return withRetry(async () => {
     // Ensure fresh token before upload
     if (auth.credentials?.refresh_token) {
@@ -298,8 +353,24 @@ async function uploadToYoutube(auth, fileBuffer, fileName, content) {
       },
     });
 
-    console.log(`[YouTube] Upload success: ${fileName}, videoId: ${res.data.id}`);
-    return { success: true, videoId: res.data.id };
+    const videoId = res.data.id;
+    console.log(`[YouTube] Upload success: ${fileName}, videoId: ${videoId}`);
+
+    // Set thumbnail from first frame
+    if (thumbnailBuffer && videoId) {
+      try {
+        const { Readable: ThumbReadable } = await import('stream');
+        await youtube.thumbnails.set({
+          videoId,
+          media: { mimeType: 'image/jpeg', body: ThumbReadable.from(thumbnailBuffer) },
+        });
+        console.log(`[YouTube] Thumbnail set for ${videoId}`);
+      } catch (thumbErr) {
+        console.warn(`[YouTube] Thumbnail failed: ${thumbErr.message}`);
+      }
+    }
+
+    return { success: true, videoId };
   }, 2, `YouTube:${fileName}`);
 }
 
@@ -367,15 +438,21 @@ export default async function handler(req, res) {
       const result = { fileName: file.name, tiktok: null, youtube: null };
 
       try {
+        // 1. 첫 프레임 추출
+        const frameBuffer = await getFirstFrame(drive, file.id);
+        console.log(`[Pipeline] First frame: ${frameBuffer ? `${frameBuffer.length} bytes` : 'not available'}`);
+
+        // 2. 영상 다운로드
         const download = await drive.files.get(
           { fileId: file.id, alt: 'media' },
           { responseType: 'arraybuffer' }
         );
         const fileBuffer = Buffer.from(download.data);
 
+        // 3. Claude Vision으로 첫 프레임 분석 → 캡션/해시태그 생성
         const [tiktokContent, youtubeContent] = await Promise.all([
-          generateContent(file.name, 'tiktok'),
-          generateContent(file.name, 'youtube'),
+          generateContentFromFrame(frameBuffer, file.name, 'tiktok'),
+          generateContentFromFrame(frameBuffer, file.name, 'youtube'),
         ]);
 
         const [tiktokResult, youtubeResult] = await Promise.all([
@@ -383,7 +460,7 @@ export default async function handler(req, res) {
             console.error(`[Pipeline] TikTok upload error (${file.name}):`, e.message, e.response?.data || '');
             return { success: false, error: e.message, tokenExpired: false };
           }),
-          uploadToYoutube(auth, fileBuffer, file.name, youtubeContent).catch(e => {
+          uploadToYoutube(auth, fileBuffer, file.name, youtubeContent, frameBuffer).catch(e => {
             console.error(`[Pipeline] YouTube upload error (${file.name}):`, e.message, e.response?.data || '');
             return { success: false, error: e.message };
           }),
