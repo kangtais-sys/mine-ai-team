@@ -14,7 +14,7 @@
     { "path": "/api/cron/promo-calendar", "schedule": "0 2 * * 1" },
     { "path": "/api/cron/ad-optimize", "schedule": "0 4 * * *" },
     { "path": "/api/cron/chief-report", "schedule": "0 23 * * *" },
-    { "path": "/api/cron/drive-upload", "schedule": "*/5 * * * *" }
+    { "path": "/api/cron/drive-upload", "schedule": "*/15 * * * *" }
   ],
   "rewrites": [
     { "source": "/api/auth/google", "destination": "/api/auth/google" },
