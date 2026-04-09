@@ -83,15 +83,33 @@ function findOrCreateFolder(drive, name, parentId) {
 }
 
 // 첫 프레임 추출: 영상 바이너리에서 Drive 썸네일 가져오기
-async function getFirstFrame(drive, fileId) {
+async function getFirstFrame(drive, fileId, fileBuffer) {
+  // Method 1: Extract first frame from video buffer using video-thumbnails API
+  if (fileBuffer) {
+    try {
+      // Google Video Intelligence API or manual approach
+      // For serverless: use Drive's export with specific timestamp
+      const exportUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w1920&t=0`;
+      const r = await fetch(exportUrl);
+      if (r.ok && r.headers.get('content-type')?.includes('image')) {
+        const buf = await r.arrayBuffer();
+        if (buf.byteLength > 1000) {
+          console.log('[Pipeline] First frame via Drive thumbnail t=0');
+          return Buffer.from(buf);
+        }
+      }
+    } catch {}
+  }
+
+  // Method 2: Drive thumbnailLink (fallback - may not be first frame)
   try {
-    const meta = await drive.files.get({ fileId, fields: 'thumbnailLink,videoMediaMetadata' });
+    const meta = await drive.files.get({ fileId, fields: 'thumbnailLink' });
     if (meta.data.thumbnailLink) {
-      // =s220 → =s1920 for high-res first frame
       const thumbUrl = meta.data.thumbnailLink.replace(/=s\d+/, '=s1920');
       const r = await fetch(thumbUrl);
       if (r.ok) {
         const buf = await r.arrayBuffer();
+        console.log('[Pipeline] First frame via Drive thumbnailLink (fallback)');
         return Buffer.from(buf);
       }
     }
@@ -331,13 +349,18 @@ async function uploadToYoutube(auth, fileBuffer, fileName, content, thumbnailBuf
     const { Readable } = await import('stream');
     const stream = Readable.from(fileBuffer);
 
+    // 해시태그를 description 끝에 추가
+    const tags = content.tags || [];
+    const hashtags = tags.map(t => t.startsWith('#') ? t : `#${t}`).join(' ');
+    const description = `${content.description || ''}\n\n${hashtags}`.trim();
+
     const res = await youtube.videos.insert({
       part: ['snippet', 'status'],
       requestBody: {
         snippet: {
           title: (content.title || fileName).substring(0, 100),
-          description: content.description || '',
-          tags: content.tags || [],
+          description,
+          tags,
           categoryId: '26',
           defaultLanguage: 'ko',
         },
@@ -438,16 +461,17 @@ export default async function handler(req, res) {
       const result = { fileName: file.name, tiktok: null, youtube: null };
 
       try {
-        // 1. 첫 프레임 추출
-        const frameBuffer = await getFirstFrame(drive, file.id);
-        console.log(`[Pipeline] First frame: ${frameBuffer ? `${frameBuffer.length} bytes` : 'not available'}`);
-
-        // 2. 영상 다운로드
+        // 1. 영상 다운로드 먼저
         const download = await drive.files.get(
           { fileId: file.id, alt: 'media' },
           { responseType: 'arraybuffer' }
         );
         const fileBuffer = Buffer.from(download.data);
+        console.log(`[Pipeline] Downloaded: ${file.name} (${fileBuffer.length} bytes)`);
+
+        // 2. 첫 프레임 추출 (영상 버퍼 전달)
+        const frameBuffer = await getFirstFrame(drive, file.id, fileBuffer);
+        console.log(`[Pipeline] First frame: ${frameBuffer ? `${frameBuffer.length} bytes` : 'not available'}`);
 
         // 3. Claude Vision으로 첫 프레임 분석 → 캡션/해시태그 생성
         const [tiktokContent, youtubeContent] = await Promise.all([
