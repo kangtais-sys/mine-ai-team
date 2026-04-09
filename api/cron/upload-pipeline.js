@@ -490,24 +490,48 @@ export default async function handler(req, res) {
             });
             const mediaUrl = `https://drive.google.com/uc?id=${file.id}&export=download`;
 
-            // 캡션 + 해시태그 합치기
-            const tags = [...(youtubeContent.tags || []), ...(tiktokContent.hashtags || [])];
-            const uniqueTags = [...new Set(tags.map(t => t.startsWith('#') ? t : `#${t}`))].slice(0, 15);
-            const caption = `${youtubeContent.title || tiktokContent.caption || file.name}\n\n${youtubeContent.description || ''}\n\n${uniqueTags.join(' ')}`.trim();
+            // 첫 프레임 썸네일 URL (Drive)
+            const thumbnailUrl = `https://drive.google.com/thumbnail?id=${file.id}&sz=w1920`;
+
+            // 해시태그 통합
+            const ytTags = (youtubeContent.tags || []).map(t => t.startsWith('#') ? t : `#${t}`);
+            const ttTags = (tiktokContent.hashtags || []).map(t => t.startsWith('#') ? t : `#${t}`);
+            const allTags = [...new Set([...ytTags, ...ttTags])].slice(0, 15);
+
+            // TikTok 캡션
+            const ttCaption = `${tiktokContent.caption || youtubeContent.title || file.name}\n${allTags.join(' ')}`.substring(0, 2200);
+
+            // YouTube description + 해시태그
+            const ytDesc = `${youtubeContent.description || ''}\n\n${allTags.join(' ')}`.trim();
 
             const zRes = await fetch('https://zernio.com/api/v1/posts', {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 profileId: process.env.ZERNIO_YUMINHYE_PROFILE_ID || '69d08807986d57bb8f72f7e6',
-                platforms: ['youtube', 'tiktok'],
-                text: caption.substring(0, 2200),
+                platforms: [
+                  {
+                    platform: 'youtube',
+                    accountId: '69d08acebf4d9161df545c66', // @15초유민혜
+                    platformSpecificData: {
+                      title: (youtubeContent.title || file.name).substring(0, 100),
+                      description: ytDesc,
+                      tags: youtubeContent.tags || [],
+                      thumbnailUrl,
+                    },
+                  },
+                  {
+                    platform: 'tiktok',
+                    accountId: '69d08abdbf4d9161df545c4b', // @peerstory
+                  },
+                ],
+                content: ttCaption,
                 mediaUrl,
               }),
             });
             const zData = await zRes.json();
             zernioResult = { success: zRes.ok, data: zData };
-            console.log(`[Pipeline] Zernio upload (YT+TT): ${zRes.ok ? 'success' : 'failed'}`, JSON.stringify(zData).substring(0, 200));
+            console.log(`[Pipeline] Zernio upload: ${zRes.ok ? 'success' : 'failed'}`, JSON.stringify(zData).substring(0, 300));
           } catch (e) {
             console.error(`[Pipeline] Zernio upload error (${file.name}):`, e.message);
             zernioResult = { success: false, error: e.message };
