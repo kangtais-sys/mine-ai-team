@@ -360,12 +360,14 @@ export default async function handler(req, res) {
         ]);
 
         const [tiktokResult, youtubeResult] = await Promise.all([
-          uploadToTiktok(fileBuffer, file.name, tiktokContent).catch(e => ({
-            success: false, error: e.message, tokenExpired: false,
-          })),
-          uploadToYoutube(auth, fileBuffer, file.name, youtubeContent).catch(e => ({
-            success: false, error: e.message,
-          })),
+          uploadToTiktok(fileBuffer, file.name, tiktokContent).catch(e => {
+            console.error(`[Pipeline] TikTok upload error (${file.name}):`, e.message, e.response?.data || '');
+            return { success: false, error: e.message, tokenExpired: false };
+          }),
+          uploadToYoutube(auth, fileBuffer, file.name, youtubeContent).catch(e => {
+            console.error(`[Pipeline] YouTube upload error (${file.name}):`, e.message, e.response?.data || '');
+            return { success: false, error: e.message };
+          }),
         ]);
 
         result.tiktok = { ...tiktokResult, content: tiktokContent };
