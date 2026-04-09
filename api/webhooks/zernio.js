@@ -66,6 +66,45 @@ function isEventComment(text) {
   return false;
 }
 
+// IG rate limit check
+async function checkIgRateLimit(type) {
+  const limits = {
+    comment: { hourly: 50, daily: 300 },
+    dm: { hourly: 200, daily: 3000 },
+  };
+  const limit = limits[type] || limits.comment;
+  const now = new Date();
+  const hour = now.toISOString().slice(0, 13); // YYYY-MM-DDTHH
+  const day = now.toISOString().slice(0, 10);
+  const [hourly, daily] = await Promise.all([
+    redis.get(`ig:rate:${type}:h:${hour}`),
+    redis.get(`ig:rate:${type}:d:${day}`),
+  ]);
+  if ((Number(hourly) || 0) >= limit.hourly) return { blocked: true, reason: `hourly_limit_${limit.hourly}` };
+  if ((Number(daily) || 0) >= limit.daily) return { blocked: true, reason: `daily_limit_${limit.daily}` };
+  await Promise.all([
+    redis.incr(`ig:rate:${type}:h:${hour}`),
+    redis.expire(`ig:rate:${type}:h:${hour}`, 3600),
+    redis.incr(`ig:rate:${type}:d:${day}`),
+    redis.expire(`ig:rate:${type}:d:${day}`, 86400),
+  ]);
+  return { blocked: false };
+}
+
+// Human-like delay
+function igDelay(type) {
+  const ms = type === 'dm'
+    ? 15000 + Math.random() * 30000  // DM: 15~45초
+    : 8000 + Math.random() * 17000;  // Comment: 8~25초
+  return new Promise(r => setTimeout(r, ms));
+}
+
+// 새벽 발송 차단 (KST 01:00~07:00)
+function isNightTimeKST() {
+  const kstHour = (new Date().getUTCHours() + 9) % 24;
+  return kstHour >= 1 && kstHour < 7;
+}
+
 const SPAM = ['팔로우', '맞팔', 'follow', 'http://', 'https://', '홍보', 'dm주세요', '선팔'];
 
 const OY_SALE_KEYWORDS = ['올영세일', '올리브영세일', '올영 세일', '올리브영 할인'];
@@ -135,6 +174,19 @@ export default async function handler(req, res) {
       const accountId = account?.id || '';
       const accountUsername = account?.username || '';
       const platform = account?.platform || comment.platform || 'instagram';
+
+      // Night time block (KST 01:00~07:00)
+      if (isNightTimeKST()) {
+        console.log(`[REPLY] 스킵: nighttime commentId=${commentId}`);
+        return res.status(200).json({ skipped: true, reason: 'nighttime' });
+      }
+
+      // IG rate limit
+      const rateCheck = await checkIgRateLimit('comment');
+      if (rateCheck.blocked) {
+        console.log(`[REPLY] 스킵: rate_limit ${rateCheck.reason} commentId=${commentId}`);
+        return res.status(200).json({ skipped: true, reason: rateCheck.reason });
+      }
 
       // Skip duplicates (24h TTL)
       const dupeKey = `replied:${platform}:${commentId}`;
@@ -217,8 +269,10 @@ export default async function handler(req, res) {
         return res.status(200).json({ skipped: true, reason: 'filtered' });
       }
 
-      // Reply via Zernio unified API (works for all platforms)
-      // Webhook provides platform comment ID, not Zernio _id → use flat endpoint
+      // Human-like delay before reply
+      await igDelay('comment');
+
+      // Reply via Zernio unified API
       let replyStatus = 'unsupported';
 
       try {
@@ -294,6 +348,13 @@ export default async function handler(req, res) {
       const platform = account?.platform || message.platform || 'instagram';
       const conversationId = message.conversationId || req.body.conversationId || message.participantId;
 
+      // Night time block
+      if (isNightTimeKST()) return res.status(200).json({ skipped: true, reason: 'nighttime' });
+
+      // IG rate limit
+      const dmRate = await checkIgRateLimit('dm');
+      if (dmRate.blocked) return res.status(200).json({ skipped: true, reason: dmRate.reason });
+
       // Skip duplicates
       const dmDupeKey = `dm:replied:${messageId}`;
       const dmAlready = await redis.get(dmDupeKey);
@@ -316,6 +377,9 @@ export default async function handler(req, res) {
       const reply = claudeData.content?.[0]?.text?.trim();
 
       if (!reply || reply === 'SKIP') return res.status(200).json({ skipped: true });
+
+      // Human-like delay before DM reply
+      await igDelay('dm');
 
       // Send via Zernio Inbox Conversations API
       let replyStatus = 'no_conversation';
