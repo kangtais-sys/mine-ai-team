@@ -169,6 +169,7 @@ export default async function handler(req, res) {
     });
 
     if (!files.data.files?.length) {
+      console.log('[Drive Upload] 새 파일 없음');
       return res.status(200).json({ message: 'No new files', processed: 0 });
     }
 
