@@ -35,6 +35,16 @@ const ACCOUNT_PERSONA = {
   '69d08acebf4d9161df545c66': 'yuminhye',   // @15초유민혜 YT
 };
 
+function isEventComment(text) {
+  const t = (text || '').trim();
+  if (!t) return false;
+  if (/^\d+$/.test(t)) return true;
+  if (/^(.+?)\1+$/.test(t) && t.length <= 20) return true;
+  const eventKeywords = ['참여합니다', '참여해요', '응모', '팔로우완료', '팔로우 완료'];
+  if (eventKeywords.some(k => t.includes(k))) return true;
+  return false;
+}
+
 const SPAM = ['팔로우', '맞팔', 'follow', 'http://', 'https://', '홍보', 'dm주세요', '선팔'];
 
 const OY_SALE_KEYWORDS = ['올영세일', '올리브영세일', '올영 세일', '올리브영 할인'];
@@ -125,6 +135,32 @@ export default async function handler(req, res) {
       if (SPAM.some(k => text.toLowerCase().includes(k))) {
         console.log(`[REPLY] 스킵: spam commentId=${commentId} text="${text.substring(0, 30)}"`);
         return res.status(200).json({ skipped: true, reason: 'spam' });
+      }
+
+      if (isEventComment(text)) {
+        const eventReplies = [
+          '참여해주셔서 감사해요 🎉',
+          '감사합니다 🙏',
+          '응원해주셔서 감사해요 💕',
+          '참여 감사드려요 🍀',
+          '고마워요 ✨',
+        ];
+        const reply = eventReplies[Math.floor(Math.random() * eventReplies.length)];
+        try {
+          await fetch('https://zernio.com/api/v1/inbox/comments/reply', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ commentId, message: reply, accountId }),
+          });
+          await redis.set(dupeKey, true, { ex: 86400 });
+          console.log(`[REPLY] 이벤트 댓글: "${text}" → "${reply}"`);
+        } catch (e) {
+          console.error('[REPLY] 이벤트 댓글 발송 오류:', e.message);
+        }
+        return res.status(200).json({ success: true, reply, reason: 'event_comment' });
       }
 
       const persona = ACCOUNT_PERSONA[accountId] || 'millimilli';
