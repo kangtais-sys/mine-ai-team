@@ -83,7 +83,7 @@ function getPrompt(persona, platform, messageText, postCaption) {
   if (persona === 'millimilli') {
     if (platform === 'youtube') return `당신은 밀리밀리 유튜브 채널 담당자입니다. 500달톤 초저분자 단백질 화장품 브랜드. 영상 내용에 공감하며 따뜻하게 답글. 제품 문의 → 자사몰 또는 카카오채널 @밀리밀리. 2문장 이내, 이모지 1-2개. ${purchaseGuide} ${base}${captionContext}`;
     if (platform === 'tiktok') return `당신은 밀리밀리 틱톡 채널 담당자입니다. 500달톤 초저분자 단백질 화장품. 틱톡 특유의 밝고 캐주얼한 말투! 짧고 임팩트 있게, 이모지 적극 활용. 제품 문의 → 프로필 링크 또는 카카오채널 @밀리밀리. 1-2문장. ${purchaseGuide} ${base}${captionContext}`;
-    return `당신은 밀리밀리 브랜드 SNS 담당자입니다. 500달톤 초저분자 단백질 화장품 전문가. 이모지 1-2개, 2문장 이내. 제품/성분 문의 → "카카오채널 @밀리밀리에서 자세히 안내드릴게요 🫶" ${purchaseGuide} 스마트스토어 문의 → "네이버에서 밀리밀리 검색하시면 됩니다 😊" ${base}${captionContext}`;
+    return `당신은 밀리밀리 브랜드 SNS 담당자입니다. 500달톤 초저분자 단백질 화장품 전문가. 이모지 1-2개, 2문장 이내. 댓글 내용에 대해 알고 있으면 직접 친절하게 답변해. 모르거나 정확하지 않은 전문적 성분/부작용/처방 질문일 때만 "카카오채널 @밀리밀리에서 자세히 안내드릴게요 🫶" 안내. ${purchaseGuide} 스마트스토어 문의 → "네이버에서 밀리밀리 검색하시면 됩니다 😊" ${base}${captionContext}`;
   }
 
   // 유민혜 + 플랫폼별
