@@ -23,33 +23,32 @@ async function withRetry(fn, maxRetries = 2, label = '') {
   throw lastError;
 }
 
-// Google Auth with automatic token refresh
-function getAuth() {
-  if (process.env.GOOGLE_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID) {
+// Google Auth with automatic token refresh (KV 우선)
+async function getAuth() {
+  let refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+
+  // KV에 최신 토큰이 있으면 우선 사용
+  try {
+    const { Redis } = await import('@upstash/redis');
+    const redis = new Redis({
+      url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+    const kvToken = await redis.get('google:refresh_token');
+    if (kvToken) refreshToken = kvToken;
+  } catch {}
+
+  if (refreshToken && process.env.GOOGLE_CLIENT_ID) {
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
       process.env.GOOGLE_REDIRECT_URI
     );
-    oauth2Client.setCredentials({
-      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
-    });
-    // googleapis library auto-refreshes via refresh_token when access_token expires
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
     return oauth2Client;
   }
 
-  return new google.auth.GoogleAuth({
-    credentials: {
-      client_email: process.env.GOOGLE_CLIENT_EMAIL,
-      private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    },
-    scopes: [
-      'https://www.googleapis.com/auth/drive',
-      'https://www.googleapis.com/auth/youtube',
-      'https://www.googleapis.com/auth/youtube.upload',
-      'https://www.googleapis.com/auth/youtube.force-ssl',
-    ],
-  });
+  throw new Error('Google refresh token not found');
 }
 
 // Manually refresh access_token if needed (fallback)
@@ -163,12 +162,32 @@ async function refreshTiktokToken() {
   return null;
 }
 
-// TikTok upload with auto token refresh
+// TikTok upload: try direct API first, fallback to Zernio
 async function uploadToTiktok(fileBuffer, fileName, content) {
+  // Zernio fallback if no direct TikTok token
   let accessToken = process.env.TIKTOK_ACCESS_TOKEN;
   if (!accessToken) {
-    console.error('[TikTok] TIKTOK_ACCESS_TOKEN not set');
-    return { success: false, error: 'TIKTOK_ACCESS_TOKEN not set', tokenExpired: false };
+    console.log('[TikTok] No direct token, using Zernio fallback');
+    if (process.env.ZERNIO_API_KEY) {
+      try {
+        const caption = `${content.caption || content.title || fileName}\n${(content.hashtags || []).map(t => `#${t.replace('#', '')}`).join(' ')}`;
+        const zRes = await fetch('https://zernio.com/api/v1/posts', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            profileId: process.env.ZERNIO_YUMINHYE_PROFILE_ID || '69d08807986d57bb8f72f7e6',
+            platforms: ['tiktok'],
+            text: caption.substring(0, 2200),
+          }),
+        });
+        const zData = await zRes.json();
+        console.log('[TikTok] Zernio fallback:', zRes.ok ? 'success' : zData.error);
+        return { success: zRes.ok, via: 'zernio', tokenExpired: false };
+      } catch (e) {
+        console.error('[TikTok] Zernio fallback error:', e.message);
+      }
+    }
+    return { success: false, error: 'TIKTOK_ACCESS_TOKEN not set, Zernio unavailable', tokenExpired: false };
   }
 
   async function attemptUpload(token) {
@@ -322,7 +341,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const auth = getAuth();
+    const auth = await getAuth();
     const drive = google.drive({ version: 'v3', auth });
 
     const videoMimes = [
