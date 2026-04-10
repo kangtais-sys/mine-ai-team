@@ -26,9 +26,10 @@ export default async function handler(req, res) {
         temperature: 1.0,
         messages: [{ role: 'user', content: `오늘(${today}) 인스타그램 카드뉴스 주제를 5개 제안해줘.
 
-채널: 시수르더쿠 (@sisru_doku) — 솔직한 뷰티/시술/성형 정보
+채널: 시수르더쿠 (@sisru_doku)
+캐릭터: 1년에 1억 이상 시술/화장품에 쓰는 진짜 중독자. 피부과 의사가 아닌 실제 경험자.
 대상: 20~35세 여성
-톤: 친구처럼 솔직, 도발적, 클릭 유발
+톤: 친구처럼 솔직, 도발적, 광고 느낌 절대 없이
 
 ## 트렌드 소스 (이 소스들에서 지금 핫한 주제 찾아줘)
 
