@@ -15,7 +15,8 @@
     { "path": "/api/cron/ad-optimize", "schedule": "0 4 * * *" },
     { "path": "/api/cron/chief-report", "schedule": "0 23 * * *" },
     { "path": "/api/cron/drive-upload", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/sisuru-content", "schedule": "0 1 * * *" }
+    { "path": "/api/cron/sisuru-content", "schedule": "0 1 * * *" },
+    { "path": "/api/cron/sisuru-research", "schedule": "0 14 * * *" }
   ],
   "rewrites": [
     { "source": "/api/auth/google", "destination": "/api/auth/google" },
