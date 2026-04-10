@@ -66,12 +66,18 @@ title이 14자 넘으면 반드시 줄바꿈(\\n) 넣어서 한 줄 14자 이내
 - 출처가 필요한 정보는 캡션 하단에 "출처: ○○○" 명시
 
 ## 슬라이드 구성
-1장 후킹: subtitle(카테고리), title(위 패턴으로 충격 후킹), image_type("Imagen"), image_prompt(영어 50단어, 주제와 관련된 뷰티/시술 이미지)
-2장 후킹심화: subtitle("잠깐만"), title(위 심화 패턴), image_type("Imagen"), image_prompt(영어 50단어)
-3장 STEP1: subtitle("STEP 1"), title(소제목), body(핵심 정보 5~7줄, 실제 가격/수치/기간 포함), image_type("Imagen"), image_prompt(영어 50단어)
-4장 STEP2: subtitle("STEP 2"), title(소제목), body(5~7줄, A vs B 비교), image_type("Imagen"), image_prompt(영어 50단어)
-5장 STEP3: subtitle("STEP 3"), title(소제목), body(5~7줄, 주의사항/부작용), image_type("Imagen"), image_prompt(영어 50단어)
-6장 요약: subtitle("정리하면"), title("이것만 기억해 ✅"), body(1~5장 핵심을 빠짐없이 3~4줄 요약), image_type("Imagen"), image_prompt(영어 50단어)
+1장 후킹: subtitle(카테고리), title(위 패턴으로 충격 후킹), image_type(아래 참고), image_prompt(영어 50단어 또는 검색 키워드)
+2장 후킹심화: subtitle("잠깐만"), title(위 심화 패턴), image_type, image_prompt
+3장 STEP1: subtitle("STEP 1"), title(소제목), body(핵심 정보 5~7줄, 실제 가격/수치/기간), image_type, image_prompt
+4장 STEP2: subtitle("STEP 2"), title(소제목), body(5~7줄, A vs B 비교), image_type, image_prompt
+5장 STEP3: subtitle("STEP 3"), title(소제목), body(5~7줄, 주의사항/부작용), image_type, image_prompt
+6장 요약: subtitle("정리하면"), title("이것만 기억해 ✅"), body(1~5장 핵심 빠짐없이 3~4줄), image_type("Imagen"), image_prompt(영어 50단어)
+
+image_type 선택 기준:
+- "Imagen": 일반 뷰티/시술 이미지 (기본값, image_prompt에 영어 프롬프트)
+- "올리브영": 올리브영 제품 관련 장 (image_prompt에 한국어 제품/성분 검색어)
+- "Pinterest": 무드/분위기 이미지 (image_prompt에 영어 검색어)
+제품 비교/리뷰 주제면 올리브영 활용, 시술/트렌드면 Imagen 또는 Pinterest
 7장 CTA: subtitle(""), image_type("고정"), image_prompt("")
   아래 5개 패턴 중 랜덤 1개 선택해서 title+body로 나눠줘:
   ① "더 솔직한 거 알고 싶어?" + "댓글에 나도 남겨줘 👇\\nDM으로 직접 알려줄게"
@@ -228,7 +234,7 @@ export default async function handler(req, res) {
         if (s.body) chatText += `본문:\n${s.body}\n`;
         chatText += `이미지: ${s.image_type || 'Imagen'}${s.image_prompt ? ` (${s.image_prompt.substring(0, 40)})` : ''}\n\n`;
       }
-      chatText += `━━━ 캡션 ━━━\nIG: ${plan.instagram_caption}\n\nTT: ${plan.tiktok_caption}\n\n`;
+      chatText += `━━━ 캡션 ━━━\nIG: ${plan.instagram_caption || '(캡션 생성 실패 — 수동 입력 필요)'}\n\nTT: ${plan.tiktok_caption || '(캡션 생성 실패)'}\n\n`;
       chatText += `✏️ 수정할 부분 말씀해주세요. "생성해" 라고 하면 이미지 생성 + Zernio 발행합니다.`;
 
       return res.status(200).json({ success: true, action: 'draft', chatText, plan });
@@ -249,10 +255,17 @@ export default async function handler(req, res) {
       // slide 번호 보장
       slides = slides.map((s, i) => ({ ...s, slide: s.slide || i + 1 }));
 
-      // 배경 이미지 생성 (7장 고정 제외, 나머지 전부)
-      const bgPromises = slides.map(s =>
-        s.image_type !== '고정' && s.image_prompt ? generateBgImage(s.image_prompt) : Promise.resolve(null)
-      );
+      // 배경 이미지 생성 (타입별 분기)
+      const { captureAndUpload } = await import('./utils/screenshot.js');
+      const bgPromises = slides.map(async (s) => {
+        if (s.image_type === '고정') return null;
+        if (s.image_type === '올리브영' || s.image_type === '올리브영캡처' || s.image_type === 'Pinterest' || s.image_type === '핀터레스트') {
+          const url = await captureAndUpload(s.image_type, s.image_prompt);
+          if (url) return url;
+          // fallback to Imagen
+        }
+        return s.image_prompt ? generateBgImage(s.image_prompt) : null;
+      });
       const bgImages = await Promise.all(bgPromises);
       console.log(`[Select] BG: ${bgImages.filter(Boolean).length}`);
 
