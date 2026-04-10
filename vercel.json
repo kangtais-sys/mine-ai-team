@@ -16,7 +16,7 @@
     { "path": "/api/cron/chief-report", "schedule": "0 23 * * *" },
     { "path": "/api/cron/drive-upload", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/sisuru-content", "schedule": "0 1 * * *" },
-    { "path": "/api/cron/sisuru-research", "schedule": "0 14 * * *" }
+    { "path": "/api/cron/sisuru-propose", "schedule": "0 0 * * *" }
   ],
   "rewrites": [
     { "source": "/api/auth/google", "destination": "/api/auth/google" },
@@ -66,6 +66,8 @@
     { "source": "/api/cron/chief-report", "destination": "/api/cron/chief-report" },
     { "source": "/api/cron/drive-upload", "destination": "/api/cron/drive-upload" },
     { "source": "/api/cron/sisuru-content", "destination": "/api/cron/sisuru-content" },
+    { "source": "/api/cron/sisuru-propose", "destination": "/api/cron/sisuru-propose" },
+    { "source": "/api/sisuru-select", "destination": "/api/sisuru-select" },
     { "source": "/api/cs/kakao-webhook", "destination": "/api/cs/kakao-webhook" },
     { "source": "/api/cs/daily-report", "destination": "/api/cs/daily-report" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }

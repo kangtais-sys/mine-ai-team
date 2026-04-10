@@ -11,7 +11,10 @@ const redis = new Redis({
 const PROFILE_ID = process.env.SISURU_PROFILE_ID || '69d8a52731c2441246bef194';
 
 // ─── Step 1: 트렌드 리서치 + Step 2: 7장 카드뉴스 기획 ───
-async function planCardNews() {
+async function planCardNews(selectedTopic) {
+  const topicContext = selectedTopic
+    ? `\n\n## 선택된 주제\ntopic: ${selectedTopic.topic}\ntype: ${selectedTopic.type}\nhook: ${selectedTopic.hook}\n이 주제로 7장 카드뉴스를 만들어줘.`
+    : '';
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
@@ -30,7 +33,7 @@ async function planCardNews() {
 - 올리브영 실시간 랭킹 키워드
 - 글로우픽 인기 리뷰 키워드
 - X(트위터) #스킨케어 #뷰티 트렌드
-→ TOP5 키워드에서 오늘의 주제 1개 확정
+→ TOP5 키워드에서 오늘의 주제 1개 확정${topicContext}
 
 ## 7장 카드뉴스 기획
 1장 후킹: 엄지 멈추게 하는 한 줄 (3초 안에 읽히고 충격/호기심/공감 유발)
@@ -260,9 +263,17 @@ export default async function handler(req, res) {
   }
 
   try {
+    // 선택된 주제 확인
+    let selectedTopic = null;
+    try {
+      const sel = await redis.get('sisuru:selected');
+      selectedTopic = sel ? (typeof sel === 'string' ? JSON.parse(sel) : sel) : null;
+      if (selectedTopic) console.log(`[Sisuru] Using selected topic: ${selectedTopic.topic}`);
+    } catch {}
+
     // Step 1+2: 트렌드 리서치 + 카드뉴스 기획
     console.log('[Sisuru] Step 1+2: Planning...');
-    const plan = await planCardNews();
+    const plan = await planCardNews(selectedTopic);
     if (!plan) return res.status(200).json({ error: 'Planning failed' });
     console.log(`[Sisuru] Topic: ${plan.topic} (${plan.type})`);
 

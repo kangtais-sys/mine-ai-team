@@ -152,6 +152,80 @@ function CommunityKpis() {
   );
 }
 
+// ─── Sisuru Proposals ───────────────────────────────────────
+
+function SisuruProposals() {
+  const [proposals, setProposals] = useState(null);
+  const [selecting, setSelecting] = useState(null);
+  const [result, setResult] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/sisuru-select').then(r => r.json()).then(d => setProposals(d)).catch(() => {});
+  }, []);
+
+  const select = async (id) => {
+    setSelecting(id);
+    setResult(null);
+    try {
+      const r = await fetch('/api/sisuru-select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const d = await r.json();
+      setResult(d);
+    } catch (e) { setResult({ error: e.message }); }
+    setSelecting(null);
+  };
+
+  const items = proposals?.proposals?.proposals || [];
+  const selected = proposals?.selected;
+
+  return (
+    <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5' }}>시수르더쿠 오늘의 주제</div>
+        {selected && <span style={{ fontSize: 9, background: '#22C55E22', color: '#22C55E', padding: '2px 6px', borderRadius: 3 }}>선택됨</span>}
+      </div>
+      {selected && (
+        <div style={{ background: '#5E6AD215', border: '1px solid #5E6AD233', borderRadius: 6, padding: '8px 10px', marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#5E6AD2' }}>{selected.topic}</div>
+          <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>{selected.hook}</div>
+        </div>
+      )}
+      {items.length > 0 ? items.map((p, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 0', borderBottom: i < items.length - 1 ? '1px solid #1F1F1F' : 'none' }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#5E6AD2', width: 16, flexShrink: 0, marginTop: 2 }}>{p.id}</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, color: '#CCC', fontWeight: 500 }}>{p.topic}</div>
+            <div style={{ fontSize: 10, color: '#777', marginTop: 2 }}>{p.hook}</div>
+            <div style={{ fontSize: 9, color: '#555', marginTop: 1 }}>{p.type} · 참여도 {p.engagement_score}/10</div>
+          </div>
+          <button
+            onClick={() => select(p.id)}
+            disabled={selecting === p.id}
+            style={{ fontSize: 9, padding: '3px 8px', borderRadius: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: selecting === p.id ? '#333' : '#5E6AD2', color: '#FFF', flexShrink: 0, marginTop: 2 }}
+          >
+            {selecting === p.id ? '...' : '선택'}
+          </button>
+        </div>
+      )) : (
+        <div style={{ fontSize: 11, color: '#555', padding: '8px 0' }}>
+          {proposals ? '제안 없음 — 매일 아침 9시 자동 생성' : '로딩 중...'}
+        </div>
+      )}
+      {result?.success && (
+        <div style={{ fontSize: 10, color: '#22C55E', marginTop: 8, background: '#22C55E11', padding: '4px 8px', borderRadius: 4 }}>
+          제작 시작: {result.selected?.topic}
+        </div>
+      )}
+      {result?.error && (
+        <div style={{ fontSize: 10, color: '#EF4444', marginTop: 8 }}>{result.error}</div>
+      )}
+    </div>
+  );
+}
+
 // ─── Agent KPI Dashboards ───────────────────────────────────
 
 const AGENT_DASHBOARDS = {
@@ -318,12 +392,8 @@ const AGENT_DASHBOARDS = {
           </div>
         </div>
 
-        {/* Pipeline */}
-        <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5', marginBottom: 8 }}>발행 파이프라인</div>
-          <div style={{ fontSize: 11, color: '#CCC', marginBottom: 4 }}>mirra.my를 통한 콘텐츠 발행</div>
-          <div style={{ fontSize: 10, color: '#555' }}>콘텐츠 제작 → mirra.my 업로드 → 멀티채널 자동 발행</div>
-        </div>
+        {/* Sisuru Proposals */}
+        <SisuruProposals />
 
         {/* Recent posts */}
         {data?.recent?.length > 0 && (
