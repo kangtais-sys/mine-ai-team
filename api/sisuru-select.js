@@ -153,8 +153,12 @@ async function generateBannerbearImage(slideNum, slide, bgImageUrl) {
 }
 
 // ─── Zernio 발행 ───
-async function publishToZernio(plan, imageUrls) {
-  const igCaption = plan.instagram_caption || '';
+async function publishToZernio(plan, imageUrls, topicSource) {
+  // 출처 추가
+  let igCaption = plan.instagram_caption || '';
+  if (topicSource && !igCaption.includes('출처')) {
+    igCaption += `\n\n출처: ${topicSource}`;
+  }
   const body = {
     profileId: PROFILE_ID,
     platforms: [
@@ -233,22 +237,33 @@ export default async function handler(req, res) {
 
       console.log('[Select] Generating images...');
 
-      // 배경 이미지 생성 (image_type이 Imagen인 장만)
-      const bgPromises = (plan.slides || []).slice(0, 6).map(s =>
-        s.image_type === 'Imagen' || s.image_type === 'imagen' ? generateBgImage(s.image_prompt) : Promise.resolve(null)
+      // 7장 보장 (Claude가 6장만 줬을 때 CTA 추가)
+      let slides = plan.slides || [];
+      if (slides.length < 7) {
+        slides = [...slides, { slide: 7, subtitle: '', title: '더 솔직한 정보 원해?', body: '댓글에 나도 남겨줘 👇\nDM으로 직접 알려줄게', image_type: '고정', image_prompt: '' }];
+      }
+      // slide 번호 보장
+      slides = slides.map((s, i) => ({ ...s, slide: s.slide || i + 1 }));
+
+      // 배경 이미지 생성 (Imagen 타입만, 7장 모두)
+      const bgPromises = slides.map(s =>
+        (s.image_type === 'Imagen' || s.image_type === 'imagen') && s.image_prompt ? generateBgImage(s.image_prompt) : Promise.resolve(null)
       );
       const bgImages = await Promise.all(bgPromises);
       console.log(`[Select] BG: ${bgImages.filter(Boolean).length}`);
 
-      // Bannerbear 7장
-      const slides = plan.slides.length >= 7 ? plan.slides : [...plan.slides, { slide: 7, title: '더 솔직한 정보 원해?', body: '댓글에 나도 남겨줘 👇' }];
-      const bbPromises = slides.map((s, i) => generateBannerbearImage(s.slide || i + 1, s, bgImages[i] || null));
+      // Bannerbear 7장 병렬
+      const bbPromises = slides.map((s, i) => generateBannerbearImage(s.slide, s, bgImages[i] || null));
       const imageUrls = await Promise.all(bbPromises);
       const validImages = imageUrls.filter(Boolean);
       console.log(`[Select] Cards: ${validImages.length}/${slides.length}`);
 
+      // 출처 가져오기
+      const selectedData = await redis.get('sisuru:selected');
+      const topicSource = selectedData ? (typeof selectedData === 'string' ? JSON.parse(selectedData) : selectedData)?.source : null;
+
       // Zernio 발행
-      const zernioResult = await publishToZernio(plan, validImages);
+      const zernioResult = await publishToZernio(plan, validImages, topicSource);
       console.log('[Select] Published:', zernioResult?.post?.status || zernioResult?.error);
 
       return res.status(200).json({
