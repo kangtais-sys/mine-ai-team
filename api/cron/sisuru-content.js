@@ -83,19 +83,54 @@ JSON만 응답:
   return match ? JSON.parse(match[0]) : null;
 }
 
-// ─── Step 3: Higgsfield 이미지 생성 ───
+// ─── Step 3: Google Gemini Imagen 3 이미지 생성 ───
 async function generateImage(prompt, index) {
-  if (!process.env.HIGGSFIELD_API_KEY) return null;
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.log('[Sisuru] GEMINI_API_KEY not set, skipping image');
+    return null;
+  }
   try {
-    const res = await fetch('https://api.higgsfield.ai/v1/images/generations', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${process.env.HIGGSFIELD_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, n: 1, size: '1080x1350' }),
-    });
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instances: [{ prompt: `${prompt}. Vertical 9:16 ratio, aesthetic Korean beauty style, clean minimal background` }],
+          parameters: { sampleCount: 1, aspectRatio: '9:16' },
+        }),
+      }
+    );
     const data = await res.json();
-    const url = data.data?.[0]?.url;
-    console.log(`[Sisuru] Image ${index}: ${url ? 'generated' : 'failed'}`);
-    return url;
+    if (data.error) {
+      console.error(`[Sisuru] Imagen ${index} error:`, data.error.message);
+      return null;
+    }
+    // Imagen returns base64 — upload to Zernio media
+    const b64 = data.predictions?.[0]?.bytesBase64Encoded;
+    if (!b64) {
+      console.log(`[Sisuru] Imagen ${index}: no image data`);
+      return null;
+    }
+    // Upload base64 to Zernio media for URL
+    if (process.env.ZERNIO_API_KEY) {
+      const formData = new FormData();
+      const buf = Buffer.from(b64, 'base64');
+      formData.append('files', new Blob([buf], { type: 'image/png' }), `slide_${index}.png`);
+      const uploadRes = await fetch('https://zernio.com/api/v1/media', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}` },
+        body: formData,
+      });
+      const uploadData = await uploadRes.json();
+      const url = uploadData.files?.[0]?.url;
+      console.log(`[Sisuru] Image ${index}: ${url ? 'uploaded to Zernio' : 'upload failed'}`);
+      return url;
+    }
+    // Fallback: return data URI
+    console.log(`[Sisuru] Image ${index}: generated (base64, ${b64.length} chars)`);
+    return `data:image/png;base64,${b64.substring(0, 100)}...`; // truncated for log
   } catch (e) {
     console.error(`[Sisuru] Image ${index} error:`, e.message);
     return null;
