@@ -38,13 +38,28 @@ async function planSlides(topic) {
 톤: 친구처럼 솔직, 도발적, 충격적 사실 공유.
 주의: 밀리밀리/화장품 브랜드 언급 절대 금지.
 
-1장 후킹: 엄지 멈추는 충격 문구 (예: "이거 모르면 피부과 돈 낭비 🤯" / "보톡스 맞기 전 반드시 알아야 할 것")
-2장 후킹심화: 궁금증 폭발 (예: "사실 이게 핵심이었어..." / "돈 아끼려다 더 쓴 사람들")
-3장 본론①: 핵심 정보 STEP 1
-4장 본론②: 핵심 정보 STEP 2
-5장 본론③: 핵심 정보 STEP 3
-6장 요약: "정리하면 이거야 ✅"
-7장 CTA: 고정 (생략)
+1장 후킹: 엄지 멈추는 충격 문구 (예: "이거 모르면 피부과 돈 낭비 🤯")
+  - subtitle: 카테고리명 (예: "시술 정보" / "뷰티 팁")
+  - title: 후킹 메인 텍스트 (짧고 강렬하게, 2줄 이내)
+2장 후킹심화: 궁금증 폭발
+  - subtitle: "잠깐만" 또는 "사실은"
+  - title: 심화 텍스트
+3장 본론①: STEP 1
+  - subtitle: "STEP 1"
+  - title: 소제목
+  - body: 핵심 정보 (3~4줄)
+4장 본론②: STEP 2
+  - subtitle: "STEP 2"
+  - title: 소제목
+  - body: 핵심 정보
+5장 본론③: STEP 3
+  - subtitle: "STEP 3"
+  - title: 소제목
+  - body: 핵심 정보
+6장 요약: 정리
+  - subtitle: "정리하면"
+  - title: "이것만 기억해 ✅"
+  - body: 핵심 3줄 요약
 
 Instagram 캡션: 후킹1줄 + (빈줄3) + 본문2줄 + (빈줄3) + "💬 댓글에 나도 남기면 DM 보내줄게" + 해시태그 25개
 TikTok 캡션: 후킹 60자 + 해시태그 7개
@@ -117,8 +132,7 @@ async function publishToZernio(plan, imageUrls) {
     ],
     content: safeCaption?.substring(0, 2200) || plan.tiktok_caption,
     status: 'scheduled',
-    scheduledFor: new Date(Date.now() + 60000).toISOString(),
-    publishNow: true,
+    scheduledFor: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(), // 3시간 후
   };
 
   if (imageUrls?.length > 0) {

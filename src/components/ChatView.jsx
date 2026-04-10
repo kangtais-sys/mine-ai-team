@@ -227,7 +227,7 @@ function SisuruProposals() {
             disabled={selecting === p.id}
             style={{ fontSize: 9, padding: '3px 8px', borderRadius: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: selecting === p.id ? '#333' : '#5E6AD2', color: '#FFF', flexShrink: 0, marginTop: 2 }}
           >
-            {selecting === p.id ? '...' : '선택'}
+            {selecting === p.id ? '생성 중...' : '선택'}
           </button>
         </div>
       )) : (
@@ -236,8 +236,9 @@ function SisuruProposals() {
         </div>
       )}
       {result?.success && (
-        <div style={{ fontSize: 10, color: '#22C55E', marginTop: 8, background: '#22C55E11', padding: '4px 8px', borderRadius: 4 }}>
-          제작 시작: {result.selected?.topic}
+        <div style={{ fontSize: 10, color: '#22C55E', marginTop: 8, background: '#22C55E11', padding: '6px 8px', borderRadius: 4 }}>
+          {result.zernio?.status === 'scheduled' || result.zernio?.id ? '📋 예약 중' : '✅ 생성 완료'} — {result.topic} ({result.images}장)
+          {result.zernio?.error && <div style={{ color: '#F59E0B', marginTop: 2 }}>{result.zernio.error}</div>}
         </div>
       )}
       {result?.error && (
