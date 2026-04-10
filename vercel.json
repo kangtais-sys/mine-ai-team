@@ -66,6 +66,8 @@
     { "source": "/api/cron/chief-report", "destination": "/api/cron/chief-report" },
     { "source": "/api/cron/drive-upload", "destination": "/api/cron/drive-upload" },
     { "source": "/api/cron/sisuru-content", "destination": "/api/cron/sisuru-content" },
+    { "source": "/api/auth/canva", "destination": "/api/auth/canva" },
+    { "source": "/api/auth/canva-callback", "destination": "/api/auth/canva-callback" },
     { "source": "/api/cron/sisuru-propose", "destination": "/api/cron/sisuru-propose" },
     { "source": "/api/sisuru-select", "destination": "/api/sisuru-select" },
     { "source": "/api/cs/kakao-webhook", "destination": "/api/cs/kakao-webhook" },

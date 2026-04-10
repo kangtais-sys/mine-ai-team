@@ -173,13 +173,39 @@ async function saveToDrive(plan, imageUrls) {
   }
 }
 
-// ─── Step 5: Canva MCP (준비 중) ───
+// ─── Step 5: Canva Connect API로 카드뉴스 제작 ───
 async function createCanvaDesign(plan, imageUrls) {
-  // TODO: Canva MCP 서버 연동
-  // Template: DAHGRefiPUY (1080x1350)
-  // mcp_servers: https://mcp.canva.com/mcp
-  console.log('[Sisuru] Canva MCP 준비 중 — 이미지 직접 사용');
-  return imageUrls.filter(Boolean);
+  try {
+    const { createCardNews } = await import('../utils/canva.js');
+    const result = await createCardNews(plan.slides || [], imageUrls.filter(Boolean));
+    console.log(`[Sisuru] Canva design: ${result.designId}, ops: ${result.operationsCount}`);
+
+    // Export URL이 있으면 Zernio 미디어로 업로드
+    if (result.exportUrl) {
+      if (process.env.ZERNIO_API_KEY) {
+        const imgRes = await fetch(result.exportUrl);
+        const imgBuf = await imgRes.arrayBuffer();
+        const formData = new FormData();
+        formData.append('files', new Blob([imgBuf], { type: 'image/png' }), 'cardnews.png');
+        const uploadRes = await fetch('https://zernio.com/api/v1/media', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}` },
+          body: formData,
+        });
+        const uploadData = await uploadRes.json();
+        const mediaUrl = uploadData.files?.[0]?.url;
+        if (mediaUrl) return [mediaUrl];
+      }
+      return [result.exportUrl];
+    }
+
+    // Canva export 실패 시 Imagen 이미지 직접 사용
+    console.log('[Sisuru] Canva export pending — using Imagen images');
+    return imageUrls.filter(Boolean);
+  } catch (e) {
+    console.warn('[Sisuru] Canva fallback:', e.message);
+    // Canva 미연결 시 Imagen 이미지 직접 사용
+    return imageUrls.filter(Boolean);
 }
 
 // ─── Step 6: Zernio 발행 ───
