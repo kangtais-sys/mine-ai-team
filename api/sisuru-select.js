@@ -11,18 +11,18 @@ const PROFILE_ID = process.env.SISURU_PROFILE_ID || '69d8a52731c2441246bef194';
 const IG_ACCOUNT = process.env.SISURU_IG_ACCOUNT_ID || '69d8a6257dea335c2bd101f6';
 const TT_ACCOUNT = process.env.SISURU_TT_ACCOUNT_ID || '69d8a5c27dea335c2bd100ad';
 
-// Canva 템플릿 element ID
-const SLIDES = {
-  1: { subtitle: 'PBQnrYjN0zCRC3Qh-LBVwGtM2N0t4XDbL', main: 'PBQnrYjN0zCRC3Qh-LBzWG8127hWWVY46', bg: 'PBQnrYjN0zCRC3Qh' },
-  2: { subtitle: 'PB3VCDYPtHydNdT8-LB7917xn6XZcgpjN', main: 'PB3VCDYPtHydNdT8-LBKQ0zWqzn66jH6g', bg: 'PB3VCDYPtHydNdT8' },
-  3: { subtitle: 'PBCqmxYrmz7rSD4l-LBWDqLtL3tZy8wd8', body: 'PBCqmxYrmz7rSD4l-LBbqcgKT0CWPGzTB', bg: 'PBCqmxYrmz7rSD4l' },
-  4: { subtitle: 'PBJwgDJyb9kLGzXQ-LBpTTZvVGdjv6156', body: 'PBJwgDJyb9kLGzXQ-LBGPTXHzVPXLmB3C', bg: 'PBJwgDJyb9kLGzXQ' },
-  5: { subtitle: 'PBLKRZrylx2bpQ8k-LBb02BjHpp8vpMgN', body: 'PBLKRZrylx2bpQ8k-LBZwClRY7j080DJg', bg: 'PBLKRZrylx2bpQ8k' },
-  6: { subtitle: 'PBmy6rSmx3gy064x-LBMrQN66JprCStGs', body: 'PBmy6rSmx3gy064x-LBzYknXmH8WsCxH5', bg: 'PBmy6rSmx3gy064x' },
-  7: { /* CTA 고정 — 수정 안 함 */ },
+// Bannerbear 템플릿 UID (장별)
+const BB_TEMPLATES = {
+  1: '1oMJnB5r9QRMZl2wqL',
+  2: 'lzw71BD6ExN950eYkn',
+  3: 'n1MJGd52QzJoZ7LaPV',
+  4: '6anBGWDAW0JgZO3812',
+  5: 'Aqa9wzDP2jQRZJogk7',
+  6: 'l9E7G65ko0XY5PLe3R',
+  7: 'vz9ByYbNVYQ0bRGXrw',
 };
 
-// ─── Step 1: Claude로 7장 기획 ───
+// ─── Step 3: Claude 7장 기획 ───
 async function planSlides(topic) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -30,38 +30,36 @@ async function planSlides(topic) {
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 2048,
-      messages: [{ role: 'user', content: `주제: "${topic.topic}"
+      messages: [{ role: 'user', content: `주제: "${topic.title}"
+카테고리: ${topic.category}
 후킹: "${topic.hook}"
 
-이 주제로 인스타그램 7장 카드뉴스 슬라이드를 만들어줘.
-채널: 시수르더쿠 (@sisru_doku) — 솔직한 뷰티 정보
-톤: 친구처럼 직설적, 약간 도발적
+시수르더쿠(@sisru_doku) 7장 카드뉴스 기획.
+톤: 친구처럼 솔직, 도발적, 충격적 사실 공유.
+주의: 밀리밀리/화장품 브랜드 언급 절대 금지.
 
-각 슬라이드:
-1장: 소제목 + 후킹 메인텍스트 (3초 안에 충격/호기심)
-2장: 소제목 + 궁금증 심화 텍스트
-3장: 소제목(STEP 1) + 본론 ① (핵심 정보)
-4장: 소제목(STEP 2) + 본론 ②
-5장: 소제목(STEP 3) + 본론 ③
-6장: 소제목(정리) + 요약 텍스트
-7장: CTA 고정 (생략)
+1장 후킹: 엄지 멈추는 충격 문구 (예: "이거 모르면 피부과 돈 낭비 🤯" / "보톡스 맞기 전 반드시 알아야 할 것")
+2장 후킹심화: 궁금증 폭발 (예: "사실 이게 핵심이었어..." / "돈 아끼려다 더 쓴 사람들")
+3장 본론①: 핵심 정보 STEP 1
+4장 본론②: 핵심 정보 STEP 2
+5장 본론③: 핵심 정보 STEP 3
+6장 요약: "정리하면 이거야 ✅"
+7장 CTA: 고정 (생략)
 
-각 슬라이드 이미지 프롬프트도 생성 (영어, 50단어, 뷰티/스킨케어 aesthetic)
-
-Instagram 캡션: 후킹 1줄 + 빈줄3 + 본문 2줄 + 빈줄3 + 댓글 CTA + 해시태그 25개
-TikTok 캡션: 60자 + 해시태그 7개
+Instagram 캡션: 후킹1줄 + (빈줄3) + 본문2줄 + (빈줄3) + "💬 댓글에 나도 남기면 DM 보내줄게" + 해시태그 25개
+TikTok 캡션: 후킹 60자 + 해시태그 7개
 
 JSON만:
 {
   "slides": [
-    {"slide":1, "subtitle":"소제목", "text":"메인텍스트", "image_prompt":"영어 프롬프트"},
-    {"slide":2, "subtitle":"소제목", "text":"텍스트", "image_prompt":"프롬프트"},
-    {"slide":3, "subtitle":"STEP 1", "text":"본론", "image_prompt":"프롬프트"},
-    {"slide":4, "subtitle":"STEP 2", "text":"본론", "image_prompt":"프롬프트"},
-    {"slide":5, "subtitle":"STEP 3", "text":"본론", "image_prompt":"프롬프트"},
-    {"slide":6, "subtitle":"정리하면", "text":"요약", "image_prompt":"프롬프트"}
+    {"slide":1, "subtitle":"후킹", "title":"메인텍스트", "body":""},
+    {"slide":2, "subtitle":"후킹 심화", "title":"텍스트", "body":""},
+    {"slide":3, "subtitle":"STEP 1", "title":"소제목", "body":"본문 내용"},
+    {"slide":4, "subtitle":"STEP 2", "title":"소제목", "body":"본문 내용"},
+    {"slide":5, "subtitle":"STEP 3", "title":"소제목", "body":"본문 내용"},
+    {"slide":6, "subtitle":"정리하면", "title":"요약 제목", "body":"요약 내용"}
   ],
-  "instagram_caption": "전체 캡션 (해시태그 25개 포함)",
+  "instagram_caption": "전체 캡션 (해시태그 25개)",
   "tiktok_caption": "60자 + 해시태그 7개"
 }` }],
     }),
@@ -72,59 +70,42 @@ JSON만:
   return match ? JSON.parse(match[0]) : null;
 }
 
-// ─── Step 2: Gemini Imagen 이미지 생성 ───
-async function generateImage(prompt, index) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
+// ─── Step 4: Bannerbear 이미지 생성 (7장 병렬) ───
+async function generateBannerbearImage(slideNum, slide) {
+  const templateUid = BB_TEMPLATES[slideNum];
+  if (!templateUid) return null;
+
+  const modifications = slideNum === 7
+    ? [] // 7장 CTA 고정
+    : [
+        slide.title && { name: 'title', text: slide.title },
+        slide.subtitle && { name: 'subtitle', text: slide.subtitle },
+        slide.body && { name: 'body', text: slide.body },
+      ].filter(Boolean);
+
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instances: [{ prompt: `${prompt}. Square format, aesthetic Korean beauty style, clean minimal background, Instagram feed post` }],
-          parameters: { sampleCount: 1, aspectRatio: '1:1' },
-        }),
-      }
-    );
+    const res = await fetch('https://sync.api.bannerbear.com/v2/images', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${process.env.BANNERBEAR_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template: templateUid, modifications }),
+    });
     const data = await res.json();
-    const b64 = data.predictions?.[0]?.bytesBase64Encoded;
-    if (!b64) return null;
-
-    // Zernio에 업로드해서 URL 획득
-    if (process.env.ZERNIO_API_KEY) {
-      const formData = new FormData();
-      formData.append('files', new Blob([Buffer.from(b64, 'base64')], { type: 'image/png' }), `slide_${index}.png`);
-      const uploadRes = await fetch('https://zernio.com/api/v1/media', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}` },
-        body: formData,
-      });
-      const uploadData = await uploadRes.json();
-      return uploadData.files?.[0]?.url || null;
+    if (data.image_url) {
+      console.log(`[Select] Slide ${slideNum}: ${data.image_url.substring(0, 60)}...`);
+      return data.image_url;
     }
+    console.warn(`[Select] Slide ${slideNum} failed:`, data.message || data.error || 'no image_url');
     return null;
   } catch (e) {
-    console.error(`[Select] Image ${index} error:`, e.message);
+    console.error(`[Select] Slide ${slideNum} error:`, e.message);
     return null;
   }
 }
 
-// ─── Step 3: Canva 편집 (연결 시) ───
-async function editCanva(slides, imageUrls) {
-  try {
-    const { createCardNews } = await import('./utils/canva.js');
-    return await createCardNews(slides, imageUrls);
-  } catch (e) {
-    console.warn('[Select] Canva skipped:', e.message);
-    return null;
-  }
-}
-
-// ─── Step 4: Zernio 발행 ───
-async function publishToZernio(plan, mediaUrls) {
-  const igCaption = (plan.instagram_caption || '');
+// ─── Step 5: Zernio 발행 ───
+async function publishToZernio(plan, imageUrls) {
+  // IG 해시태그 안전장치
+  const igCaption = plan.instagram_caption || '';
   const hashCount = (igCaption.match(/#/g) || []).length;
   const safeCaption = hashCount > 28 ? igCaption.replace(/(#\S+\s*){5}$/, '').trim() : igCaption;
 
@@ -140,8 +121,8 @@ async function publishToZernio(plan, mediaUrls) {
     publishNow: true,
   };
 
-  if (mediaUrls?.length > 0) {
-    body.mediaItems = mediaUrls.map((url, i) => ({ type: 'image', url, filename: `slide_${i + 1}.png` }));
+  if (imageUrls?.length > 0) {
+    body.mediaItems = imageUrls.map((url, i) => ({ type: 'image', url, filename: `slide_${i + 1}.png` }));
   }
 
   const res = await fetch('https://zernio.com/api/v1/posts', {
@@ -152,8 +133,37 @@ async function publishToZernio(plan, mediaUrls) {
   return res.json();
 }
 
+// ─── Step 6: Google Sheets 기록 ───
+async function logToSheets(topic, plan, imageUrls, zernioResult) {
+  if (!process.env.CONTENT_LOG_SHEET_ID || !process.env.GOOGLE_REFRESH_TOKEN) return;
+  try {
+    const { google } = await import('googleapis');
+    const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
+    auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: process.env.CONTENT_LOG_SHEET_ID,
+      range: 'A1',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[
+          new Date().toISOString(),
+          topic.category,
+          topic.title,
+          plan.slides?.[0]?.title || '',
+          (plan.instagram_caption || '').substring(0, 100),
+          (plan.tiktok_caption || '').substring(0, 60),
+          imageUrls.filter(Boolean).join('\n'),
+          zernioResult?.post?.status || zernioResult?.error || '-',
+        ]],
+      },
+    });
+  } catch (e) { console.warn('[Select] Sheet log failed:', e.message); }
+}
+
+// ─── Handler ───
 export default async function handler(req, res) {
-  // GET: 제안 목록 조회
+  // GET: 제안 목록
   if (req.method === 'GET') {
     const proposals = await redis.get('sisuru:proposals');
     const selected = await redis.get('sisuru:selected');
@@ -163,54 +173,58 @@ export default async function handler(req, res) {
     });
   }
 
-  // POST: 선택 → 기획 → 이미지 → Canva → 발행
+  // POST: 선택 → 기획 → Bannerbear → Zernio → Sheets
   if (req.method === 'POST') {
     const { id } = req.body || {};
     if (!id) return res.status(400).json({ error: 'id required (1~5)' });
 
     const proposals = await redis.get('sisuru:proposals');
     const data = proposals ? (typeof proposals === 'string' ? JSON.parse(proposals) : proposals) : null;
-    if (!data?.proposals) return res.status(200).json({ error: 'No proposals. Run /api/cron/sisuru-propose first.' });
+    if (!data?.proposals) return res.status(200).json({ error: 'No proposals. Run trend research first.' });
 
     const topic = data.proposals.find(p => p.id === Number(id));
     if (!topic) return res.status(400).json({ error: `Proposal ${id} not found` });
 
     await redis.set('sisuru:selected', JSON.stringify({ ...topic, selectedAt: new Date().toISOString() }), { ex: 86400 });
-    console.log(`[Select] #${id}: ${topic.topic}`);
+    console.log(`[Select] #${id}: ${topic.title}`);
 
     try {
-      // Step 1: 7장 기획
+      // Step 3: 기획
       console.log('[Select] Planning slides...');
       const plan = await planSlides(topic);
-      if (!plan) return res.status(200).json({ success: false, error: 'Planning failed' });
+      if (!plan?.slides) return res.status(200).json({ success: false, error: 'Planning failed' });
+      console.log(`[Select] Plan: ${plan.slides.length} slides`);
 
-      // Step 2: 이미지 생성 (6장, 7장은 고정)
-      console.log('[Select] Generating images...');
-      const imagePromises = (plan.slides || []).slice(0, 6).map((s, i) => generateImage(s.image_prompt, i + 1));
+      // Step 4: Bannerbear 7장 병렬 생성
+      console.log('[Select] Generating Bannerbear images...');
+      const slides = [...plan.slides, { slide: 7 }]; // 7장 CTA 추가
+      const imagePromises = slides.map(s => generateBannerbearImage(s.slide, s));
       const imageUrls = await Promise.all(imagePromises);
       const validImages = imageUrls.filter(Boolean);
-      console.log(`[Select] Images: ${validImages.length}/6`);
+      console.log(`[Select] Images: ${validImages.length}/${slides.length}`);
 
-      // Step 3: Canva 편집 (연결 시)
-      let canvaResult = null;
-      let finalMedia = validImages;
-      try {
-        canvaResult = await editCanva(plan.slides, validImages);
-        if (canvaResult?.exportUrl) finalMedia = [canvaResult.exportUrl];
-      } catch {}
-
-      // Step 4: Zernio 발행
+      // Step 5: Zernio 발행
       console.log('[Select] Publishing...');
-      const zernioResult = await publishToZernio(plan, finalMedia);
+      const zernioResult = await publishToZernio(plan, validImages);
       console.log('[Select] Published:', zernioResult?.post?.status || zernioResult?.error);
+
+      // Step 6: Sheets 기록
+      await logToSheets(topic, plan, validImages, zernioResult);
+
+      // Activity log
+      await redis.lpush('activity:log', JSON.stringify({
+        agent: 'AI 크리에이터', action: `시수르더쿠 카드뉴스 발행: ${topic.title}`,
+        detail: `${validImages.length}장 이미지`, timestamp: Date.now(),
+      }));
+      await redis.ltrim('activity:log', 0, 49);
 
       return res.status(200).json({
         success: true,
-        topic: topic.topic,
-        hook: plan.slides?.[0]?.text,
+        topic: topic.title,
+        category: topic.category,
+        hook: plan.slides?.[0]?.title,
         slides: plan.slides?.length,
         images: validImages.length,
-        canva: canvaResult ? 'edited' : 'skipped',
         zernio: { status: zernioResult?.post?.status, id: zernioResult?.post?._id, error: zernioResult?.error },
       });
     } catch (error) {
