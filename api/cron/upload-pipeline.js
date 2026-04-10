@@ -538,6 +538,9 @@ export default async function handler(req, res) {
                 ],
                 content: ttCaption,
                 mediaItems: [{ type: 'video', url: driveUrl, filename: file.name }],
+                status: 'scheduled',
+                scheduledFor: new Date(Date.now() + 60000).toISOString(), // 1분 후 즉시 발행
+                publishNow: true,
               }),
             });
             const zData = await zRes.json();
