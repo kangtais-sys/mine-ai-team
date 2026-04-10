@@ -2,11 +2,10 @@
 // https://screenshotone.com/docs
 
 export async function captureScreenshot(url, options = {}) {
-  const apiKey = process.env.SCREENSHOTONE_API_KEY;
-  if (!apiKey) return null;
+  if (!process.env.SCREENSHOT_ACCESS_KEY) return null;
 
   const params = new URLSearchParams({
-    access_key: apiKey,
+    access_key: process.env.SCREENSHOT_ACCESS_KEY,
     url,
     viewport_width: options.width || '1080',
     viewport_height: options.height || '1350',
