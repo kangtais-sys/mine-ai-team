@@ -178,8 +178,15 @@ function SisuruProposals() {
   useEffect(() => { loadProposals(); }, []);
 
   const select = async (id) => {
+    const item = items.find(p => p.id === Number(id));
     setSelecting(id);
     setResult(null);
+
+    // 즉시 채팅에 "기획 중" 표시
+    const store = useChatStore.getState();
+    store.addMessage('creator', { role: 'user', content: `시수르더쿠 주제 선택: ${item?.title || id}`, timestamp: Date.now() });
+    store.addMessage('creator', { role: 'assistant', content: '📝 7장 카드뉴스 기획 중... 30초 정도 걸립니다.', timestamp: Date.now() });
+
     try {
       const r = await fetch('/api/sisuru-select', {
         method: 'POST',
@@ -188,15 +195,16 @@ function SisuruProposals() {
       });
       const d = await r.json();
       setResult(d);
-      // 초안을 채팅에 표시
+
       if (d.chatText) {
-        useChatStore.getState().addMessage('creator', {
-          role: 'assistant',
-          content: d.chatText,
-          timestamp: Date.now(),
-        });
+        store.addMessage('creator', { role: 'assistant', content: d.chatText, timestamp: Date.now() });
+      } else if (d.error) {
+        store.addMessage('creator', { role: 'assistant', content: `❌ 기획 실패: ${d.error}`, timestamp: Date.now() });
       }
-    } catch (e) { setResult({ error: e.message }); }
+    } catch (e) {
+      useChatStore.getState().addMessage('creator', { role: 'assistant', content: `❌ 오류: ${e.message}`, timestamp: Date.now() });
+      setResult({ error: e.message });
+    }
     setSelecting(null);
   };
 
