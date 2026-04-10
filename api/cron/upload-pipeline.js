@@ -133,12 +133,13 @@ async function generateContentFromFrame(frameBuffer, fileName, platform) {
 1. 이미지에 보이는 텍스트를 모두 읽어줘 (한국어/영어 모두)
 2. 이 텍스트와 이미지 내용을 기반으로 틱톡 캡션을 만들어줘
 
-브랜드: 밀리밀리 (MILLIMILLI), 500달톤 프로틴 스킨케어
+채널: 유민혜 크리에이터 (@15초유민혜 / @peerstory)
+주의: 밀리밀리, kbeauty, 화장품 관련 해시태그 넣지 말 것. 영상 내용에 맞는 해시태그만.
 규칙:
 - 이미지에 있는 텍스트를 최대한 활용
 - 첫 줄: 강렬한 훅 (15자 이내)
 - 본문: 2~3줄, 이모지 활용
-- 해시태그: 5개 (#kbeauty #millimilli 포함)
+- 해시태그: 5~8개 (영상 주제에 맞게)
 - 총 150자 이내
 
 JSON만 응답:
@@ -148,12 +149,13 @@ JSON만 응답:
 1. 이미지에 보이는 텍스트를 모두 읽어줘 (한국어/영어 모두)
 2. 이 텍스트와 이미지 내용을 기반으로 유튜브 쇼츠 메타데이터를 만들어줘
 
-브랜드: 밀리밀리 (MILLIMILLI), 500달톤 프로틴 스킨케어
+채널: 유민혜 크리에이터 (@15초유민혜)
+주의: 밀리밀리, kbeauty, 화장품 관련 태그 넣지 말 것. 영상 내용에 맞는 태그만.
 규칙:
 - 이미지의 텍스트를 제목에 반영
 - title: SEO 최적화, 50자 이내
-- description: 3~4줄 (영상 설명 + 제품 포인트 + "프로필 링크에서 더 알아보세요! 🔗")
-- tags: 10개 (한국어+영어)
+- description: 3~4줄 (영상 설명 + "프로필 링크에서 더 알아보세요! 🔗")
+- tags: 10개 (영상 주제에 맞게, 한국어+영어)
 
 JSON만 응답:
 {"title": "...", "description": "...", "tags": ["...", "..."], "detected_text": "이미지에서 읽은 텍스트"}`;
@@ -493,10 +495,15 @@ export default async function handler(req, res) {
             // 첫 프레임 썸네일 URL (Drive)
             const thumbnailUrl = `https://drive.google.com/thumbnail?id=${file.id}&sz=w1920`;
 
-            // 해시태그 통합
-            const ytTags = (youtubeContent.tags || []).map(t => t.startsWith('#') ? t : `#${t}`);
-            const ttTags = (tiktokContent.hashtags || []).map(t => t.startsWith('#') ? t : `#${t}`);
+            // 밀리밀리/화장품 관련 태그 필터링 (유민혜 채널은 패션)
+            const blockedWords = ['밀리밀리', 'millimilli', 'kbeauty', 'k뷰티', '화장품', '스킨케어', 'skincare', '500달톤', '프로틴'];
+            const filterTags = (tags) => tags.filter(t => !blockedWords.some(b => t.toLowerCase().replace('#', '').includes(b)));
+
+            // 해시태그 통합 + 필터링
+            const ytTags = filterTags((youtubeContent.tags || []).map(t => t.startsWith('#') ? t : `#${t}`));
+            const ttTags = filterTags((tiktokContent.hashtags || []).map(t => t.startsWith('#') ? t : `#${t}`));
             const allTags = [...new Set([...ytTags, ...ttTags])].slice(0, 15);
+            const cleanYtTags = filterTags(youtubeContent.tags || []);
 
             // TikTok 캡션
             const ttCaption = `${tiktokContent.caption || youtubeContent.title || file.name}\n${allTags.join(' ')}`.substring(0, 2200);
@@ -516,13 +523,16 @@ export default async function handler(req, res) {
                     platformSpecificData: {
                       title: (youtubeContent.title || file.name).substring(0, 100),
                       description: ytDesc,
-                      tags: youtubeContent.tags || [],
+                      tags: cleanYtTags,
                       thumbnailUrl,
                     },
                   },
                   {
                     platform: 'tiktok',
                     accountId: '69d08abdbf4d9161df545c4b', // @peerstory
+                    platformSpecificData: {
+                      caption: ttCaption,
+                    },
                   },
                 ],
                 content: ttCaption,
