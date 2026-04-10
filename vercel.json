@@ -14,7 +14,8 @@
     { "path": "/api/cron/promo-calendar", "schedule": "0 2 * * 1" },
     { "path": "/api/cron/ad-optimize", "schedule": "0 4 * * *" },
     { "path": "/api/cron/chief-report", "schedule": "0 23 * * *" },
-    { "path": "/api/cron/drive-upload", "schedule": "*/15 * * * *" }
+    { "path": "/api/cron/drive-upload", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/sisuru-content", "schedule": "0 1 * * *" }
   ],
   "rewrites": [
     { "source": "/api/auth/google", "destination": "/api/auth/google" },
@@ -63,6 +64,7 @@
     { "source": "/api/cron/ad-optimize", "destination": "/api/cron/ad-optimize" },
     { "source": "/api/cron/chief-report", "destination": "/api/cron/chief-report" },
     { "source": "/api/cron/drive-upload", "destination": "/api/cron/drive-upload" },
+    { "source": "/api/cron/sisuru-content", "destination": "/api/cron/sisuru-content" },
     { "source": "/api/cs/kakao-webhook", "destination": "/api/cs/kakao-webhook" },
     { "source": "/api/cs/daily-report", "destination": "/api/cs/daily-report" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
