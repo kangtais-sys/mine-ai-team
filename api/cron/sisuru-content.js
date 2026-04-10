@@ -49,7 +49,7 @@ Instagram 캡션:
 - 본문 요약 2-3줄
 - (빈줄 3개)
 - "💬 댓글에 나도 남기면 DM 보내줄게"
-- 해시태그 30개 (뷰티/스킨케어 한국어+영어 트렌디)
+- 해시태그 25개 이하 (뷰티/스킨케어 한국어+영어 트렌디)
 
 TikTok 캡션:
 - 후킹 문구 60자 이내
@@ -69,7 +69,7 @@ JSON만 응답:
     {"slide": 6, "type": "summary", "text": "요약 텍스트"},
     {"slide": 7, "type": "cta", "text": "CTA 텍스트"}
   ],
-  "instagram_caption": "전체 인스타 캡션 (해시태그 30개 포함)",
+  "instagram_caption": "전체 인스타 캡션 (해시태그 25개 이하 포함)",
   "tiktok_caption": "틱톡 캡션 60자 + 해시태그 7개",
   "hashtags_ig": ["#태그", ...30개],
   "hashtags_tt": ["#태그", ...7개]
@@ -183,13 +183,20 @@ async function createCanvaDesign(plan, imageUrls) {
 async function publishToZernio(plan, mediaUrls) {
   if (!process.env.ZERNIO_API_KEY) throw new Error('ZERNIO_API_KEY not set');
 
+  // IG 해시태그 30개 제한 안전장치
+  const igCaption = (plan.instagram_caption || '');
+  const hashtagCount = (igCaption.match(/#/g) || []).length;
+  const safeCaption = hashtagCount > 28
+    ? igCaption.replace(/(#\S+\s*){5}$/, '').trim() // 마지막 5개 제거
+    : igCaption;
+
   const body = {
     profileId: PROFILE_ID,
     platforms: [
       {
         platform: 'instagram',
         accountId: process.env.SISURU_IG_ACCOUNT_ID || '69d8a6257dea335c2bd101f6',
-        platformSpecificData: { caption: plan.instagram_caption },
+        platformSpecificData: { caption: safeCaption },
       },
       {
         platform: 'tiktok',
@@ -197,7 +204,7 @@ async function publishToZernio(plan, mediaUrls) {
         platformSpecificData: { caption: plan.tiktok_caption },
       },
     ],
-    content: plan.instagram_caption?.substring(0, 2200) || plan.tiktok_caption,
+    content: safeCaption?.substring(0, 2200) || plan.tiktok_caption,
     status: 'scheduled',
     scheduledFor: new Date(Date.now() + 60000).toISOString(),
     publishNow: true,
