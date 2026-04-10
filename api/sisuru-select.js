@@ -134,13 +134,13 @@ async function generateBgImage(prompt) {
 async function generateBannerbearImage(slideNum, slide, bgImageUrl) {
   const templateUid = BB_TEMPLATES[slideNum];
   if (!templateUid) return null;
-  const modifications = slideNum === 7 ? []
-    : [
-        slide.title && { name: 'title', text: slide.title },
-        slide.subtitle && { name: 'subtitle', text: slide.subtitle },
-        slide.body && { name: 'body', text: slide.body },
-        bgImageUrl && { name: 'bg_image', image_url: bgImageUrl },
-      ].filter(Boolean);
+  // 7장 포함 모든 장에 텍스트 전달
+  const modifications = [
+    slide.title && { name: 'title', text: slide.title },
+    slide.subtitle && { name: 'subtitle', text: slide.subtitle },
+    slide.body && { name: 'body', text: slide.body },
+    bgImageUrl && { name: 'bg_image', image_url: bgImageUrl },
+  ].filter(Boolean);
   try {
     const res = await fetch('https://sync.api.bannerbear.com/v2/images', {
       method: 'POST',
