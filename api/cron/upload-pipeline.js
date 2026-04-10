@@ -485,29 +485,16 @@ export default async function handler(req, res) {
         let zernioResult = { success: false };
         if (process.env.ZERNIO_API_KEY) {
           try {
-            // Zernio에 영상 파일 업로드
-            console.log(`[Pipeline] Uploading to Zernio media (${fileBuffer.length} bytes)...`);
-            const formData = new FormData();
-            formData.append('files', new Blob([fileBuffer], { type: file.mimeType || 'video/mp4' }), file.name);
-
-            const mediaRes = await fetch('https://zernio.com/api/v1/media', {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}` },
-              body: formData,
-            });
-            const mediaData = await mediaRes.json();
-            const uploadedUrl = mediaData.files?.[0]?.url;
-
-            if (!uploadedUrl) {
-              console.error('[Pipeline] Zernio media upload failed:', JSON.stringify(mediaData));
-              throw new Error('Zernio media upload failed');
-            }
-            console.log(`[Pipeline] Zernio media uploaded: ${uploadedUrl}`);
+            // Drive 파일 공개 공유
+            await drive.permissions.create({
+              fileId: file.id,
+              requestBody: { role: 'reader', type: 'anyone' },
+            }).catch(() => {}); // 이미 공유된 경우 무시
+            const driveUrl = `https://drive.google.com/uc?id=${file.id}&export=download`;
+            console.log(`[Pipeline] Drive shared: ${driveUrl}`);
 
             // 첫 프레임 썸네일 URL
-            const thumbnailUrl = frameBuffer
-              ? mediaData.files?.[1]?.url || `https://drive.google.com/thumbnail?id=${file.id}&sz=w1920`
-              : `https://drive.google.com/thumbnail?id=${file.id}&sz=w1920`;
+            const thumbnailUrl = `https://drive.google.com/thumbnail?id=${file.id}&sz=w1920`;
 
             // 밀리밀리/화장품 관련 태그 필터링 (유민혜 채널은 패션)
             const blockedWords = ['밀리밀리', 'millimilli', 'kbeauty', 'k뷰티', '화장품', '스킨케어', 'skincare', '500달톤', '프로틴'];
@@ -550,7 +537,7 @@ export default async function handler(req, res) {
                   },
                 ],
                 content: ttCaption,
-                mediaItems: [{ type: 'video', url: uploadedUrl, filename: file.name }],
+                mediaItems: [{ type: 'video', url: driveUrl, filename: file.name }],
               }),
             });
             const zData = await zRes.json();
