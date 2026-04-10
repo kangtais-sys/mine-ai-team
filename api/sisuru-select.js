@@ -85,8 +85,43 @@ JSON만:
   return match ? JSON.parse(match[0]) : null;
 }
 
-// ─── Step 4: Bannerbear 이미지 생성 (7장 병렬) ───
-async function generateBannerbearImage(slideNum, slide) {
+// ─── Step 4a: Gemini Imagen 배경 이미지 생성 ───
+async function generateBgImage(prompt) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || !prompt) return null;
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instances: [{ prompt: `${prompt}. Square 1:1, aesthetic, soft lighting, Korean beauty style` }],
+          parameters: { sampleCount: 1, aspectRatio: '1:1' },
+        }),
+      }
+    );
+    const data = await res.json();
+    const b64 = data.predictions?.[0]?.bytesBase64Encoded;
+    if (!b64) return null;
+    // Zernio에 업로드해서 URL 획득
+    const formData = new FormData();
+    formData.append('files', new Blob([Buffer.from(b64, 'base64')], { type: 'image/png' }), 'bg.png');
+    const uploadRes = await fetch('https://zernio.com/api/v1/media', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}` },
+      body: formData,
+    });
+    const uploadData = await uploadRes.json();
+    return uploadData.files?.[0]?.url || null;
+  } catch (e) {
+    console.warn(`[Select] BG image error:`, e.message);
+    return null;
+  }
+}
+
+// ─── Step 4b: Bannerbear 이미지 생성 (7장 병렬) ───
+async function generateBannerbearImage(slideNum, slide, bgImageUrl) {
   const templateUid = BB_TEMPLATES[slideNum];
   if (!templateUid) return null;
 
@@ -96,6 +131,7 @@ async function generateBannerbearImage(slideNum, slide) {
         slide.title && { name: 'title', text: slide.title },
         slide.subtitle && { name: 'subtitle', text: slide.subtitle },
         slide.body && { name: 'body', text: slide.body },
+        bgImageUrl && { name: 'bg_image', image_url: bgImageUrl },
       ].filter(Boolean);
 
   try {
@@ -209,10 +245,16 @@ export default async function handler(req, res) {
       if (!plan?.slides) return res.status(200).json({ success: false, error: 'Planning failed' });
       console.log(`[Select] Plan: ${plan.slides.length} slides`);
 
-      // Step 4: Bannerbear 7장 병렬 생성
-      console.log('[Select] Generating Bannerbear images...');
-      const slides = [...plan.slides, { slide: 7 }]; // 7장 CTA 추가
-      const imagePromises = slides.map(s => generateBannerbearImage(s.slide, s));
+      // Step 4a: 배경 이미지 생성 (Gemini Imagen, 1~6장)
+      console.log('[Select] Generating background images...');
+      const bgPromises = (plan.slides || []).slice(0, 6).map(s => generateBgImage(s.image_prompt));
+      const bgImages = await Promise.all(bgPromises);
+      console.log(`[Select] BG images: ${bgImages.filter(Boolean).length}/6`);
+
+      // Step 4b: Bannerbear 7장 병렬 생성 (배경 이미지 포함)
+      console.log('[Select] Generating Bannerbear cards...');
+      const slides = [...(plan.slides || []).slice(0, 6), { slide: 7 }];
+      const imagePromises = slides.map((s, i) => generateBannerbearImage(s.slide || i + 1, s, bgImages[i] || null));
       const imageUrls = await Promise.all(imagePromises);
       const validImages = imageUrls.filter(Boolean);
       console.log(`[Select] Images: ${validImages.length}/${slides.length}`);
