@@ -188,6 +188,14 @@ function SisuruProposals() {
       });
       const d = await r.json();
       setResult(d);
+      // 초안을 채팅에 표시
+      if (d.chatText) {
+        useChatStore.getState().addMessage('creator', {
+          role: 'assistant',
+          content: d.chatText,
+          timestamp: Date.now(),
+        });
+      }
     } catch (e) { setResult({ error: e.message }); }
     setSelecting(null);
   };
@@ -235,10 +243,9 @@ function SisuruProposals() {
           {proposals ? '제안 없음 — 매일 아침 9시 자동 생성' : '로딩 중...'}
         </div>
       )}
-      {result?.success && (
-        <div style={{ fontSize: 10, color: '#22C55E', marginTop: 8, background: '#22C55E11', padding: '6px 8px', borderRadius: 4 }}>
-          {result.zernio?.status === 'scheduled' || result.zernio?.id ? '📋 예약 중' : '✅ 생성 완료'} — {result.topic} ({result.images}장)
-          {result.zernio?.error && <div style={{ color: '#F59E0B', marginTop: 2 }}>{result.zernio.error}</div>}
+      {result?.success && result.action === 'draft' && (
+        <div style={{ fontSize: 10, color: '#5E6AD2', marginTop: 8, background: '#5E6AD211', padding: '6px 8px', borderRadius: 4 }}>
+          ✏️ 초안이 채팅에 표시됐습니다. 수정 후 "생성해"라고 입력하세요.
         </div>
       )}
       {result?.error && (

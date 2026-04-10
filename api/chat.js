@@ -16,6 +16,28 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Agent not found' });
     }
 
+    // 크리에이터 채팅에서 "생성해" 감지 → Bannerbear + Zernio 트리거
+    const lastMsg = messages?.[messages.length - 1]?.content || '';
+    if (agentId === 'creator' && /생성해|생성하자|만들어|발행해/.test(lastMsg)) {
+      try {
+        const baseUrl = `https://${req.headers.host || 'mine-ai-team.vercel.app'}`;
+        const genRes = await fetch(`${baseUrl}/api/sisuru-select`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'generate' }),
+        });
+        const genData = await genRes.json();
+        if (genData.success) {
+          return res.status(200).json({
+            content: `✅ 카드뉴스 생성 완료!\n\n📷 이미지: ${genData.images}장 생성\n📋 Zernio: ${genData.zernio?.status || '처리 중'}\n⏰ 예약: 3시간 후 발행\n\n${genData.zernio?.error ? '⚠️ ' + genData.zernio.error : 'Zernio 대시보드에서 확인하세요!'}`,
+          });
+        }
+        return res.status(200).json({ content: `❌ 생성 실패: ${genData.error || '알 수 없는 오류'}` });
+      } catch (e) {
+        return res.status(200).json({ content: `❌ 생성 오류: ${e.message}` });
+      }
+    }
+
     const formattedMessages = messages.map(m => ({
       role: m.role,
       content: m.content
