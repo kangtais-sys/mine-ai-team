@@ -8,7 +8,9 @@ const redis = new Redis({
 });
 
 export default async function handler(req, res) {
-  if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
+  // cron은 GET + auth, 수동은 POST (다시 찾기 버튼)
+  const isCron = req.method === 'GET';
+  if (isCron && req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -47,10 +49,14 @@ export default async function handler(req, res) {
 - 피부과 꿀팁, 집에서 할 수 있는 관리
 - 충격적 사실, 반전 정보
 
+반드시 아래 구성으로:
+- 시술/성형 관련 2개 (시술정보/성형/부작용 중)
+- 뷰티/스킨케어 관련 3개 (뷰티팁/제품리뷰/트렌드/성분분석 중)
+
 각 주제:
 - id: 1~5
 - title: 후킹 제목 (예: "피부과 의사가 절대 안 알려주는 것")
-- category: 뷰티팁/시술정보/성형/부작용/제품리뷰/트렌드 중 택1
+- category: 시술정보/성형/부작용/뷰티팁/제품리뷰/트렌드/성분분석 중 택1
 - hook: 1장 후킹 텍스트 (3초 안에 충격/호기심/공감, 2줄)
 - summary: 3줄 요약
 - hook_score: 1-10 (클릭 유발 점수)

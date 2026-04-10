@@ -157,11 +157,25 @@ function CommunityKpis() {
 function SisuruProposals() {
   const [proposals, setProposals] = useState(null);
   const [selecting, setSelecting] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [result, setResult] = useState(null);
 
-  useEffect(() => {
+  const loadProposals = () => {
     fetch('/api/sisuru-select').then(r => r.json()).then(d => setProposals(d)).catch(() => {});
-  }, []);
+  };
+
+  const refresh = async () => {
+    setRefreshing(true);
+    setResult(null);
+    try {
+      const r = await fetch('/api/cron/sisuru-trend', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const d = await r.json();
+      if (d.proposals) setProposals({ proposals: d, selected: null });
+    } catch {}
+    setRefreshing(false);
+  };
+
+  useEffect(() => { loadProposals(); }, []);
 
   const select = async (id) => {
     setSelecting(id);
@@ -187,21 +201,26 @@ function SisuruProposals() {
     <div style={{ background: '#141414', border: '1px solid #242424', borderRadius: 8, padding: 14, marginTop: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F5F5' }}>시수르더쿠 오늘의 주제</div>
-        {selected && <span style={{ fontSize: 9, background: '#22C55E22', color: '#22C55E', padding: '2px 6px', borderRadius: 3 }}>선택됨</span>}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {selected && <span style={{ fontSize: 9, background: '#22C55E22', color: '#22C55E', padding: '2px 6px', borderRadius: 3 }}>선택됨</span>}
+          <button onClick={refresh} disabled={refreshing} style={{ fontSize: 9, padding: '2px 8px', borderRadius: 3, border: 'none', cursor: refreshing ? 'default' : 'pointer', fontFamily: 'inherit', background: refreshing ? '#333' : '#1A1A1A', color: refreshing ? '#555' : '#888' }}>
+            {refreshing ? '찾는 중...' : '다시 찾기'}
+          </button>
+        </div>
       </div>
       {selected && (
         <div style={{ background: '#5E6AD215', border: '1px solid #5E6AD233', borderRadius: 6, padding: '8px 10px', marginBottom: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#5E6AD2' }}>{selected.topic}</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#5E6AD2' }}>{selected.title || selected.topic}</div>
           <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>{selected.hook}</div>
         </div>
       )}
       {items.length > 0 ? items.map((p, i) => (
         <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 0', borderBottom: i < items.length - 1 ? '1px solid #1F1F1F' : 'none' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: '#5E6AD2', width: 16, flexShrink: 0, marginTop: 2 }}>{p.id}</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: p.category?.includes('시술') || p.category?.includes('성형') || p.category?.includes('부작용') ? '#EF4444' : '#5E6AD2', width: 16, flexShrink: 0, marginTop: 2 }}>{p.id}</span>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: '#CCC', fontWeight: 500 }}>{p.topic}</div>
+            <div style={{ fontSize: 11, color: '#CCC', fontWeight: 500 }}>{p.title || p.topic}</div>
             <div style={{ fontSize: 10, color: '#777', marginTop: 2 }}>{p.hook}</div>
-            <div style={{ fontSize: 9, color: '#555', marginTop: 1 }}>{p.type} · 참여도 {p.engagement_score}/10</div>
+            <div style={{ fontSize: 9, color: '#555', marginTop: 1 }}>{p.category || p.type} · 후킹 {p.hook_score || p.engagement_score}/10{p.source ? ` · ${p.source}` : ''}</div>
           </div>
           <button
             onClick={() => select(p.id)}
