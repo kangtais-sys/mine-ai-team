@@ -153,15 +153,15 @@ async function publishToZernio(plan, mediaUrls) {
     platforms: [
       {
         platform: 'instagram',
-        accountId: process.env.SISURU_IG_ACCOUNT_ID || '',
+        accountId: process.env.SISURU_IG_ACCOUNT_ID || '69d8a6257dea335c2bd101f6',
         platformSpecificData: { caption: plan.instagram_caption },
       },
       {
         platform: 'tiktok',
-        accountId: process.env.SISURU_TT_ACCOUNT_ID || '',
+        accountId: process.env.SISURU_TT_ACCOUNT_ID || '69d8a5c27dea335c2bd100ad',
         platformSpecificData: { caption: plan.tiktok_caption },
       },
-    ].filter(p => p.accountId),
+    ],
     content: plan.instagram_caption?.substring(0, 2200) || plan.tiktok_caption,
     status: 'scheduled',
     scheduledFor: new Date(Date.now() + 60000).toISOString(),
