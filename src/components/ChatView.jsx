@@ -178,7 +178,9 @@ function SisuruProposals() {
     setSelecting(null);
   };
 
-  const items = proposals?.proposals?.proposals || [];
+  // API: { proposals: { date, proposals: [...] }, selected: {...} }
+  const raw = proposals?.proposals;
+  const items = (raw?.proposals || (Array.isArray(raw) ? raw : []));
   const selected = proposals?.selected;
 
   return (
