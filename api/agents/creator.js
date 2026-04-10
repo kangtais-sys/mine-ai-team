@@ -41,8 +41,10 @@ export default async function handler(req, res) {
     // 플랫폼별 발행
     const byPlatform = {};
     for (const p of thisMonthPosts) {
-      for (const plat of p.platforms || [p.platform || 'unknown']) {
-        byPlatform[plat] = (byPlatform[plat] || 0) + 1;
+      const platforms = p.platforms || [p.platform || 'unknown'];
+      for (const plat of platforms) {
+        const name = typeof plat === 'string' ? plat : plat?.platform || 'unknown';
+        byPlatform[name] = (byPlatform[name] || 0) + 1;
       }
     }
 
@@ -58,8 +60,8 @@ export default async function handler(req, res) {
 
     // 최근 발행
     const recent = posts.slice(0, 8).map(p => ({
-      title: (p.text || '').substring(0, 50),
-      platforms: p.platforms || [p.platform],
+      title: (p.text || p.content || '').substring(0, 50),
+      platforms: (p.platforms || [p.platform]).map(pl => typeof pl === 'string' ? pl : pl?.platform || 'unknown'),
       createdAt: p.createdAt,
       likes: p.analytics?.likes || p.likeCount || 0,
       comments: p.analytics?.comments || p.commentCount || 0,
