@@ -36,12 +36,25 @@ async function planSlides(topic) {
 톤: 친구처럼 솔직, 도발적. 밀리밀리/브랜드 언급 절대 금지.
 title이 14자 넘으면 반드시 줄바꿈(\\n) 넣어서 한 줄 14자 이내로.
 
-1장 후킹: subtitle(카테고리), title(충격 후킹 2줄), image_type(Imagen/Pinterest/올리브영캡처 중 택1), image_prompt(영어 50단어)
-2장 후킹심화: subtitle("잠깐만"), title(궁금증 폭발), image_type, image_prompt
-3장 STEP1: subtitle("STEP 1"), title(소제목), body(핵심 정보 5~7줄, 구체적 수치/방법 포함), image_type, image_prompt
-4장 STEP2: subtitle("STEP 2"), title(소제목), body(5~7줄), image_type, image_prompt
-5장 STEP3: subtitle("STEP 3"), title(소제목), body(5~7줄), image_type, image_prompt
-6장 요약: subtitle("정리하면"), title("이것만 기억해 ✅"), body(1~5장 핵심을 3~4줄로 요약), image_type("텍스트"), image_prompt("")
+## 후킹 규칙
+1장 패턴 (택1): 권위+반전("피부과 의사가 절대 안 쓰는 것") / 비용 충격("100만원 시술 = 3만원짜리랑 같은 이유") / 부작용 공포("이거 같이 쓰면 피부 망함 (진짜임)") / 내부자 폭로("에스테티션이 직접 말해주는") / 반전 결말("매일 열심히 했는데 오히려 악화된 이유") / 숫자 충격("한국 여자 10명 중 8명이 모르는 것")
+2장 심화 패턴: "근데 진짜 충격적인 건..." / "사실 이게 핵심인데 아무도 안 알려줌" / "댓글에 나도 남기면 더 솔직하게 DM 줄게 👀"
+
+## 본론 신뢰 원칙
+- 반드시 구체적 숫자 포함 (%, 원, 주, 일)
+- 비교 구도 사용 (A vs B)
+- 출처/경험 언급 ("직접 써봄", "피부과에서 들음")
+
+## 금지 표현
+'추천', '좋아요', '효과적인', '놀라운' — 광고스러운 표현 절대 금지
+
+## 슬라이드 구성
+1장 후킹: subtitle(카테고리), title(위 패턴으로 충격 후킹), image_type(Imagen/Pinterest/올리브영캡처 중 택1), image_prompt(영어 50단어)
+2장 후킹심화: subtitle("잠깐만"), title(위 심화 패턴), image_type, image_prompt
+3장 STEP1: subtitle("STEP 1"), title(소제목), body(핵심 정보 5~7줄, 구체적 수치 필수), image_type, image_prompt
+4장 STEP2: subtitle("STEP 2"), title(소제목), body(5~7줄, 비교 구도), image_type, image_prompt
+5장 STEP3: subtitle("STEP 3"), title(소제목), body(5~7줄, 출처 언급), image_type, image_prompt
+6장 요약: subtitle("정리하면"), title("이것만 기억해 ✅"), body(1~5장 제목+본문 핵심을 빠짐없이 3~4줄로 요약), image_type("텍스트"), image_prompt("")
 7장 CTA: subtitle(""), title("더 솔직한 정보 원해?"), body("댓글에 나도 남겨줘 👇\\nDM으로 직접 알려줄게\\n팔로우하면 매일 이런 정보 받아볼 수 있어"), image_type("고정"), image_prompt("")
 
 Instagram 캡션:
