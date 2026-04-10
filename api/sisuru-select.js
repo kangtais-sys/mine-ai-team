@@ -66,7 +66,7 @@ title이 14자 넘으면 반드시 줄바꿈(\\n) 넣어서 한 줄 14자 이내
 - 출처가 필요한 정보는 캡션 하단에 "출처: ○○○" 명시
 
 ## 슬라이드 구성
-1장 후킹: subtitle(카테고리), title(위 패턴으로 충격 후킹), image_type(아래 참고), image_prompt(영어 50단어 또는 검색 키워드)
+1장 후킹: subtitle(매력적 부제 — "시술정보" 같은 딱딱한 카테고리명 절대 금지. 예: "돈 아까운 사람만 봐", "피부과 가기 전 필독", "이건 진짜야"), title(위 패턴으로 충격 후킹), image_type(아래 참고), image_prompt(영어 50단어 또는 검색 키워드)
 2장 후킹심화: subtitle("잠깐만"), title(위 심화 패턴), image_type, image_prompt
 3장 STEP1: subtitle("STEP 1"), title(소제목), body(핵심 정보 5~7줄, 실제 가격/수치/기간), image_type, image_prompt
 4장 STEP2: subtitle("STEP 2"), title(소제목), body(5~7줄, A vs B 비교), image_type, image_prompt
@@ -143,12 +143,12 @@ async function generateBgImage(prompt) {
 
 async function generateBannerbearImage(slideNum, slide, bgImageUrl) {
   const templateUid = BB_TEMPLATES[slideNum];
-  if (!templateUid) return null;
-  // 7장 포함 모든 장에 텍스트 전달
+  if (!templateUid) { console.warn(`[BB] No template for slide ${slideNum}`); return null; }
+  // 내용 있는 항목만 전달 (빈 문자열/공백 제외 → 템플릿에서 안 보이게)
   const modifications = [
-    slide.title && { name: 'title', text: slide.title },
-    slide.subtitle && { name: 'subtitle', text: slide.subtitle },
-    slide.body && { name: 'body', text: slide.body },
+    slide.title?.trim() && { name: 'title', text: slide.title.trim() },
+    slide.subtitle?.trim() && { name: 'subtitle', text: slide.subtitle.trim() },
+    slide.body?.trim() && { name: 'body', text: slide.body.trim() },
     bgImageUrl && { name: 'bg_image', image_url: bgImageUrl },
   ].filter(Boolean);
   try {
@@ -158,8 +158,13 @@ async function generateBannerbearImage(slideNum, slide, bgImageUrl) {
       body: JSON.stringify({ template: templateUid, modifications }),
     });
     const data = await res.json();
-    return data.image_url || null;
-  } catch (e) { console.error(`[Select] BB ${slideNum}:`, e.message); return null; }
+    if (data.image_url) {
+      console.log(`[BB] Slide ${slideNum}: OK`);
+      return data.image_url;
+    }
+    console.error(`[BB] Slide ${slideNum} failed:`, data.message || data.error || JSON.stringify(data).substring(0, 100));
+    return null;
+  } catch (e) { console.error(`[BB] Slide ${slideNum} error:`, e.message); return null; }
 }
 
 // ─── Zernio 발행 ───
