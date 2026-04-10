@@ -48,26 +48,30 @@ title이 14자 넘으면 반드시 줄바꿈(\\n) 넣어서 한 줄 14자 이내
 1장 패턴 (택1): 권위+반전("피부과 의사가 절대 안 쓰는 것") / 비용 충격("100만원 시술 = 3만원짜리랑 같은 이유") / 부작용 공포("이거 같이 쓰면 피부 망함 (진짜임)") / 내부자 폭로("에스테티션이 직접 말해주는") / 반전 결말("매일 열심히 했는데 오히려 악화된 이유") / 숫자 충격("한국 여자 10명 중 8명이 모르는 것")
 2장 심화 패턴: "근데 진짜 충격적인 건..." / "사실 이게 핵심인데 아무도 안 알려줌" / "댓글에 나도 남기면 더 솔직하게 DM 줄게 👀"
 
-## 본론 신뢰 원칙
-- 반드시 구체적 숫자 포함 (%, 원, 주, 일)
-- 비교 구도 사용 (A vs B)
-- 출처/경험 언급 ("직접 써봄", "피부과에서 들음")
+## 본론 작성 원칙 (저장하고 싶을 정도로 정보가 있어야 함)
+- 웹에서 실제 데이터를 찾아서 정확한 수치 포함 (가격, %, 기간, 횟수)
+  예: "보톡스 평균 가격 3~15만원, 지속 3~6개월", "나이아신아마이드 5% 이상이면 자극 가능"
+- 비교 구도 필수 (A vs B): "병원 레이저 토닝 1회 8만원 vs 홈케어 기기 30만원(무한 사용)"
+- 부작용/주의사항 반드시 포함: "이 성분은 레티놀과 같이 쓰면 피부 장벽 손상"
+- 1인칭 경험: "내가 3개월 써봤는데", "50만원 날린 후 깨달은 것"
+- 한 줄에 핵심 하나씩, 읽기 쉽게
+- body는 최소 5줄, 읽고 나면 "이거 저장해야지" 하는 수준
 
 ## 금지 단어
 '추천', '좋아요', '효과적인', '놀라운', '완벽한' — 광고스러운 표현 절대 금지
 
 ## 추가 규칙
-- 오늘 기준 최신 트렌드 반영, 매번 다른 패턴 로테이션
-- 시술/성형/부작용/비용이면 반드시 구체적 수치 (%, 원, 주)
+- 오늘 기준 최신 트렌드/가격 반영
+- 매번 다른 패턴 로테이션
 - 출처가 필요한 정보는 캡션 하단에 "출처: ○○○" 명시
 
 ## 슬라이드 구성
-1장 후킹: subtitle(카테고리), title(위 패턴으로 충격 후킹), image_type(Imagen/Pinterest/올리브영캡처 중 택1), image_prompt(영어 50단어)
-2장 후킹심화: subtitle("잠깐만"), title(위 심화 패턴), image_type, image_prompt
-3장 STEP1: subtitle("STEP 1"), title(소제목), body(핵심 정보 5~7줄, 구체적 수치 필수), image_type, image_prompt
-4장 STEP2: subtitle("STEP 2"), title(소제목), body(5~7줄, 비교 구도), image_type, image_prompt
-5장 STEP3: subtitle("STEP 3"), title(소제목), body(5~7줄, 출처 언급), image_type, image_prompt
-6장 요약: subtitle("정리하면"), title("이것만 기억해 ✅"), body(1~5장 제목+본문 핵심을 빠짐없이 3~4줄로 요약), image_type("텍스트"), image_prompt("")
+1장 후킹: subtitle(카테고리), title(위 패턴으로 충격 후킹), image_type("Imagen"), image_prompt(영어 50단어, 주제와 관련된 뷰티/시술 이미지)
+2장 후킹심화: subtitle("잠깐만"), title(위 심화 패턴), image_type("Imagen"), image_prompt(영어 50단어)
+3장 STEP1: subtitle("STEP 1"), title(소제목), body(핵심 정보 5~7줄, 실제 가격/수치/기간 포함), image_type("Imagen"), image_prompt(영어 50단어)
+4장 STEP2: subtitle("STEP 2"), title(소제목), body(5~7줄, A vs B 비교), image_type("Imagen"), image_prompt(영어 50단어)
+5장 STEP3: subtitle("STEP 3"), title(소제목), body(5~7줄, 주의사항/부작용), image_type("Imagen"), image_prompt(영어 50단어)
+6장 요약: subtitle("정리하면"), title("이것만 기억해 ✅"), body(1~5장 핵심을 빠짐없이 3~4줄 요약), image_type("Imagen"), image_prompt(영어 50단어)
 7장 CTA: subtitle(""), image_type("고정"), image_prompt("")
   아래 5개 패턴 중 랜덤 1개 선택해서 title+body로 나눠줘:
   ① "더 솔직한 거 알고 싶어?" + "댓글에 나도 남겨줘 👇\\nDM으로 직접 알려줄게"
@@ -90,9 +94,9 @@ TikTok 캡션: 후킹 60자 + 해시태그 3~5개
 JSON만:
 {
   "slides": [
-    {"slide":1, "subtitle":"...", "title":"...(14자/줄)", "body":"", "image_type":"Imagen", "image_prompt":"..."},
-    {"slide":2, "subtitle":"잠깐만", "title":"...", "body":"", "image_type":"Pinterest", "image_prompt":"..."},
-    {"slide":3, "subtitle":"STEP 1", "title":"...", "body":"5~7줄 본문", "image_type":"올리브영캡처", "image_prompt":"검색어"},
+    {"slide":1, "subtitle":"...", "title":"...(14자/줄)", "body":"", "image_type":"Imagen", "image_prompt":"aesthetic skincare..."},
+    {"slide":2, "subtitle":"잠깐만", "title":"...", "body":"", "image_type":"Imagen", "image_prompt":"..."},
+    {"slide":3, "subtitle":"STEP 1", "title":"...", "body":"5~7줄 (가격/수치 포함)", "image_type":"Imagen", "image_prompt":"..."},
     {"slide":4, ...},
     {"slide":5, ...},
     {"slide":6, "subtitle":"정리하면", "title":"이것만 기억해 ✅", "body":"요약 3~4줄", "image_type":"텍스트", "image_prompt":""},
@@ -245,9 +249,9 @@ export default async function handler(req, res) {
       // slide 번호 보장
       slides = slides.map((s, i) => ({ ...s, slide: s.slide || i + 1 }));
 
-      // 배경 이미지 생성 (Imagen 타입만, 7장 모두)
+      // 배경 이미지 생성 (7장 고정 제외, 나머지 전부)
       const bgPromises = slides.map(s =>
-        (s.image_type === 'Imagen' || s.image_type === 'imagen') && s.image_prompt ? generateBgImage(s.image_prompt) : Promise.resolve(null)
+        s.image_type !== '고정' && s.image_prompt ? generateBgImage(s.image_prompt) : Promise.resolve(null)
       );
       const bgImages = await Promise.all(bgPromises);
       console.log(`[Select] BG: ${bgImages.filter(Boolean).length}`);
