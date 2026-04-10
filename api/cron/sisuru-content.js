@@ -97,8 +97,8 @@ async function generateImage(prompt, index) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          instances: [{ prompt: `${prompt}. Vertical 4:5 ratio, aesthetic Korean beauty style, clean minimal background, Instagram feed format` }],
-          parameters: { sampleCount: 1, aspectRatio: '4:5' },
+          instances: [{ prompt: `${prompt}. Vertical portrait, aesthetic Korean beauty style, clean minimal background, Instagram feed` }],
+          parameters: { sampleCount: 1, aspectRatio: '3:4' },
         }),
       }
     );
