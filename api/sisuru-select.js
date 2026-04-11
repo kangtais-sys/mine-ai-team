@@ -8,94 +8,220 @@ const redis = new Redis({
 const PROFILE_ID = process.env.SISURU_PROFILE_ID || '69d8a52731c2441246bef194';
 const IG_ACCOUNT = process.env.SISURU_IG_ACCOUNT_ID || '69d8a6257dea335c2bd101f6';
 const TT_ACCOUNT = process.env.SISURU_TT_ACCOUNT_ID || '69d8a5c27dea335c2bd100ad';
-
 const BB_TEMPLATES = { 1:'1oMJnB5r9QRMZl2wqL', 2:'lzw71BD6ExN950eYkn', 3:'2j8dyQZWNGklb7A9Lm', 4:'lzw71BD6Exzw50eYkn', 5:'lzw71BD6ExYg50eYkn', 6:'l9E7G65ko0XY5PLe3R', 7:'vz9ByYbNVYQ0bRGXrw' };
 
-// ─── Claude 기획 ───
-async function planSlides(topic) {
+const CLAUDE_HEADERS = {
+  'Content-Type': 'application/json',
+  'x-api-key': process.env.ANTHROPIC_API_KEY,
+  'anthropic-version': '2023-06-01',
+};
+
+// ─── STEP 2: 웹 리서치 (Claude + web_search) ───
+async function researchTopic(topic) {
+  const title = topic.title || '';
+  const cat = topic.category || '';
+  const isSisul = /시술|성형|보톡스|필러|레이저|리프팅|물광|주사|피부과/.test(cat + title);
+  const isTrend = /트렌드|바이럴|핫|화제|난리/.test(cat + title);
+
+  let researchGuide;
+  if (isSisul) {
+    researchGuide = `[시술 카테고리] 조사 항목:
+1. 시술 정식 명칭
+2. 강남 피부과 평균 가격대 (강남언니/바비톡/실제 후기 기준)
+3. 시술 원리 1~2문장
+4. 실제 후기 요약 (효과 + 부작용 포함)
+5. 대체 가능한 홈케어 방법
+6. 비교할 만한 다른 시술 2~3개 (이름+가격대)
+7. 지속 기간, 시술 시간, 다운타임`;
+  } else if (isTrend) {
+    researchGuide = `[트렌드 카테고리] 조사 항목:
+1. 실제로 바이럴 된 경위 (어떤 계정/영상/커뮤니티에서 시작?)
+2. 관련 실제 제품명 또는 방법명
+3. 실제 효과 또는 사용 후기
+4. 가격 정보
+5. 주의사항이나 부작용`;
+  } else {
+    researchGuide = `[제품 카테고리] 조사 항목:
+1. 실제 제품명 (브랜드명 포함, 예: '다이소 닥터자르트 시카페어 크림')
+2. 실제 판매 가격 (다이소/올리브영/쿠팡 등 채널별)
+3. 주요 성분 2~3개
+4. 실제 리뷰 요약 (글로우픽/올리브영 평점, 한줄평 3~5개)
+5. 경쟁 제품 2~3개 (이름+가격)
+6. 장단점 솔직 정리`;
+  }
+
+  const prompt = `"${title}" 관련 실제 정보를 웹에서 조사해줘.
+${topic.summary ? `맥락: ${topic.summary}` : ''}
+${topic.research_keywords ? `검색 키워드 힌트: ${topic.research_keywords}` : ''}
+
+${researchGuide}
+
+반드시 웹 검색을 해서 실제 데이터를 찾아줘. 추측하지 말고 실제 검색 결과 기반으로.
+정보를 못 찾은 항목은 "확인 불가"로 표시.
+
+JSON으로 응답:
+{
+  "researched": true,
+  "topicCategory": "제품/시술/트렌드",
+  "items": [
+    {
+      "name": "실제 제품명 또는 시술명",
+      "brand": "브랜드 (있다면)",
+      "price": "실제 가격",
+      "mainIngredients": ["성분1", "성분2"],
+      "actualEffects": "실제 효과 1~2문장",
+      "realReviews": "실제 후기 요약 1~2문장",
+      "pros": "장점",
+      "cons": "단점/부작용",
+      "rating": "평점 (있다면)"
+    }
+  ],
+  "competitors": [{"name": "경쟁제품/시술", "price": "가격"}],
+  "sourceUrls": ["참고한 URL"],
+  "additionalContext": "추가 맥락 (바이럴 경위, 트렌드 배경 등)"
+}`;
+
+  try {
+    console.log(`[Research] 웹 리서치 시작: "${title}"`);
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { ...CLAUDE_HEADERS, 'anthropic-beta': 'web-search-2025-03-05' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    const data = await r.json();
+
+    // Extract text from all text blocks
+    const textBlocks = (data.content || []).filter(b => b.type === 'text');
+    const text = textBlocks.map(b => b.text).join('\n');
+
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      const research = JSON.parse(match[0]);
+      console.log(`[Research] 완료: ${research.items?.length || 0}개 항목, sources: ${research.sourceUrls?.length || 0}`);
+      return research;
+    }
+    console.warn('[Research] JSON 파싱 실패, 원본 텍스트 사용');
+    return { researched: false, items: [], additionalContext: text.substring(0, 2000) };
+  } catch (e) {
+    console.error('[Research] Error:', e.message);
+    return { researched: false, items: [], additionalContext: topic.summary || title };
+  }
+}
+
+// ─── STEP 3: 리서치 기반 카드뉴스 기획 ───
+async function planSlides(topic, researchData, retryFeedback) {
+  const researchBlock = researchData?.researched
+    ? JSON.stringify(researchData, null, 2)
+    : `(웹 리서치 실패. 주제: "${topic.title}", 요약: ${topic.summary || '없음'})`;
+
+  const retryNote = retryFeedback
+    ? `\n\n⚠️ 이전 기획 피드백: ${retryFeedback}\n더 강한 후킹으로 재기획해줘!`
+    : '';
+
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+    headers: CLAUDE_HEADERS,
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514', max_tokens: 3000, temperature: 1.0,
+      model: 'claude-sonnet-4-20250514', max_tokens: 4000, temperature: 0.9,
       messages: [{ role: 'user', content: `주제: "${topic.title}"
+${retryNote}
 
-시수르더쿠 7장 카드뉴스. 밀리밀리/브랜드 언급 금지.
+## 조사된 실제 정보
+${researchBlock}
 
 ## 캐릭터
-인생 살아본 언니. 1년에 1억 이상 시술/화장품에 쓰는 중독자.
-내돈내산 후기처럼. 광고 티 나면 안 됨.
-"이거 3개월 써봤는데 솔직히 처음엔 모르겠었거든? 근데 한 달 지나니까 아 이거구나 싶더라" 이런 느낌.
+너는 시수르더쿠야. 1년에 1억 이상 시술/화장품에 쓰는 진짜 중독자.
+인생 살아본 언니 말투. 내돈내산 후기처럼. 광고 티 나면 안 됨.
+"이거 3개월 써봤는데 솔직히 처음엔 모르겠었거든? 근데 한 달 지나니까 아 이거구나 싶더라"
+
+## 절대 규칙
+⚠️ 위 조사된 정보만 사용! 정보를 지어내지 마!
+⚠️ 실제 제품명, 실제 가격, 실제 후기만 사용
+⚠️ 모르면 모른다고 써. 없는 제품 만들지 마!
+밀리밀리/브랜드 언급 금지.
+
+## 금지 표현
+'추천합니다', '효과적인', '놀라운', '완벽한', '최고의', '도움이 됩니다', '좋은 제품', '사용해보세요'
 
 ## 텍스트 규칙
-title: 최대 20자. 14자 넘으면 줄바꿈(\\n). 이모지 1개. 숫자 임팩트.
+title: 최대 20자. 14자 넘으면 줄바꿈(\\n). 이모지 1개. 실제 숫자/가격 임팩트.
 subtitle: 15자 이내. 이모지 1개. 번호 붙이기 (1위, 2위 또는 BEST1 등).
-body: 3~4줄 핵심만. 2줄마다 줄바꿈(\\n\\n). 이모지 1~2개. 두서없이 길게 ❌ 짧고 임팩트 있게 ✅
+body: 3~4줄 핵심만. 2줄마다 줄바꿈(\\n\\n). 이모지 1~2개. 짧고 임팩트.
   예: "15만원 주고 샀는데\\n2주 만에 인생템 확정 💸\\n\\n근데 이거 단점도 있어\\n건성이면 각질 올라옴 주의 ⚠️"
-금지: '추천', '좋아요', '효과적인', '놀라운', '완벽한', '최고의'
 
-## 주제 구조: BEST/TOP 리스트형으로!
-주제가 "편의점 립밤 BEST5"면:
-  3장: subtitle("BEST 1 🥇"), title("제품명"), body("가격+한줄평")
-  4장: subtitle("BEST 2 🥈"), title("제품명"), body("가격+한줄평")
-  5장: subtitle("BEST 3 🥉"), title("제품명"), body("가격+한줄평")
-주제가 "시술 비교"면:
-  3장: subtitle("VS 비교 1️⃣"), title("A시술"), body("가격+효과+단점")
-  4장: subtitle("VS 비교 2️⃣"), title("B시술"), body("가격+효과+단점")
+## 7장 카드뉴스 구성
 
-## 슬라이드 (6장 본문 + 1장 CTA)
-1장: subtitle(매력적 부제 이모지 포함), title(스크롤 멈추는 후킹), body(""), image_source("pinterest"), image_keyword(한국어 검색어), imageContext(이미지 분위기 묘사 한국어)
-2장: subtitle(1장 맥락 이어가기), title(1장 주제 키워드 반드시 포함!), body(""), image_source("pinterest"), image_keyword(한국어), imageContext(1장 주제와 연결된 이미지 분위기)
-3장: subtitle("BEST 1 🥇" 또는 "핵심 1️⃣"), title(제품명/시술명), body(3~4줄), image_source, image_keyword(한국어 제품명), imageContext(해당 제품/시술 관련 감성 묘사)
-4장: subtitle("BEST 2 🥈" 또는 "핵심 2️⃣"), title(제품명/시술명), body(3~4줄), image_source, image_keyword(한국어), imageContext(해당 제품/시술 관련 감성 묘사)
-5장: subtitle("BEST 3 🥉" 또는 "핵심 3️⃣"), title(제품명/시술명), body(3~4줄), image_source, image_keyword(한국어), imageContext(해당 제품/시술 관련 감성 묘사)
-6장: subtitle("결론 💡"), title(핵심 한 줄), body(3~4줄 느낀점), image_source("pinterest"), image_keyword(한국어), imageContext(마무리 감성 이미지 묘사)
-7장: subtitle(""), image_source("고정"), image_keyword(""), imageContext("")
-  CTA 랜덤 택1:
-  ① title:"더 솔직한 거\\n알고 싶어?" body:"팔로우하면 매일 올려\\n궁금한 거 댓글에 👇"
-  ② title:"1년에 1억 쓴\\n사람 얘기" body:"듣고 싶으면 팔로우\\nDM으로 더 알려줄게 👀"
-  ③ title:"이건 저장해둬" body:"나중에 또 볼 거잖아\\n저장 📌 팔로우 🔔"
-  ④ title:"다음엔 뭐\\n알려줄까?" body:"댓글에 주제 적어줘\\n만들어줄게 🎯"
-  ⑤ title:"친구한테도\\n알려줘" body:"나만 알기 아깝잖아\\n공유하고 같이 예뻐지자 💕"
+1장 (후킹):
+- 가격 충격 or 반전 or 소외감 자극
+- 실제 숫자/제품명 반드시 포함
+- 예: "다이소 1100원짜리가\\n3만원짜리랑 진짜 똑같음? 🫢"
+- 예: "강남 50만원 시술 vs\\n이 크림 3만원 써보니까... 💸"
+
+2장 (후킹 심화):
+- 1장의 의문에 살짝 답하면서 더 궁금하게 만들기
+- 1장 주제 키워드 반드시 포함! 1장이 "다이소 시카크림" 얘기면 2장도 그 얘기
+- 실제 경험담처럼: "3개월 쓰면서 느낀 것"
+
+3~5장 (본론 - 실제 정보):
+- 조사된 실제 제품명, 가격, 성분, 후기 사용
+- 가격 비교: 실제 A제품 vs B제품 vs C제품
+- 시술: 실제 비용, 지속기간, 부작용
+- 수치 근거 명시: "올리브영 리뷰 평점 4.8", "강남언니 기준 평균 35만원"
+
+6장 (요약):
+- "이게 핵심이야" 한 문장
+- 실제 결론: 어떤 걸 사야 하는지 / 어떤 선택이 맞는지
+
+7장 (CTA): 고정 - 랜덤 택1:
+① title:"더 솔직한 거\\n알고 싶어?" body:"팔로우하면 매일 올려\\n궁금한 거 댓글에 👇"
+② title:"1년에 1억 쓴\\n사람 얘기" body:"듣고 싶으면 팔로우\\nDM으로 더 알려줄게 👀"
+③ title:"이건 저장해둬" body:"나중에 또 볼 거잖아\\n저장 📌 팔로우 🔔"
+④ title:"다음엔 뭐\\n알려줄까?" body:"댓글에 주제 적어줘\\n만들어줄게 🎯"
+⑤ title:"친구한테도\\n알려줘" body:"나만 알기 아깝잖아\\n공유하고 같이 예뻐지자 💕"
 
 ## 필수 규칙
 ⚠️ 모든 장의 subtitle은 반드시 채워야 함. 빈 문자열 금지!
-  1장: 매력적 부제 ("돈 아까운 사람만 봐", "인생 바뀐 후기")
-  2장: 1장 주제를 이어가는 맥락 ("근데 이게 다가 아니야", "솔직히 이게 핵심")
-  3~6장: 소제목 또는 맥락 ("가격 비교", "직접 써본 후기", "주의사항", "결론")
+  1장: 매력적 부제 ("돈 아까운 사람만 봐", "이건 진짜야")
+  2장: 1장 이어가기 ("근데 이게 다가 아니야", "솔직히 이게 핵심")
+  3~6장: 소제목 ("가격 비교", "직접 써본 후기", "주의사항", "결론")
   7장: CTA 관련 ("궁금하면")
 
-⚠️ 2장은 1장 주제의 연장선! 1장이 "10만원 립밤" 얘기면 2장도 그 립밤 얘기여야 함.
-
-image_source + image_keyword + imageContext 규칙:
-⚠️ image_keyword는 반드시 한국어! 영어 금지!
-⚠️ 텍스트 많이 포함된 이미지 피하기 위해 "제품 사진", "실물" 등 키워드 추가
-⚠️ imageContext: 핀터레스트 검색을 위한 이미지 분위기/장면 한국어 묘사 (예: "글로시 립 클로즈업 감성", "피부과 시술 후 광채 얼굴")
-- "pinterest": 기본. image_keyword="편의점 립밤 실물" / "피부과 시술 후기" / "글로시 메이크업"
-- "oliveyoung": 올리브영 제품. image_keyword="올리브영 립밤"
-- "coupang": 쿠팡 제품. image_keyword="쿠팡 뷰티 세트"
-- "daiso": 다이소 제품. image_keyword="다이소 화장품"
-- "고정": 7장
-⚠️ 편의점 립밤 → "pinterest"+"편의점 립밤 실물" (쿠팡에서 검색 ❌)
-⚠️ 다이소 뷰티 → "daiso"+"다이소 립밤"
-⚠️ 시술 → "pinterest"+"피부과 레이저 시술"
-⚠️ 주제 맥락에 맞는 사이트!
+## 이미지 규칙
+image_keyword: 반드시 한국어. 실제 제품명으로 검색 (예: "다이소 시카크림 실물")
+imageContext: 핀터레스트 검색 분위기 묘사 (예: "글로시 립 클로즈업 감성")
+image_source: "pinterest" 기본. 다이소="daiso", 올리브영="oliveyoung", 7장="고정"
+⚠️ 편의점 립밤 → "pinterest"+"편의점 립밤 실물" (쿠팡 ❌)
+⚠️ 주제 맥락에 맞는 이미지!
 
 ## 캡션
 Instagram: 충격/공감 첫 줄 + 본문 3~5줄 + 줄바꿈3 + CTA + 해시태그 5~10개
   첫 줄 예: "이거 진짜임.. 알고 싶지 않았다 🫠" / "돈 아까워서 직접 알아봄. 결과 충격."
 TikTok: 후킹 60자 + 해시태그 5~7개
 
+## 후킹 자체 평가 (각 장)
+각 장별 hooking_score (1~10):
+- 실제 숫자/가격이 있는가? (+3점)
+- 결말 예측 안 되는가? (+2점)
+- 친구한테 태그하고 싶은가? (+3점)
+- 금지어 없는가? (+2점)
+
 JSON만:
 {
   "category":"제품후기/시술후기/가격반전/트렌드",
+  "researchUsed": true,
+  "hookingScores": {"1": 8, "2": 7, "3": 7, "4": 7, "5": 7, "6": 7},
   "slides":[
-    {"slide":1,"subtitle":"돈 아까운 사람만 봐 💰","title":"편의점 립밤 BEST5\\n이거 진짜임 🫢","body":"","image_source":"pinterest","image_keyword":"편의점 립밤 실물","imageContext":"편의점 뷰티 코너 감성 제품 진열"},
-    {"slide":2,"subtitle":"근데 이게 핵심이야","title":"그 편의점 립밤\\n1000원짜리가 이 정도?","body":"","image_source":"pinterest","image_keyword":"편의점 화장품","imageContext":"립밤 텍스처 클로즈업 글로시"},
-    {"slide":3,"subtitle":"BEST 1 🥇","title":"제품명","body":"3~4줄 (가격+한줄평)","image_source":"pinterest","image_keyword":"해당 제품명","imageContext":"해당 제품 실물 클로즈업"},
-    {"slide":4,"subtitle":"BEST 2 🥈","title":"제품명","body":"3~4줄","image_source":"pinterest","image_keyword":"해당 제품명","imageContext":"해당 제품 사용 장면"},
-    {"slide":5,"subtitle":"BEST 3 🥉","title":"제품명","body":"3~4줄","image_source":"pinterest","image_keyword":"해당 제품명","imageContext":"해당 제품 텍스처 감성"},
-    {"slide":6,"subtitle":"결론 💡","title":"핵심 한 줄","body":"3~4줄 느낀점","image_source":"pinterest","image_keyword":"립밤 비교","imageContext":"뷰티 하울 감성 정리"},
+    {"slide":1,"subtitle":"실제 부제","title":"실제 숫자 포함 후킹","body":"","image_source":"pinterest","image_keyword":"실제 제품명 실물","imageContext":"이미지 분위기 묘사"},
+    {"slide":2,"subtitle":"이어가기","title":"1장 주제 키워드 포함","body":"","image_source":"pinterest","image_keyword":"한국어","imageContext":"분위기"},
+    {"slide":3,"subtitle":"BEST 1 🥇","title":"실제 제품명","body":"실제 가격+실제 후기","image_source":"pinterest","image_keyword":"실제 제품명","imageContext":"제품 클로즈업"},
+    {"slide":4,"subtitle":"BEST 2 🥈","title":"실제 제품명","body":"실제 가격+실제 후기","image_source":"pinterest","image_keyword":"실제 제품명","imageContext":"사용 장면"},
+    {"slide":5,"subtitle":"BEST 3 🥉","title":"실제 제품명","body":"실제 가격+실제 후기","image_source":"pinterest","image_keyword":"실제 제품명","imageContext":"텍스처 감성"},
+    {"slide":6,"subtitle":"결론 💡","title":"핵심 한 줄","body":"실제 결론","image_source":"pinterest","image_keyword":"비교 감성","imageContext":"마무리 감성"},
     {"slide":7,"subtitle":"궁금하면","title":"CTA","body":"CTA","image_source":"고정","image_keyword":"","imageContext":""}
   ],
   "instagram_caption":"...(해시태그 5~10개)",
@@ -107,6 +233,24 @@ JSON만:
   const t = d.content?.[0]?.text || '{}';
   const m = t.match(/\{[\s\S]*\}/);
   return m ? JSON.parse(m[0]) : null;
+}
+
+// ─── STEP 5: 후킹 강도 체크 + 재생성 ───
+async function checkAndRetryPlan(topic, researchData, plan, attempt) {
+  if (!plan?.hookingScores) return plan;
+  const slide1Score = plan.hookingScores['1'] || 0;
+
+  if (slide1Score >= 7 || attempt >= 2) {
+    if (slide1Score < 7) console.warn(`[Hooking] 1장 점수 ${slide1Score}/10 — 재생성 한도 초과, 그대로 사용`);
+    else console.log(`[Hooking] 1장 점수 ${slide1Score}/10 ✓`);
+    return plan;
+  }
+
+  console.log(`[Hooking] 1장 점수 ${slide1Score}/10 — 재생성 (시도 ${attempt + 1}/2)`);
+  const feedback = `이전 1장 제목 "${plan.slides?.[0]?.title}"의 후킹이 약함(${slide1Score}점). 더 강한 숫자/가격 충격, 의외성, 소외감 자극 필요. 결말이 예측 안 되게!`;
+  const newPlan = await planSlides(topic, researchData, feedback);
+  if (!newPlan) return plan;
+  return checkAndRetryPlan(topic, researchData, newPlan, attempt + 1);
 }
 
 // ─── 이미지 생성 (Pinterest 지능형 → Imagen fallback) ───
@@ -126,7 +270,7 @@ async function generateSlideImage(slide, category, topic) {
     if (url) { console.log(`[Img] Slide ${slide.slide}: ${slide.image_source} OK`); return url; }
   }
 
-  // 3순위: Gemini Imagen fallback
+  // Gemini Imagen fallback
   if (process.env.GEMINI_API_KEY && slide.image_keyword) {
     try {
       const prompt = `${slide.image_keyword}. photorealistic, korean beauty, real photo, not illustration, no digital art, no render`;
@@ -197,17 +341,17 @@ async function publishToZernio(plan, imageUrls, topicSource) {
 // ─── Handler ───
 export default async function handler(req, res) {
   if (req.method === 'GET') {
-    const [proposals, selected, draft] = await Promise.all([
-      redis.get('sisuru:proposals'), redis.get('sisuru:selected'), redis.get('sisuru:draft'),
+    const [proposals, selected, draft, research] = await Promise.all([
+      redis.get('sisuru:proposals'), redis.get('sisuru:selected'), redis.get('sisuru:draft'), redis.get('sisuru:research'),
     ]);
     const parse = v => v ? (typeof v === 'string' ? JSON.parse(v) : v) : null;
-    return res.status(200).json({ proposals: parse(proposals), selected: parse(selected), draft: parse(draft) });
+    return res.status(200).json({ proposals: parse(proposals), selected: parse(selected), draft: parse(draft), research: parse(research) });
   }
 
   if (req.method === 'POST') {
     const { id, action } = req.body || {};
 
-    // 주제 선택 → 초안 생성
+    // ── 주제 선택 → 리서치 → 기획 → 후킹체크 ──
     if (id && !action) {
       const proposals = await redis.get('sisuru:proposals');
       const data = proposals ? (typeof proposals === 'string' ? JSON.parse(proposals) : proposals) : null;
@@ -216,31 +360,48 @@ export default async function handler(req, res) {
       if (!topic) return res.status(400).json({ error: `#${id} not found` });
 
       await redis.set('sisuru:selected', JSON.stringify({ ...topic, selectedAt: new Date().toISOString() }), { ex: 86400 });
-      const plan = await planSlides(topic);
-      if (!plan) return res.status(200).json({ success: false, error: 'Planning failed' });
-      await redis.set('sisuru:draft', JSON.stringify(plan), { ex: 86400 });
 
-      let chatText = `📋 시수르더쿠 카드뉴스 초안\n주제: ${topic.title}\n\n`;
-      for (const s of plan.slides || []) {
+      // STEP 2: 웹 리서치
+      const researchData = await researchTopic(topic);
+      await redis.set('sisuru:research', JSON.stringify(researchData), { ex: 86400 });
+
+      // STEP 3: 리서치 기반 기획
+      const plan = await planSlides(topic, researchData);
+      if (!plan) return res.status(200).json({ success: false, error: 'Planning failed' });
+
+      // STEP 5: 후킹 체크 (1장 7점 미만이면 최대 2회 재생성)
+      const finalPlan = await checkAndRetryPlan(topic, researchData, plan, 0);
+      await redis.set('sisuru:draft', JSON.stringify(finalPlan), { ex: 86400 });
+
+      // 채팅 텍스트 생성
+      let chatText = `📋 시수르더쿠 카드뉴스 초안\n주제: ${topic.title}\n`;
+      if (researchData?.researched) {
+        chatText += `🔍 웹 리서치 완료: ${researchData.items?.length || 0}개 항목 조사됨\n`;
+        if (researchData.sourceUrls?.length) chatText += `📎 출처: ${researchData.sourceUrls.slice(0, 3).join(', ')}\n`;
+      }
+      if (finalPlan.hookingScores) chatText += `🎯 후킹 점수: 1장 ${finalPlan.hookingScores['1'] || '?'}점\n`;
+      chatText += '\n';
+
+      for (const s of finalPlan.slides || []) {
         chatText += `━━━ ${s.slide}장 ━━━\n`;
         if (s.subtitle) chatText += `소제목: ${s.subtitle}\n`;
         chatText += `제목: ${s.title}\n`;
         if (s.body) chatText += `본문:\n${s.body}\n`;
         chatText += `이미지: ${s.image_source}${s.image_keyword ? ` → "${s.image_keyword}"` : ''}\n\n`;
       }
-      chatText += `━━━ 캡션 ━━━\nIG: ${plan.instagram_caption || '(생성 실패)'}\n\nTT: ${plan.tiktok_caption || '(생성 실패)'}\n\n`;
+      chatText += `━━━ 캡션 ━━━\nIG: ${finalPlan.instagram_caption || '(생성 실패)'}\n\nTT: ${finalPlan.tiktok_caption || '(생성 실패)'}\n\n`;
       chatText += `✏️ 수정할 부분 말씀해주세요. "생성해" 라고 하면 이미지 + 발행합니다.`;
 
-      return res.status(200).json({ success: true, action: 'draft', chatText, plan });
+      return res.status(200).json({ success: true, action: 'draft', chatText, plan: finalPlan, research: researchData });
     }
 
-    // 생성
+    // ── 생성 ──
     if (action === 'generate') {
       const plan = await redis.get('sisuru:draft').then(d => d ? (typeof d === 'string' ? JSON.parse(d) : d) : null);
       if (!plan?.slides) return res.status(200).json({ error: 'No draft' });
 
       let slides = plan.slides || [];
-      if (slides.length < 7) slides = [...slides, { slide: 7, title: '더 솔직한 거\n알고 싶어?', body: '팔로우하면 매일 올려\n궁금한 거 댓글에 👇', image_source: '고정' }];
+      if (slides.length < 7) slides = [...slides, { slide: 7, subtitle: '궁금하면', title: '더 솔직한 거\n알고 싶어?', body: '팔로우하면 매일 올려\n궁금한 거 댓글에 👇', image_source: '고정' }];
       slides = slides.map((s, i) => ({ ...s, slide: s.slide || i + 1 }));
 
       // 이미지 생성 (병렬)
