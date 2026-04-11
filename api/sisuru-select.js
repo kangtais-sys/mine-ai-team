@@ -201,49 +201,38 @@ JSON만 응답 (다른 텍스트 없이):
     }),
   });
   const d = await r.json();
-  if (d.error) { console.error('[Plan] Claude API error:', JSON.stringify(d.error)); return null; }
-  if (!d.content?.length) { console.error('[Plan] No content:', JSON.stringify(d).substring(0, 500)); return null; }
+  if (d.error) return { _error: `Claude API: ${JSON.stringify(d.error)}` };
+  if (!d.content?.length) return { _error: `No content: ${JSON.stringify(d).substring(0, 300)}` };
 
   const allText = d.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
-  console.log(`[Plan] Response: ${d.content.length} blocks, stop=${d.stop_reason}, text=${allText.length}chars`);
-  if (!allText) { console.error('[Plan] No text blocks:', d.content.map(b => b.type)); return null; }
+  const blockTypes = d.content.map(b => b.type).join(',');
+  console.log(`[Plan] ${d.content.length} blocks (${blockTypes}), stop=${d.stop_reason}, text=${allText.length}chars`);
+
+  if (!allText) return { _error: `No text blocks. Types: ${blockTypes}` };
 
   const m = allText.match(/\{[\s\S]*\}/);
-  if (!m) { console.error('[Plan] JSON not found:', allText.substring(0, 500)); return null; }
+  if (!m) return { _error: `JSON not found. Text: ${allText.substring(0, 300)}` };
 
   let raw = m[0];
   // max_tokens로 잘린 JSON 복구 시도
   if (d.stop_reason === 'max_tokens') {
-    console.warn('[Plan] max_tokens로 잘림 → JSON 복구 시도');
-    // 닫히지 않은 brackets/braces 추가
-    let opens = 0, inStr = false, escape = false;
-    for (const c of raw) {
-      if (escape) { escape = false; continue; }
-      if (c === '\\') { escape = true; continue; }
-      if (c === '"') { inStr = !inStr; continue; }
-      if (inStr) continue;
-      if (c === '{' || c === '[') opens++;
-      if (c === '}' || c === ']') opens--;
-    }
-    // 마지막 완전한 항목까지만 자르기
-    if (opens > 0) {
-      // 마지막 완전한 slide 객체 이후 자르기
-      const lastComplete = raw.lastIndexOf('}');
-      if (lastComplete > 0) raw = raw.substring(0, lastComplete + 1);
-      // 누락된 닫기 추가
-      if (!raw.includes('"instagram_caption"')) raw += ',"instagram_caption":"(잘림)","tiktok_caption":"(잘림)"';
-      while (opens-- > 0) raw += raw.includes('"slides"') ? '}' : ']';
-    }
+    console.warn('[Plan] max_tokens 잘림 → 복구 시도');
+    const lastBrace = raw.lastIndexOf('}');
+    if (lastBrace > 0) raw = raw.substring(0, lastBrace + 1);
+    if (!raw.includes('"instagram_caption"')) raw = raw.replace(/\}$/, ',"instagram_caption":"(자동생성)","tiktok_caption":"(자동생성)"}');
+    // 닫히지 않은 배열/객체 닫기
+    let depth = 0;
+    for (const c of raw) { if (c === '{' || c === '[') depth++; if (c === '}' || c === ']') depth--; }
+    while (depth > 0) { raw += '}'; depth--; }
   }
 
   try {
     const plan = JSON.parse(raw);
-    if (!plan.slides?.length) { console.error('[Plan] slides 누락:', Object.keys(plan)); return null; }
-    console.log(`[Plan] 기획 완료: ${plan.slides.length}장, IG=${!!plan.instagram_caption}, TT=${!!plan.tiktok_caption}`);
+    if (!plan.slides?.length) return { _error: `slides 누락. keys: ${Object.keys(plan)}` };
+    console.log(`[Plan] 완료: ${plan.slides.length}장`);
     return plan;
   } catch (e) {
-    console.error('[Plan] JSON parse error:', e.message, '\nRaw:', raw.substring(0, 500));
-    return null;
+    return { _error: `JSON parse: ${e.message}. Raw: ${raw.substring(0, 300)}` };
   }
 }
 
@@ -382,10 +371,13 @@ export default async function handler(req, res) {
       try {
         plan = await planSlides(topic, researchData);
       } catch (e) {
-        console.error('[Plan] Exception:', e.message);
         return res.status(200).json({ success: false, error: `Planning exception: ${e.message}` });
       }
-      if (!plan) return res.status(200).json({ success: false, error: 'Planning failed — check Vercel logs for [Plan] errors' });
+      if (!plan || plan._error) {
+        const reason = plan?._error || 'unknown';
+        console.error('[Plan] Failed:', reason);
+        return res.status(200).json({ success: false, error: `기획 실패: ${reason}` });
+      }
 
       // STEP 5: 후킹 체크 (1장 7점 미만이면 최대 2회 재생성)
       const finalPlan = await checkAndRetryPlan(topic, researchData, plan, 0);
