@@ -9,9 +9,10 @@ async function capture(url, options = {}) {
     format: 'jpg',
     image_quality: '90',
     full_page: 'false',
-    delay: options.delay || '4',
+    delay: options.delay || '5',
     block_ads: 'true',
     block_cookie_banners: 'true',
+    ignore_host_errors: 'true',
     ...(options.user_agent ? { user_agent: options.user_agent } : {}),
   });
   try {
@@ -27,7 +28,7 @@ async function capture(url, options = {}) {
 // ── 쿠팡 캡처 ──
 async function captureCoupang(keyword) {
   console.log(`[Screenshot] Coupang: ${keyword}`);
-  return capture(`https://www.coupang.com/np/search?q=${encodeURIComponent(keyword)}&channel=user`, { delay: '4' });
+  return capture(`https://www.coupang.com/np/search?q=${encodeURIComponent(keyword)}&channel=user`, { delay: '5' });
 }
 
 // ── Pinterest 캡처 (모바일 UA로 로그인 벽 우회) ──
@@ -43,7 +44,7 @@ async function capturePinterest(keyword) {
 async function captureOliveyoung(keyword) {
   console.log(`[Screenshot] Oliveyoung: ${keyword}`);
   // 글로벌 시도
-  let buf = await capture(`https://global.oliveyoung.com/product/list?searchWord=${encodeURIComponent(keyword)}`, { delay: '4' });
+  let buf = await capture(`https://global.oliveyoung.com/search?query=${encodeURIComponent(keyword)}`, { delay: '5' });
   if (buf) return buf;
   // 국내 시도
   buf = await capture(`https://www.oliveyoung.co.kr/store/search/getSearchMain.do?query=${encodeURIComponent(keyword)}`, { delay: '5' });
