@@ -1,103 +1,119 @@
-// ── ScreenshotOne 캡처 (모바일 뷰 + 팝업 차단) ──
-async function capture(url, options = {}) {
-  if (!process.env.SCREENSHOT_ACCESS_KEY) return null;
-  const params = new URLSearchParams({
-    access_key: process.env.SCREENSHOT_ACCESS_KEY,
-    url,
-    viewport_width: '375',
-    viewport_height: '812',
-    device_scale_factor: '3',
-    format: 'jpg',
-    image_quality: '90',
-    full_page: 'false',
-    delay: options.delay || '5',
-    // 팝업/배너 완전 차단
-    block_ads: 'true',
-    block_cookie_banners: 'true',
-    hide_cookie_banners: 'true',
-    ignore_host_errors: 'true',
-    wait_until: 'networkidle',
-    // 동의 버튼 자동 클릭
-    click_accept: 'true',
-    // 최신 iPhone Safari UA
-    user_agent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
-    // 셀렉터 지정 시 해당 영역만 캡처
-    ...(options.selector ? { selector: options.selector } : {}),
-    // 팝업 닫기 스크립트 (CSS로 강제 숨기기)
-    styles: 'dialog,.modal,.popup,.layer_pop,.btn_close_pop,.app-banner,.smart-banner,.login-popup,.dim,.overlay,[class*="modal"],[class*="popup"],[class*="layer"],[id*="modal"],[id*="popup"]{display:none!important;visibility:hidden!important;}',
-  });
+// ── Pinterest 이미지 URL 직접 추출 (fetch + 정규식) ──
+async function getPinterestImages(keyword) {
   try {
-    const res = await fetch(`https://api.screenshotone.com/take?${params}`);
-    if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length < 2000) { console.warn(`[SS] Too small (${buf.length}b): ${url.substring(0, 50)}`); return null; }
-    console.log(`[SS] OK ${buf.length}b: ${url.substring(0, 50)}`);
-    return buf;
-  } catch (e) { console.warn(`[SS] Error: ${e.message}`); return null; }
+    const res = await fetch(
+      `https://kr.pinterest.com/search/pins/?q=${encodeURIComponent(keyword + ' aesthetic')}`,
+      { headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+        'Accept': 'text/html',
+        'Accept-Language': 'ko-KR,ko;q=0.9',
+      }}
+    );
+    if (!res.ok) return [];
+    const html = await res.text();
+    const matches = html.match(/https:\/\/i\.pinimg\.com\/736x\/[a-f0-9/]+\.jpg/g) || [];
+    const unique = [...new Set(matches)];
+    console.log(`[Pinterest] "${keyword}": ${unique.length} images found`);
+    return unique;
+  } catch (e) {
+    console.warn(`[Pinterest] Error: ${e.message}`);
+    return [];
+  }
 }
 
-// ── 쿠팡 (모바일 + 제품 영역 셀렉터) ──
-async function captureCoupang(keyword) {
-  console.log(`[SS] Coupang: ${keyword}`);
-  // 모바일 쿠팡 검색
-  let buf = await capture(`https://m.coupang.com/nm/search?q=${encodeURIComponent(keyword)}`, { selector: '.search-content' });
-  if (buf) return buf;
-  // fallback: 데스크탑 쿠팡
-  return capture(`https://www.coupang.com/np/search?q=${encodeURIComponent(keyword)}&channel=user`);
-}
-
-// ── Pinterest (모바일) ──
-async function capturePinterest(keyword) {
-  console.log(`[SS] Pinterest: ${keyword}`);
-  // 모바일 Pinterest (로그인 벽 낮음)
-  return capture(`https://kr.pinterest.com/search/pins/?q=${encodeURIComponent(keyword)}`);
-}
-
-// ── 올리브영 (글로벌 모바일 → 국내 → 쿠팡 fallback) ──
-async function captureOliveyoung(keyword) {
-  console.log(`[SS] Oliveyoung: ${keyword}`);
-  let buf = await capture(`https://global.oliveyoung.com/search?query=${encodeURIComponent(keyword)}`);
-  if (buf) return buf;
-  // 모바일 국내
-  buf = await capture(`https://m.oliveyoung.co.kr/m/product/search?query=${encodeURIComponent(keyword)}`, { selector: '.cate_prd_list' });
-  if (buf) return buf;
-  console.log(`[SS] Oliveyoung failed → Coupang`);
-  return captureCoupang(keyword);
-}
-
-// ── Zernio 업로드 ──
-async function uploadToZernio(buf) {
-  if (!buf || !process.env.ZERNIO_API_KEY) return null;
+// ── 올리브영 CDN 이미지 URL 추출 ──
+async function getOliveyoungImages(keyword) {
   try {
-    const formData = new FormData();
-    formData.append('files', new Blob([buf], { type: 'image/jpeg' }), 'img.jpg');
-    const r = await fetch('https://zernio.com/api/v1/media', {
-      method: 'POST', headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}` }, body: formData,
-    });
-    return (await r.json()).files?.[0]?.url || null;
-  } catch { return null; }
+    const res = await fetch(
+      `https://www.oliveyoung.co.kr/store/search/getSearchMain.do?query=${encodeURIComponent(keyword)}`,
+      { headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15',
+        'Accept': 'text/html',
+        'Accept-Language': 'ko-KR,ko;q=0.9',
+      }}
+    );
+    if (!res.ok) return [];
+    const html = await res.text();
+    const matches = html.match(/https:\/\/image\.oliveyoung\.co\.kr\/[^\s"']+\.(?:jpg|png|webp)/gi) || [];
+    const unique = [...new Set(matches)].filter(u => u.includes('/goods/') || u.includes('/product/'));
+    console.log(`[Oliveyoung] "${keyword}": ${unique.length} images found`);
+    return unique;
+  } catch (e) {
+    console.warn(`[Oliveyoung] Error: ${e.message}`);
+    return [];
+  }
 }
 
-// ── 통합 이미지 획득 ──
+// ── 쿠팡 CDN 이미지 URL 추출 ──
+async function getCoupangImages(keyword) {
+  try {
+    const res = await fetch(
+      `https://www.coupang.com/np/search?q=${encodeURIComponent(keyword)}&channel=user`,
+      { headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15',
+        'Accept': 'text/html',
+      }}
+    );
+    if (!res.ok) return [];
+    const html = await res.text();
+    const matches = html.match(/https:\/\/thumbnail[0-9]*\.coupangcdn\.com\/[^\s"']+\.(?:jpg|png|webp)/gi) || [];
+    const unique = [...new Set(matches)];
+    console.log(`[Coupang] "${keyword}": ${unique.length} images found`);
+    return unique;
+  } catch (e) {
+    console.warn(`[Coupang] Error: ${e.message}`);
+    return [];
+  }
+}
+
+// ── 다이소 CDN 이미지 URL 추출 ──
+async function getDaisoImages(keyword) {
+  try {
+    const res = await fetch(
+      `https://www.daiso.co.kr/goods/search?query=${encodeURIComponent(keyword)}`,
+      { headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15' }}
+    );
+    if (!res.ok) return [];
+    const html = await res.text();
+    const matches = html.match(/https:\/\/[^\s"']*daiso[^\s"']*\.(?:jpg|png|webp)/gi) || [];
+    const unique = [...new Set(matches)];
+    console.log(`[Daiso] "${keyword}": ${unique.length} images found`);
+    return unique;
+  } catch (e) {
+    console.warn(`[Daiso] Error: ${e.message}`);
+    return [];
+  }
+}
+
+// ── 통합: 타입별 이미지 URL 반환 ──
 export async function getImageUrl(type, keyword) {
   if (!keyword) return null;
 
-  // 1차: 지정된 소스
-  let buf = null;
-  if (type === 'coupang' || type === '쿠팡') buf = await captureCoupang(keyword);
-  else if (type === 'oliveyoung' || type === '올리브영') buf = await captureOliveyoung(keyword);
-  else if (type === 'pinterest' || type === 'google' || type === '핀터레스트') buf = await capturePinterest(keyword);
+  let images = [];
 
-  if (buf) { const url = await uploadToZernio(buf); if (url) return url; }
+  // 1차: 지정 소스
+  if (type === 'oliveyoung' || type === '올리브영') images = await getOliveyoungImages(keyword);
+  else if (type === 'coupang' || type === '쿠팡') images = await getCoupangImages(keyword);
+  else if (type === 'daiso' || type === '다이소') images = await getDaisoImages(keyword);
+  else images = await getPinterestImages(keyword); // pinterest/google/기본
 
-  // 2차: fallback (pinterest→쿠팡, 쿠팡→pinterest)
-  if (type === 'pinterest' || type === 'google') {
-    buf = await captureCoupang(keyword);
-    if (buf) { const url = await uploadToZernio(buf); if (url) return url; }
-  } else {
-    buf = await capturePinterest(keyword + ' aesthetic');
-    if (buf) { const url = await uploadToZernio(buf); if (url) return url; }
+  if (images.length > 0) {
+    const pick = images[Math.floor(Math.random() * Math.min(images.length, 5))];
+    return pick;
   }
 
+  // 2차: Pinterest fallback (다른 소스 실패 시)
+  if (type !== 'pinterest') {
+    images = await getPinterestImages(keyword + ' korean beauty');
+    if (images.length > 0) return images[Math.floor(Math.random() * Math.min(images.length, 5))];
+  }
+
+  // 3차: 올리브영 fallback
+  if (type !== 'oliveyoung') {
+    images = await getOliveyoungImages(keyword);
+    if (images.length > 0) return images[0];
+  }
+
+  console.warn(`[Image] All sources failed for "${keyword}"`);
   return null;
 }
