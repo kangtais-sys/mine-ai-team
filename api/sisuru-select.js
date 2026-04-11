@@ -53,11 +53,18 @@ async function researchTopic(topic) {
   const prompt = `"${title}" 관련 실제 정보를 웹에서 조사해줘.
 ${topic.summary ? `맥락: ${topic.summary}` : ''}
 ${topic.research_keywords ? `검색 키워드 힌트: ${topic.research_keywords}` : ''}
+${topic.hook ? `후킹: ${topic.hook}` : ''}
 
 ${researchGuide}
 
-반드시 웹 검색을 해서 실제 데이터를 찾아줘. 추측하지 말고 실제 검색 결과 기반으로.
-정보를 못 찾은 항목은 "확인 불가"로 표시.
+검색 전략:
+- 한국어로 검색: "${title}", "${title} 후기", "${title} 가격"
+- 올리브영/글로우픽/에누리/강남언니 등에서 실제 제품/시술 검색
+- 뉴스 기사도 참고 (트렌드 맥락 파악)
+- 하나의 검색어로 안 나오면 다른 키워드로 재검색
+
+반드시 웹 검색을 여러 번 해서 실제 데이터를 찾아줘. 추측하지 말고 실제 검색 결과 기반으로.
+구체적 제품 정보를 못 찾으면 items를 빈 배열 []로 두고, additionalContext에 찾은 맥락 정보를 상세히 적어줘.
 
 JSON으로 응답:
 {
@@ -102,11 +109,20 @@ JSON으로 응답:
     const match = text.match(/\{[\s\S]*\}/);
     if (match) {
       const research = JSON.parse(match[0]);
-      console.log(`[Research] 완료: ${research.items?.length || 0}개 항목, sources: ${research.sourceUrls?.length || 0}`);
+      // items가 전부 "확인 불가"면 리서치 실패 처리
+      const hasRealData = (research.items || []).some(item =>
+        item.name && item.name !== '확인 불가' && item.price && item.price !== '확인 불가'
+      );
+      if (!hasRealData && research.additionalContext) {
+        console.log(`[Research] 구체적 제품 정보 없음 → 맥락 정보로 전환`);
+        research.researched = true; // additionalContext는 있으니 true 유지
+        research.items = []; // 빈 items로 교체 (확인 불가 제거)
+      }
+      console.log(`[Research] 완료: ${research.items?.length || 0}개 항목, sources: ${research.sourceUrls?.length || 0}, context: ${(research.additionalContext || '').substring(0, 80)}`);
       return research;
     }
     console.warn('[Research] JSON 파싱 실패, 원본 텍스트 사용');
-    return { researched: false, items: [], additionalContext: text.substring(0, 2000) };
+    return { researched: true, items: [], additionalContext: text.substring(0, 2000), sourceUrls: [] };
   } catch (e) {
     console.error('[Research] Error:', e.message);
     return { researched: false, items: [], additionalContext: topic.summary || title };
@@ -115,9 +131,17 @@ JSON으로 응답:
 
 // ─── STEP 3: 리서치 기반 카드뉴스 기획 ───
 async function planSlides(topic, researchData, retryFeedback) {
-  const researchBlock = researchData?.researched
-    ? JSON.stringify(researchData, null, 2)
-    : `(웹 리서치 실패. 주제: "${topic.title}", 요약: ${topic.summary || '없음'})`;
+  const hasItems = researchData?.items?.length > 0;
+  const hasContext = !!(researchData?.additionalContext || researchData?.competitors?.length);
+
+  let researchBlock;
+  if (hasItems) {
+    researchBlock = JSON.stringify(researchData, null, 2);
+  } else if (hasContext) {
+    researchBlock = `(구체적 제품 정보는 확인 불가. 아래 맥락 정보 활용)\n맥락: ${researchData.additionalContext || ''}\n경쟁 제품: ${JSON.stringify(researchData.competitors || [])}\n출처: ${(researchData.sourceUrls || []).join(', ')}`;
+  } else {
+    researchBlock = `(웹 리서치 실패. 주제: "${topic.title}", 요약: ${topic.summary || '없음'}\n주제에 맞는 일반적인 정보로 기획하되, 가격/제품명은 "확인 필요"로 표시)`;
+  }
 
   const retryNote = retryFeedback
     ? `\n\n⚠️ 이전 기획 피드백: ${retryFeedback}\n더 강한 후킹으로 재기획해줘!`
@@ -230,9 +254,16 @@ JSON만:
     }),
   });
   const d = await r.json();
+  if (d.error) { console.error('[Plan] Claude API error:', d.error); return null; }
   const t = d.content?.[0]?.text || '{}';
   const m = t.match(/\{[\s\S]*\}/);
-  return m ? JSON.parse(m[0]) : null;
+  if (!m) { console.error('[Plan] JSON not found in response:', t.substring(0, 500)); return null; }
+  try {
+    const plan = JSON.parse(m[0]);
+    if (!plan.slides?.length) { console.error('[Plan] slides 누락:', Object.keys(plan)); return null; }
+    console.log(`[Plan] 기획 완료: ${plan.slides.length}장, IG=${!!plan.instagram_caption}, TT=${!!plan.tiktok_caption}`);
+    return plan;
+  } catch (e) { console.error('[Plan] JSON 파싱 실패:', e.message, t.substring(0, 300)); return null; }
 }
 
 // ─── STEP 5: 후킹 강도 체크 + 재생성 ───
