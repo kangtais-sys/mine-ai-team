@@ -16,11 +16,52 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Agent not found' });
     }
 
-    // 크리에이터 채팅에서 "생성해" 감지 → Bannerbear + Zernio 트리거
+    // 크리에이터 채팅에서 "생성해" 감지 → 수정사항 반영 후 생성
     const lastMsg = messages?.[messages.length - 1]?.content || '';
     if (agentId === 'creator' && /생성해|생성하자|만들어|발행해/.test(lastMsg)) {
       try {
         const baseUrl = `https://${req.headers.host || 'mine-ai-team.vercel.app'}`;
+
+        // 채팅에 수정 요청이 있으면 Claude로 기획 업데이트
+        const chatHistory = messages.filter(m => m.role === 'user').map(m => m.content).join('\n');
+        const hasEdits = messages.length > 2; // 초안 표시 후 사용자 메시지가 있으면 수정 있음
+
+        if (hasEdits) {
+          // KV에서 기존 draft 가져와서 수정사항 반영
+          const { Redis } = await import('@upstash/redis');
+          const redis = new Redis({ url: process.env.KV_REST_API_URL, token: process.env.KV_REST_API_TOKEN });
+          const draft = await redis.get('sisuru:draft');
+          const currentPlan = draft ? (typeof draft === 'string' ? JSON.parse(draft) : draft) : null;
+
+          if (currentPlan) {
+            const updateRes = await fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+              body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 3000,
+                messages: [{ role: 'user', content: `아래 카드뉴스 기획을 사용자의 수정 요청에 맞게 업데이트해줘.
+
+현재 기획:
+${JSON.stringify(currentPlan, null, 2)}
+
+사용자 수정 요청:
+${chatHistory}
+
+수정된 부분만 반영하고 나머지는 유지. 동일한 JSON 구조로 응답 (slides, instagram_caption, tiktok_caption).` }],
+              }),
+            });
+            const updateData = await updateRes.json();
+            const text = updateData.content?.[0]?.text || '';
+            const match = text.match(/\{[\s\S]*\}/);
+            if (match) {
+              const updatedPlan = JSON.parse(match[0]);
+              await redis.set('sisuru:draft', JSON.stringify(updatedPlan), { ex: 86400 });
+              console.log('[Chat] Draft updated with user edits');
+            }
+          }
+        }
+
         const genRes = await fetch(`${baseUrl}/api/sisuru-select`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

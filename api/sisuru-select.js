@@ -71,20 +71,23 @@ title이 14자 넘으면 반드시 줄바꿈(\\n) 넣어서 한 줄 14자 이내
 3장 STEP1: subtitle("STEP 1"), title(소제목), body(핵심 정보 5~7줄, 실제 가격/수치/기간), image_type, image_prompt
 4장 STEP2: subtitle("STEP 2"), title(소제목), body(5~7줄, A vs B 비교), image_type, image_prompt
 5장 STEP3: subtitle("STEP 3"), title(소제목), body(5~7줄, 주의사항/부작용), image_type, image_prompt
-6장 요약: subtitle("정리하면"), title("이것만 기억해 ✅"), body(1~5장 핵심 빠짐없이 3~4줄), image_type("Imagen"), image_prompt(영어 50단어)
+6장 요약: subtitle("정리하면"), title(아래 중 랜덤 택1), body(1~5장 핵심 빠짐없이 3~4줄), image_type("Imagen"), image_prompt(영어 50단어)
+  title 패턴: "이것만 기억해 ✅" / "핵심만 다시 정리" / "한눈에 보는 요약" / "결론은 이거야" / "딱 3줄 요약" / "다 읽기 귀찮으면\\n이것만"
 
 image_type 선택 기준:
-- "Imagen": 일반 뷰티/시술 이미지 (기본값, image_prompt에 영어 프롬프트)
-- "올리브영": 올리브영 제품 관련 장 (image_prompt에 한국어 제품/성분 검색어)
-- "Pinterest": 무드/분위기 이미지 (image_prompt에 영어 검색어)
-제품 비교/리뷰 주제면 올리브영 활용, 시술/트렌드면 Imagen 또는 Pinterest
+- "Imagen": 기본값. image_prompt는 영어, 실사 느낌의 뷰티/시술 이미지
+- "올리브영": 올리브영 제품 관련 장. image_prompt에 한국어 제품명/성분 검색어
+- "Pinterest": 무드/분위기 이미지. image_prompt에 영어 검색어
+⚠️ image_prompt 규칙: 텍스트/글자가 많은 이미지 절대 금지. 반분할 이미지 금지. 실사 위주. 화면 꽉 채우는 클로즈업/풀샷.
+
 7장 CTA: subtitle(""), image_type("고정"), image_prompt("")
-  아래 5개 패턴 중 랜덤 1개 선택해서 title+body로 나눠줘:
-  ① "더 솔직한 거 알고 싶어?" + "댓글에 나도 남겨줘 👇\\nDM으로 직접 알려줄게"
-  ② "나 1년에 1억 이상\\n시술/화장품에 써봤어" + "진짜 써본 사람만 아는 거 알려줄게\\n댓글에 궁금한 거 남겨 👀"
-  ③ "피부과 의사도 아니고\\n에스테티션도 아냐" + "그냥 진짜 중독자가 직접 써본 거야\\n댓글에 나도 남기면 DM 줄게"
-  ④ "수천만원 써보고\\n깨달은 것" + "돈 아끼고 싶으면 꼭 봐\\n댓글에 나도 남겨줘 👇"
-  ⑤ "이거 나만 몰랐던 거야? 😅" + "진짜 시술 중독자의 솔직한 후기\\n댓글에 나도 남기면 DM 보내줄게"
+  아래 패턴 중 랜덤 1개 (매번 다르게!):
+  ① title: "더 솔직한 거\\n알고 싶어?" + body: "팔로우하면 매일 이런 정보 올려\\n궁금한 거 댓글에 남겨봐 👇"
+  ② title: "나 1년에 1억 이상\\n시술에 써봤어" + body: "진짜 써본 사람 얘기 듣고 싶으면\\n팔로우 누르고 DM 줘 👀"
+  ③ title: "이건 저장 필수야" + body: "나중에 또 볼 거잖아\\n저장하고 팔로우 해둬 📌"
+  ④ title: "수천만원 써보고\\n깨달은 거" + body: "돈 아끼고 싶으면 팔로우 해\\n댓글에 궁금한 거 적어줘 ✍️"
+  ⑤ title: "이거 나만\\n몰랐던 거야? 😅" + body: "친구도 몰랐을 거야\\n공유하고 같이 알아가자 💕"
+  ⑥ title: "더 궁금한 거 있어?" + body: "댓글에 주제 알려주면\\n다음에 만들어줄게 🎯"
 
 Instagram 캡션:
 - 후킹 1줄
