@@ -63,11 +63,12 @@ body: 경험담+감정+수치 혼합 대화체 7~10줄. 단순 나열 금지.
 ⚠️ 2장은 1장 주제의 연장선! 1장이 "10만원 립밤" 얘기면 2장도 그 립밤 얘기여야 함.
 
 image_source + image_keyword 규칙:
-- "google": 감성/무드 이미지. image_keyword에 영어 (예: "luxury lip balm aesthetic closeup")
-- "oliveyoung": 제품 관련. image_keyword에 해당 장에서 다루는 실제 제품/브랜드명
-  ⚠️ 주제와 직접 관련된 키워드만! "10만원 립밤"이면 "라메르 립밤" 이런 식으로 구체적.
-  일반적인 "립밤" ❌ → 주제에 나온 실제 브랜드/제품명 ✅
+- "pinterest": 감성/무드/시술 이미지. image_keyword에 영어 (예: "luxury lip balm aesthetic closeup")
+- "oliveyoung": 올리브영 제품. image_keyword에 한국어 제품/브랜드명 (구체적으로!)
+- "coupang": 쿠팡 제품 (올리브영에 없는 제품, 쿠팡 특가 등). image_keyword에 한국어 제품명
 - "고정": 7장 CTA
+⚠️ 올리브영 제품이면 "oliveyoung", 쿠팡 제품이면 "coupang", 감성/시술이면 "pinterest"
+⚠️ image_keyword는 반드시 해당 장에서 다루는 실제 제품/브랜드명! 일반명 금지!
 
 ## 캡션
 Instagram: 충격/공감 첫 줄 + 본문 3~5줄 + 줄바꿈3 + CTA + 해시태그 5~10개
@@ -77,12 +78,12 @@ TikTok: 후킹 60자 + 해시태그 5~7개
 JSON만:
 {
   "slides":[
-    {"slide":1,"subtitle":"인생 바뀐 후기","title":"...(20자)","body":"","image_source":"google","image_keyword":"luxury lip balm aesthetic"},
-    {"slide":2,"subtitle":"근데 이게 다가 아니야","title":"...","body":"","image_source":"google","image_keyword":"..."},
+    {"slide":1,"subtitle":"인생 바뀐 후기","title":"...(20자)","body":"","image_source":"pinterest","image_keyword":"luxury lip balm aesthetic closeup"},
+    {"slide":2,"subtitle":"근데 그 10만원짜리","title":"...","body":"","image_source":"pinterest","image_keyword":"korean beauty product aesthetic"},
     {"slide":3,"subtitle":"가격 비교","title":"소제목","body":"7~10줄","image_source":"oliveyoung","image_keyword":"라메르 립밤"},
-    {"slide":4,"subtitle":"직접 써본 후기","title":"소제목","body":"7~10줄","image_source":"oliveyoung","image_keyword":"구체적 제품명"},
-    {"slide":5,"subtitle":"주의사항","title":"소제목","body":"7~10줄","image_source":"google","image_keyword":"..."},
-    {"slide":6,"subtitle":"결론","title":"소제목","body":"7~10줄","image_source":"google","image_keyword":"..."},
+    {"slide":4,"subtitle":"직접 써본 후기","title":"소제목","body":"7~10줄","image_source":"coupang","image_keyword":"쿠팡 립밤 세트"},
+    {"slide":5,"subtitle":"주의사항","title":"소제목","body":"7~10줄","image_source":"pinterest","image_keyword":"skincare routine closeup"},
+    {"slide":6,"subtitle":"결론","title":"소제목","body":"7~10줄","image_source":"pinterest","image_keyword":"korean beauty glow skin"},
     {"slide":7,"subtitle":"궁금하면","title":"CTA","body":"CTA","image_source":"고정","image_keyword":""}
   ],
   "instagram_caption":"...(해시태그 5~10개)",

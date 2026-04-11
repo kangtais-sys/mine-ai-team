@@ -1,5 +1,5 @@
 // ── ScreenshotOne 캡처 ──
-export async function captureScreenshot(url, options = {}) {
+async function capture(url, options = {}) {
   if (!process.env.SCREENSHOT_ACCESS_KEY) return null;
   const params = new URLSearchParams({
     access_key: process.env.SCREENSHOT_ACCESS_KEY,
@@ -9,88 +9,94 @@ export async function captureScreenshot(url, options = {}) {
     format: 'jpg',
     image_quality: '90',
     full_page: 'false',
-    delay: options.delay || '3',
+    delay: options.delay || '4',
     block_ads: 'true',
     block_cookie_banners: 'true',
+    ...(options.user_agent ? { user_agent: options.user_agent } : {}),
   });
   try {
     const res = await fetch(`https://api.screenshotone.com/take?${params}`);
-    if (!res.ok || !res.headers.get('content-type')?.includes('image')) return null;
-    return Buffer.from(await res.arrayBuffer());
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    // 1KB 이하면 빈 이미지 (차단됨)
+    if (buf.length < 1000) { console.warn(`[Screenshot] Too small (${buf.length}b): ${url.substring(0, 60)}`); return null; }
+    return buf;
   } catch { return null; }
 }
 
-// ── 올리브영 글로벌 (로그인 불필요) ──
-export async function captureOliveyoung(keyword) {
-  const url = `https://global.oliveyoung.com/product/list?searchWord=${encodeURIComponent(keyword)}`;
-  return captureScreenshot(url, { width: '1400', height: '900', delay: '3' });
+// ── 쿠팡 캡처 ──
+async function captureCoupang(keyword) {
+  console.log(`[Screenshot] Coupang: ${keyword}`);
+  return capture(`https://www.coupang.com/np/search?q=${encodeURIComponent(keyword)}&channel=user`, { delay: '4' });
 }
 
-// ── Pinterest 이미지 URL 직접 추출 (스크린샷 X, HTML 파싱) ──
-export async function getPinterestImageUrl(keyword) {
-  try {
-    const url = `https://kr.pinterest.com/search/pins/?q=${encodeURIComponent(keyword)}`;
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
-      },
-    });
-    if (!res.ok) return null;
-    const html = await res.text();
-
-    // Pinterest CDN 이미지 URL 추출 (736x = 중간 해상도)
-    const matches = html.match(/https:\/\/i\.pinimg\.com\/736x\/[a-zA-Z0-9/_.-]+\.jpg/g);
-    if (!matches || matches.length === 0) return null;
-
-    // 중복 제거 + 처음 5개 중 랜덤 선택 (다양성)
-    const unique = [...new Set(matches)];
-    const pick = unique[Math.floor(Math.random() * Math.min(unique.length, 5))];
-    console.log(`[Pinterest] Found ${unique.length} images, picked: ${pick?.substring(0, 60)}`);
-    return pick;
-  } catch (e) {
-    console.warn('[Pinterest] Extract failed:', e.message);
-    return null;
-  }
+// ── Pinterest 캡처 (모바일 UA로 로그인 벽 우회) ──
+async function capturePinterest(keyword) {
+  console.log(`[Screenshot] Pinterest: ${keyword}`);
+  return capture(
+    `https://kr.pinterest.com/search/pins/?q=${encodeURIComponent(keyword)}`,
+    { delay: '5', user_agent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1' }
+  );
 }
 
-// ── 통합: 타입별 이미지 URL 획득 ──
-export async function getImageUrl(type, keyword) {
-  // 1. Pinterest 직접 URL
-  if (type === 'pinterest' || type === 'google') {
-    const pinUrl = await getPinterestImageUrl(keyword);
-    if (pinUrl) return pinUrl;
-  }
-
-  // 2. 올리브영 글로벌 스크린샷 → Zernio 업로드
-  if (type === 'oliveyoung' || type === '올리브영') {
-    const buf = await captureOliveyoung(keyword);
-    if (buf) return await uploadToZernio(buf);
-  }
-
-  // 3. Fallback: Pinterest 실패 시 올리브영, 올리브영 실패 시 Pinterest
-  if (type === 'pinterest' || type === 'google') {
-    const buf = await captureOliveyoung(keyword);
-    if (buf) return await uploadToZernio(buf);
-  }
-  if (type === 'oliveyoung') {
-    const pinUrl = await getPinterestImageUrl(keyword + ' aesthetic');
-    if (pinUrl) return pinUrl;
-  }
-
-  return null;
+// ── 올리브영 (글로벌 시도 → 실패 시 쿠팡) ──
+async function captureOliveyoung(keyword) {
+  console.log(`[Screenshot] Oliveyoung: ${keyword}`);
+  // 글로벌 시도
+  let buf = await capture(`https://global.oliveyoung.com/product/list?searchWord=${encodeURIComponent(keyword)}`, { delay: '4' });
+  if (buf) return buf;
+  // 국내 시도
+  buf = await capture(`https://www.oliveyoung.co.kr/store/search/getSearchMain.do?query=${encodeURIComponent(keyword)}`, { delay: '5' });
+  if (buf) return buf;
+  // 올리브영 실패 → 쿠팡으로 fallback
+  console.log(`[Screenshot] Oliveyoung failed, trying Coupang`);
+  return captureCoupang(keyword);
 }
 
-// Zernio 미디어 업로드
+// ── Zernio 업로드 ──
 async function uploadToZernio(buf) {
-  if (!process.env.ZERNIO_API_KEY) return null;
+  if (!buf || !process.env.ZERNIO_API_KEY) return null;
   try {
     const formData = new FormData();
-    formData.append('files', new Blob([buf], { type: 'image/jpeg' }), 'screenshot.jpg');
+    formData.append('files', new Blob([buf], { type: 'image/jpeg' }), 'img.jpg');
     const r = await fetch('https://zernio.com/api/v1/media', {
       method: 'POST', headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}` }, body: formData,
     });
     return (await r.json()).files?.[0]?.url || null;
   } catch { return null; }
+}
+
+// ── 통합 이미지 획득 (타입별) ──
+export async function getImageUrl(type, keyword) {
+  if (!keyword) return null;
+
+  // 쿠팡
+  if (type === 'coupang' || type === '쿠팡') {
+    const buf = await captureCoupang(keyword);
+    if (buf) { const url = await uploadToZernio(buf); if (url) return url; }
+  }
+
+  // 올리브영 (실패 시 쿠팡 자동 fallback)
+  if (type === 'oliveyoung' || type === '올리브영') {
+    const buf = await captureOliveyoung(keyword);
+    if (buf) { const url = await uploadToZernio(buf); if (url) return url; }
+  }
+
+  // Pinterest (모바일 UA)
+  if (type === 'pinterest' || type === 'google' || type === '핀터레스트') {
+    const buf = await capturePinterest(keyword);
+    if (buf) { const url = await uploadToZernio(buf); if (url) return url; }
+  }
+
+  // Fallback chain: pinterest 실패 → 쿠팡, 쿠팡 실패 → pinterest
+  if (type === 'pinterest' || type === 'google') {
+    const buf = await captureCoupang(keyword);
+    if (buf) { const url = await uploadToZernio(buf); if (url) return url; }
+  }
+  if (type === 'oliveyoung' || type === 'coupang') {
+    const buf = await capturePinterest(keyword + ' aesthetic');
+    if (buf) { const url = await uploadToZernio(buf); if (url) return url; }
+  }
+
+  return null; // 전부 실패 시 sisuru-select에서 Imagen fallback
 }
