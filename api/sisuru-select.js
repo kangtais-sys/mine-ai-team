@@ -39,7 +39,8 @@ body: 경험담+감정+수치 혼합 대화체 7~10줄. 단순 나열 금지.
 
 ## 슬라이드 (6장 본문 + 1장 CTA, 요약장 없음)
 1장: subtitle(매력적 부제), title(스크롤 멈추는 후킹), body(""), image_source("google"), image_keyword(영어 감성 키워드)
-2장: subtitle("솔직히 말하면"), title(궁금증 폭발), body(""), image_source("google"), image_keyword(영어)
+2장: subtitle(1장 맥락 이어가기), title(1장 주제를 더 깊이 파고든 문장 — 반드시 1장에서 말한 제품/시술/가격을 구체적으로 언급), body(""), image_source("google"), image_keyword(영어)
+  ⚠️ 2장 title에 1장 주제 키워드가 반드시 포함돼야 함! 예: 1장 "10만원 립밤" → 2장 "근데 그 10만원짜리\\n이게 진짜 비밀이야"
 3장: subtitle(""), title(소제목 20자), body(경험담 7~10줄, 가격/수치), image_source("oliveyoung" 또는 "google"), image_keyword(제품명 또는 영어)
 4장: subtitle(""), title(소제목), body(7~10줄, 비교), image_source, image_keyword
 5장: subtitle(""), title(소제목), body(7~10줄, 단점/주의사항 솔직히), image_source, image_keyword
