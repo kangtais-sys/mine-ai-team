@@ -99,18 +99,12 @@ JSON만:
 async function generateSlideImage(slide) {
   if (slide.image_source === '고정') return null;
 
-  const { captureAndUpload } = await import('./utils/screenshot.js');
+  const { getImageUrl } = await import('./utils/screenshot.js');
 
-  // 1순위: 올리브영 캡처
-  if ((slide.image_source === 'oliveyoung' || slide.image_source === '올리브영') && slide.image_keyword) {
-    const url = await captureAndUpload('올리브영', slide.image_keyword);
-    if (url) { console.log(`[Img] Slide ${slide.slide}: oliveyoung OK`); return url; }
-  }
-
-  // 2순위: Google Images 캡처 (Pinterest 대체)
+  // 타입별 이미지 획득 (Pinterest URL 직접 추출 or 올리브영 글로벌 캡처)
   if (slide.image_keyword) {
-    const url = await captureAndUpload('google', slide.image_keyword);
-    if (url) { console.log(`[Img] Slide ${slide.slide}: google OK`); return url; }
+    const url = await getImageUrl(slide.image_source || 'pinterest', slide.image_keyword);
+    if (url) { console.log(`[Img] Slide ${slide.slide}: ${slide.image_source} OK`); return url; }
   }
 
   // 3순위: Gemini Imagen fallback
