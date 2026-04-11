@@ -136,7 +136,14 @@ async function planSlides(topic, researchData, retryFeedback) {
 
   let researchBlock;
   if (hasItems) {
-    researchBlock = JSON.stringify(researchData, null, 2);
+    // 리서치 데이터가 너무 크면 요약 (sourceUrls, 불필요 필드 제거)
+    const trimmed = { ...researchData, sourceUrls: (researchData.sourceUrls || []).slice(0, 2) };
+    researchBlock = JSON.stringify(trimmed, null, 2);
+    if (researchBlock.length > 3000) {
+      // items만 핵심 필드로 축약
+      const shortItems = researchData.items.map(i => ({ name: i.name, price: i.price, effects: i.actualEffects, reviews: i.realReviews, cons: i.cons }));
+      researchBlock = JSON.stringify({ items: shortItems, competitors: researchData.competitors?.slice(0, 3), context: (researchData.additionalContext || '').substring(0, 500) }, null, 2);
+    }
   } else if (hasContext) {
     researchBlock = `(구체적 제품 정보는 확인 불가. 아래 맥락 정보 활용)\n맥락: ${researchData.additionalContext || ''}\n경쟁 제품: ${JSON.stringify(researchData.competitors || [])}\n출처: ${(researchData.sourceUrls || []).join(', ')}`;
   } else {
@@ -151,7 +158,7 @@ async function planSlides(topic, researchData, retryFeedback) {
     method: 'POST',
     headers: CLAUDE_HEADERS,
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514', max_tokens: 6000, temperature: 0.9,
+      model: 'claude-sonnet-4-20250514', max_tokens: 8000, temperature: 0.9,
       messages: [{ role: 'user', content: `시수르더쿠 7장 카드뉴스. 주제: "${topic.title}"
 ${retryNote}
 
@@ -195,22 +202,49 @@ JSON만 응답 (다른 텍스트 없이):
   });
   const d = await r.json();
   if (d.error) { console.error('[Plan] Claude API error:', JSON.stringify(d.error)); return null; }
-  if (!d.content?.length) { console.error('[Plan] No content in response:', JSON.stringify(d).substring(0, 500)); return null; }
+  if (!d.content?.length) { console.error('[Plan] No content:', JSON.stringify(d).substring(0, 500)); return null; }
 
-  // 모든 text 블록 합치기 (thinking 등 다른 블록 무시)
   const allText = d.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
-  console.log(`[Plan] Response: ${d.content.length} blocks, stop=${d.stop_reason}, text length=${allText.length}`);
-
-  if (!allText) { console.error('[Plan] No text blocks. Block types:', d.content.map(b => b.type)); return null; }
+  console.log(`[Plan] Response: ${d.content.length} blocks, stop=${d.stop_reason}, text=${allText.length}chars`);
+  if (!allText) { console.error('[Plan] No text blocks:', d.content.map(b => b.type)); return null; }
 
   const m = allText.match(/\{[\s\S]*\}/);
   if (!m) { console.error('[Plan] JSON not found:', allText.substring(0, 500)); return null; }
+
+  let raw = m[0];
+  // max_tokens로 잘린 JSON 복구 시도
+  if (d.stop_reason === 'max_tokens') {
+    console.warn('[Plan] max_tokens로 잘림 → JSON 복구 시도');
+    // 닫히지 않은 brackets/braces 추가
+    let opens = 0, inStr = false, escape = false;
+    for (const c of raw) {
+      if (escape) { escape = false; continue; }
+      if (c === '\\') { escape = true; continue; }
+      if (c === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (c === '{' || c === '[') opens++;
+      if (c === '}' || c === ']') opens--;
+    }
+    // 마지막 완전한 항목까지만 자르기
+    if (opens > 0) {
+      // 마지막 완전한 slide 객체 이후 자르기
+      const lastComplete = raw.lastIndexOf('}');
+      if (lastComplete > 0) raw = raw.substring(0, lastComplete + 1);
+      // 누락된 닫기 추가
+      if (!raw.includes('"instagram_caption"')) raw += ',"instagram_caption":"(잘림)","tiktok_caption":"(잘림)"';
+      while (opens-- > 0) raw += raw.includes('"slides"') ? '}' : ']';
+    }
+  }
+
   try {
-    const plan = JSON.parse(m[0]);
+    const plan = JSON.parse(raw);
     if (!plan.slides?.length) { console.error('[Plan] slides 누락:', Object.keys(plan)); return null; }
-    console.log(`[Plan] 기획 완료: ${plan.slides.length}장, IG=${!!plan.instagram_caption}, TT=${!!plan.tiktok_caption}, hooking=${JSON.stringify(plan.hookingScores)}`);
+    console.log(`[Plan] 기획 완료: ${plan.slides.length}장, IG=${!!plan.instagram_caption}, TT=${!!plan.tiktok_caption}`);
     return plan;
-  } catch (e) { console.error('[Plan] JSON parse error:', e.message, '\nRaw:', m[0].substring(0, 300)); return null; }
+  } catch (e) {
+    console.error('[Plan] JSON parse error:', e.message, '\nRaw:', raw.substring(0, 500));
+    return null;
+  }
 }
 
 // ─── STEP 5: 후킹 강도 체크 + 재생성 ───
