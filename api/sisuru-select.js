@@ -38,9 +38,9 @@ body: 경험담+감정+수치 혼합 대화체 7~10줄. 단순 나열 금지.
 금지: '추천', '좋아요', '효과적인', '놀라운', '완벽한', '최고의'
 
 ## 슬라이드 (6장 본문 + 1장 CTA, 요약장 없음)
-1장: subtitle(매력적 부제), title(스크롤 멈추는 후킹), body(""), image_source("pinterest"), image_keyword(영어 감성 키워드)
-2장: subtitle("솔직히 말하면"), title(궁금증 폭발), body(""), image_source("pinterest"), image_keyword(영어)
-3장: subtitle(""), title(소제목 20자), body(경험담 7~10줄, 가격/수치), image_source("oliveyoung" 또는 "pinterest"), image_keyword(제품명 또는 영어)
+1장: subtitle(매력적 부제), title(스크롤 멈추는 후킹), body(""), image_source("google"), image_keyword(영어 감성 키워드)
+2장: subtitle("솔직히 말하면"), title(궁금증 폭발), body(""), image_source("google"), image_keyword(영어)
+3장: subtitle(""), title(소제목 20자), body(경험담 7~10줄, 가격/수치), image_source("oliveyoung" 또는 "google"), image_keyword(제품명 또는 영어)
 4장: subtitle(""), title(소제목), body(7~10줄, 비교), image_source, image_keyword
 5장: subtitle(""), title(소제목), body(7~10줄, 단점/주의사항 솔직히), image_source, image_keyword
 6장: subtitle(""), title(소제목), body(7~10줄, 결론/느낀점), image_source, image_keyword
@@ -52,9 +52,20 @@ body: 경험담+감정+수치 혼합 대화체 7~10줄. 단순 나열 금지.
   ④ title:"다음엔 뭐\\n알려줄까?" body:"댓글에 주제 적어줘\\n만들어줄게 🎯"
   ⑤ title:"친구한테도\\n알려줘" body:"나만 알기 아깝잖아\\n공유하고 같이 예뻐지자 💕"
 
-image_source 기준:
-- "oliveyoung": 3~6장 제품/성분 관련. image_keyword에 한국어 제품명/성분
-- "pinterest": 1~2장 무드, 시술/감성. image_keyword에 영어 (예: "korean skin clinic aesthetic")
+## 필수 규칙
+⚠️ 모든 장의 subtitle은 반드시 채워야 함. 빈 문자열 금지!
+  1장: 매력적 부제 ("돈 아까운 사람만 봐", "인생 바뀐 후기")
+  2장: 1장 주제를 이어가는 맥락 ("근데 이게 다가 아니야", "솔직히 이게 핵심")
+  3~6장: 소제목 또는 맥락 ("가격 비교", "직접 써본 후기", "주의사항", "결론")
+  7장: CTA 관련 ("궁금하면")
+
+⚠️ 2장은 1장 주제의 연장선! 1장이 "10만원 립밤" 얘기면 2장도 그 립밤 얘기여야 함.
+
+image_source + image_keyword 규칙:
+- "google": 감성/무드 이미지. image_keyword에 영어 (예: "luxury lip balm aesthetic closeup")
+- "oliveyoung": 제품 관련. image_keyword에 해당 장에서 다루는 실제 제품/브랜드명
+  ⚠️ 주제와 직접 관련된 키워드만! "10만원 립밤"이면 "라메르 립밤" 이런 식으로 구체적.
+  일반적인 "립밤" ❌ → 주제에 나온 실제 브랜드/제품명 ✅
 - "고정": 7장 CTA
 
 ## 캡션
@@ -65,11 +76,13 @@ TikTok: 후킹 60자 + 해시태그 5~7개
 JSON만:
 {
   "slides":[
-    {"slide":1,"subtitle":"...","title":"...(20자,줄바꿈)","body":"","image_source":"pinterest","image_keyword":"korean beauty aesthetic"},
-    {"slide":2,...},
-    {"slide":3,"subtitle":"","title":"소제목","body":"7~10줄 경험담","image_source":"oliveyoung","image_keyword":"제품명"},
-    ...
-    {"slide":7,"subtitle":"","title":"CTA","body":"CTA","image_source":"고정","image_keyword":""}
+    {"slide":1,"subtitle":"인생 바뀐 후기","title":"...(20자)","body":"","image_source":"google","image_keyword":"luxury lip balm aesthetic"},
+    {"slide":2,"subtitle":"근데 이게 다가 아니야","title":"...","body":"","image_source":"google","image_keyword":"..."},
+    {"slide":3,"subtitle":"가격 비교","title":"소제목","body":"7~10줄","image_source":"oliveyoung","image_keyword":"라메르 립밤"},
+    {"slide":4,"subtitle":"직접 써본 후기","title":"소제목","body":"7~10줄","image_source":"oliveyoung","image_keyword":"구체적 제품명"},
+    {"slide":5,"subtitle":"주의사항","title":"소제목","body":"7~10줄","image_source":"google","image_keyword":"..."},
+    {"slide":6,"subtitle":"결론","title":"소제목","body":"7~10줄","image_source":"google","image_keyword":"..."},
+    {"slide":7,"subtitle":"궁금하면","title":"CTA","body":"CTA","image_source":"고정","image_keyword":""}
   ],
   "instagram_caption":"...(해시태그 5~10개)",
   "tiktok_caption":"...(해시태그 5~7개)"
@@ -89,15 +102,15 @@ async function generateSlideImage(slide) {
   const { captureAndUpload } = await import('./utils/screenshot.js');
 
   // 1순위: 올리브영 캡처
-  if (slide.image_source === 'oliveyoung' && slide.image_keyword) {
+  if ((slide.image_source === 'oliveyoung' || slide.image_source === '올리브영') && slide.image_keyword) {
     const url = await captureAndUpload('올리브영', slide.image_keyword);
     if (url) { console.log(`[Img] Slide ${slide.slide}: oliveyoung OK`); return url; }
   }
 
-  // 2순위: Pinterest 캡처
+  // 2순위: Google Images 캡처 (Pinterest 대체)
   if (slide.image_keyword) {
-    const url = await captureAndUpload('Pinterest', slide.image_keyword);
-    if (url) { console.log(`[Img] Slide ${slide.slide}: pinterest OK`); return url; }
+    const url = await captureAndUpload('google', slide.image_keyword);
+    if (url) { console.log(`[Img] Slide ${slide.slide}: google OK`); return url; }
   }
 
   // 3순위: Gemini Imagen fallback

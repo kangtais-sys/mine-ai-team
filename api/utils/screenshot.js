@@ -20,32 +20,36 @@ export async function captureScreenshot(url, options = {}) {
   } catch { return null; }
 }
 
+// 올리브영 제품 검색 캡처
 export async function captureOliveyoung(keyword) {
-  const url = `https://www.oliveyoung.co.kr/store/search/getSearchMain.do?query=${encodeURIComponent(keyword)}`;
-  return captureScreenshot(url, { width: '1200', height: '900', delay: '3' });
+  return captureScreenshot(
+    `https://www.oliveyoung.co.kr/store/search/getSearchMain.do?query=${encodeURIComponent(keyword)}`,
+    { delay: '4' }
+  );
 }
 
-export async function capturePinterest(keyword) {
-  const url = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(keyword)}+aesthetic&rs=typed`;
-  return captureScreenshot(url, { width: '1200', height: '900', delay: '4' });
+// Google Images 감성 이미지 캡처 (Pinterest 대체 — 로그인 벽 없음)
+export async function captureGoogleImages(keyword) {
+  return captureScreenshot(
+    `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(keyword)}+aesthetic`,
+    { delay: '3' }
+  );
 }
 
 // 캡처 → Zernio 업로드 → URL
 export async function captureAndUpload(type, keyword) {
   let buf = null;
 
-  // 1순위: 올리브영
-  if (type === '올리브영' || type === 'oliveyoung') {
+  if (type === 'oliveyoung' || type === '올리브영') {
     buf = await captureOliveyoung(keyword);
+  } else if (type === 'google' || type === 'pinterest' || type === 'Pinterest') {
+    // Pinterest → Google Images로 대체 (Pinterest 로그인 벽)
+    buf = await captureGoogleImages(keyword);
   }
-  // 2순위: Pinterest
-  if (!buf && (type === 'Pinterest' || type === 'pinterest' || type === '핀터레스트')) {
-    buf = await capturePinterest(keyword);
-  }
-  // Pinterest 실패 시 올리브영 fallback
-  if (!buf && type === 'Pinterest') {
-    buf = await captureOliveyoung(keyword);
-  }
+
+  // fallback: 올리브영 실패 시 Google, Google 실패 시 올리브영
+  if (!buf && type === 'oliveyoung') buf = await captureGoogleImages(keyword);
+  if (!buf && (type === 'google' || type === 'pinterest')) buf = await captureOliveyoung(keyword);
 
   if (!buf || !process.env.ZERNIO_API_KEY) return null;
   try {
