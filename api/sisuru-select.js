@@ -28,23 +28,28 @@ async function planSlides(topic) {
 "이거 3개월 써봤는데 솔직히 처음엔 모르겠었거든? 근데 한 달 지나니까 아 이거구나 싶더라" 이런 느낌.
 
 ## 텍스트 규칙
-title: 최대 20자. 14자 넘으면 줄바꿈(\\n). 숫자 임팩트 강함. 반전+단정 또는 감탄 구어체.
-  예: "1억 써보고 깨달은 것.\\n이거였음." / "이게 말이 됨..?"
-subtitle: 15자 이내. 예: "시술 | 경험담", "제품 | 가격비교", "인생 바뀐 후기"
-  1장 subtitle: 딱딱한 카테고리명 절대 금지. "돈 아까운 사람만 봐", "피부과 가기 전 필독" 등
-body: 경험담+감정+수치 혼합 대화체 7~10줄. 단순 나열 금지.
-  "처음에 15만원 주고 샀는데 솔직히 비싸다 생각했거든? 근데 2주 쓰고 나서 아 이건 싸게 산 거다 싶었어"
-
+title: 최대 20자. 14자 넘으면 줄바꿈(\\n). 이모지 1개. 숫자 임팩트.
+subtitle: 15자 이내. 이모지 1개. 번호 붙이기 (1위, 2위 또는 BEST1 등).
+body: 3~4줄 핵심만. 2줄마다 줄바꿈(\\n\\n). 이모지 1~2개. 두서없이 길게 ❌ 짧고 임팩트 있게 ✅
+  예: "15만원 주고 샀는데\\n2주 만에 인생템 확정 💸\\n\\n근데 이거 단점도 있어\\n건성이면 각질 올라옴 주의 ⚠️"
 금지: '추천', '좋아요', '효과적인', '놀라운', '완벽한', '최고의'
 
-## 슬라이드 (6장 본문 + 1장 CTA, 요약장 없음)
-1장: subtitle(매력적 부제), title(스크롤 멈추는 후킹), body(""), image_source("google"), image_keyword(영어 감성 키워드)
-2장: subtitle(1장 맥락 이어가기), title(1장 주제를 더 깊이 파고든 문장 — 반드시 1장에서 말한 제품/시술/가격을 구체적으로 언급), body(""), image_source("google"), image_keyword(영어)
-  ⚠️ 2장 title에 1장 주제 키워드가 반드시 포함돼야 함! 예: 1장 "10만원 립밤" → 2장 "근데 그 10만원짜리\\n이게 진짜 비밀이야"
-3장: subtitle(""), title(소제목 20자), body(경험담 7~10줄, 가격/수치), image_source("oliveyoung" 또는 "google"), image_keyword(제품명 또는 영어)
-4장: subtitle(""), title(소제목), body(7~10줄, 비교), image_source, image_keyword
-5장: subtitle(""), title(소제목), body(7~10줄, 단점/주의사항 솔직히), image_source, image_keyword
-6장: subtitle(""), title(소제목), body(7~10줄, 결론/느낀점), image_source, image_keyword
+## 주제 구조: BEST/TOP 리스트형으로!
+주제가 "편의점 립밤 BEST5"면:
+  3장: subtitle("BEST 1 🥇"), title("제품명"), body("가격+한줄평")
+  4장: subtitle("BEST 2 🥈"), title("제품명"), body("가격+한줄평")
+  5장: subtitle("BEST 3 🥉"), title("제품명"), body("가격+한줄평")
+주제가 "시술 비교"면:
+  3장: subtitle("VS 비교 1️⃣"), title("A시술"), body("가격+효과+단점")
+  4장: subtitle("VS 비교 2️⃣"), title("B시술"), body("가격+효과+단점")
+
+## 슬라이드 (6장 본문 + 1장 CTA)
+1장: subtitle(매력적 부제 이모지 포함), title(스크롤 멈추는 후킹), body(""), image_source("pinterest"), image_keyword(한국어 검색어)
+2장: subtitle(1장 맥락 이어가기), title(1장 주제 키워드 반드시 포함!), body(""), image_source("pinterest"), image_keyword(한국어)
+3장: subtitle("BEST 1 🥇" 또는 "핵심 1️⃣"), title(제품명/시술명), body(3~4줄), image_source, image_keyword(한국어 제품명)
+4장: subtitle("BEST 2 🥈" 또는 "핵심 2️⃣"), title(제품명/시술명), body(3~4줄), image_source, image_keyword(한국어)
+5장: subtitle("BEST 3 🥉" 또는 "핵심 3️⃣"), title(제품명/시술명), body(3~4줄), image_source, image_keyword(한국어)
+6장: subtitle("결론 💡"), title(핵심 한 줄), body(3~4줄 느낀점), image_source("pinterest"), image_keyword(한국어)
 7장: subtitle(""), image_source("고정"), image_keyword("")
   CTA 랜덤 택1:
   ① title:"더 솔직한 거\\n알고 싶어?" body:"팔로우하면 매일 올려\\n궁금한 거 댓글에 👇"
@@ -63,12 +68,17 @@ body: 경험담+감정+수치 혼합 대화체 7~10줄. 단순 나열 금지.
 ⚠️ 2장은 1장 주제의 연장선! 1장이 "10만원 립밤" 얘기면 2장도 그 립밤 얘기여야 함.
 
 image_source + image_keyword 규칙:
-- "pinterest": 감성/무드/시술 이미지. image_keyword에 영어 (예: "luxury lip balm aesthetic closeup")
-- "oliveyoung": 올리브영 제품. image_keyword에 한국어 제품/브랜드명 (구체적으로!)
-- "coupang": 쿠팡 제품 (올리브영에 없는 제품, 쿠팡 특가 등). image_keyword에 한국어 제품명
-- "고정": 7장 CTA
-⚠️ 올리브영 제품이면 "oliveyoung", 쿠팡 제품이면 "coupang", 감성/시술이면 "pinterest"
-⚠️ image_keyword는 반드시 해당 장에서 다루는 실제 제품/브랜드명! 일반명 금지!
+⚠️ image_keyword는 반드시 한국어! 영어 금지!
+⚠️ 텍스트 많이 포함된 이미지 피하기 위해 "제품 사진", "실물" 등 키워드 추가
+- "pinterest": 기본. image_keyword="편의점 립밤 실물" / "피부과 시술 후기" / "글로시 메이크업"
+- "oliveyoung": 올리브영 제품. image_keyword="올리브영 립밤"
+- "coupang": 쿠팡 제품. image_keyword="쿠팡 뷰티 세트"
+- "daiso": 다이소 제품. image_keyword="다이소 화장품"
+- "고정": 7장
+⚠️ 편의점 립밤 → "pinterest"+"편의점 립밤 실물" (쿠팡에서 검색 ❌)
+⚠️ 다이소 뷰티 → "daiso"+"다이소 립밤"
+⚠️ 시술 → "pinterest"+"피부과 레이저 시술"
+⚠️ 주제 맥락에 맞는 사이트!
 
 ## 캡션
 Instagram: 충격/공감 첫 줄 + 본문 3~5줄 + 줄바꿈3 + CTA + 해시태그 5~10개
@@ -78,12 +88,12 @@ TikTok: 후킹 60자 + 해시태그 5~7개
 JSON만:
 {
   "slides":[
-    {"slide":1,"subtitle":"인생 바뀐 후기","title":"...(20자)","body":"","image_source":"pinterest","image_keyword":"luxury lip balm aesthetic closeup"},
-    {"slide":2,"subtitle":"근데 그 10만원짜리","title":"...","body":"","image_source":"pinterest","image_keyword":"korean beauty product aesthetic"},
-    {"slide":3,"subtitle":"가격 비교","title":"소제목","body":"7~10줄","image_source":"oliveyoung","image_keyword":"라메르 립밤"},
-    {"slide":4,"subtitle":"직접 써본 후기","title":"소제목","body":"7~10줄","image_source":"coupang","image_keyword":"쿠팡 립밤 세트"},
-    {"slide":5,"subtitle":"주의사항","title":"소제목","body":"7~10줄","image_source":"pinterest","image_keyword":"skincare routine closeup"},
-    {"slide":6,"subtitle":"결론","title":"소제목","body":"7~10줄","image_source":"pinterest","image_keyword":"korean beauty glow skin"},
+    {"slide":1,"subtitle":"돈 아까운 사람만 봐 💰","title":"편의점 립밤 BEST5\\n이거 진짜임 🫢","body":"","image_source":"pinterest","image_keyword":"편의점 립밤 실물"},
+    {"slide":2,"subtitle":"근데 이게 핵심이야","title":"그 편의점 립밤\\n1000원짜리가 이 정도?","body":"","image_source":"pinterest","image_keyword":"편의점 화장품"},
+    {"slide":3,"subtitle":"BEST 1 🥇","title":"제품명","body":"3~4줄 (가격+한줄평)","image_source":"pinterest","image_keyword":"해당 제품명"},
+    {"slide":4,"subtitle":"BEST 2 🥈","title":"제품명","body":"3~4줄","image_source":"pinterest","image_keyword":"해당 제품명"},
+    {"slide":5,"subtitle":"BEST 3 🥉","title":"제품명","body":"3~4줄","image_source":"pinterest","image_keyword":"해당 제품명"},
+    {"slide":6,"subtitle":"결론 💡","title":"핵심 한 줄","body":"3~4줄 느낀점","image_source":"pinterest","image_keyword":"립밤 비교"},
     {"slide":7,"subtitle":"궁금하면","title":"CTA","body":"CTA","image_source":"고정","image_keyword":""}
   ],
   "instagram_caption":"...(해시태그 5~10개)",
