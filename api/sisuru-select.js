@@ -9,7 +9,7 @@ const PROFILE_ID = process.env.SISURU_PROFILE_ID || '69d8a52731c2441246bef194';
 const IG_ACCOUNT = process.env.SISURU_IG_ACCOUNT_ID || '69d8a6257dea335c2bd101f6';
 const TT_ACCOUNT = process.env.SISURU_TT_ACCOUNT_ID || '69d8a5c27dea335c2bd100ad';
 
-const BB_TEMPLATES = { 1:'1oMJnB5r9QRMZl2wqL', 2:'lzw71BD6ExN950eYkn', 3:'n1MJGd52QzJoZ7LaPV', 4:'ok0l2K5mvegLD3j1Yx', 5:'lzw71BD6ExYg50eYkn', 6:'l9E7G65ko0XY5PLe3R', 7:'vz9ByYbNVYQ0bRGXrw' };
+const BB_TEMPLATES = { 1:'1oMJnB5r9QRMZl2wqL', 2:'lzw71BD6ExN950eYkn', 3:'2j8dyQZWNGklb7A9Lm', 4:'lzw71BD6Exzw50eYkn', 5:'lzw71BD6ExYg50eYkn', 6:'l9E7G65ko0XY5PLe3R', 7:'vz9ByYbNVYQ0bRGXrw' };
 
 // ─── Claude 기획 ───
 async function planSlides(topic) {
