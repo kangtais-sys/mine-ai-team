@@ -4,16 +4,19 @@ async function capture(url, options = {}) {
   const params = new URLSearchParams({
     access_key: process.env.SCREENSHOT_ACCESS_KEY,
     url,
-    viewport_width: options.width || '1400',
-    viewport_height: options.height || '900',
+    viewport_width: options.width || '390',
+    viewport_height: options.height || '844',
+    device_scale_factor: '3',
     format: 'jpg',
     image_quality: '90',
     full_page: 'false',
     delay: options.delay || '5',
     block_ads: 'true',
     block_cookie_banners: 'true',
+    hide_cookie_banners: 'true',
     ignore_host_errors: 'true',
-    ...(options.user_agent ? { user_agent: options.user_agent } : {}),
+    wait_until: 'networkidle',
+    user_agent: options.user_agent || 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
   });
   try {
     const res = await fetch(`https://api.screenshotone.com/take?${params}`);
@@ -28,26 +31,22 @@ async function capture(url, options = {}) {
 // ── 쿠팡 캡처 ──
 async function captureCoupang(keyword) {
   console.log(`[Screenshot] Coupang: ${keyword}`);
-  return capture(`https://www.coupang.com/np/search?q=${encodeURIComponent(keyword)}&channel=user`, { delay: '5' });
+  return capture(`https://www.coupang.com/np/search?q=${encodeURIComponent(keyword)}&channel=user`);
 }
 
 // ── Pinterest 캡처 (모바일 UA로 로그인 벽 우회) ──
 async function capturePinterest(keyword) {
   console.log(`[Screenshot] Pinterest: ${keyword}`);
-  return capture(
-    `https://kr.pinterest.com/search/pins/?q=${encodeURIComponent(keyword)}`,
-    { delay: '5', user_agent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1' }
-  );
+  return capture(`https://kr.pinterest.com/search/pins/?q=${encodeURIComponent(keyword)}`);
 }
 
 // ── 올리브영 (글로벌 시도 → 실패 시 쿠팡) ──
 async function captureOliveyoung(keyword) {
   console.log(`[Screenshot] Oliveyoung: ${keyword}`);
   // 글로벌 시도
-  let buf = await capture(`https://global.oliveyoung.com/search?query=${encodeURIComponent(keyword)}`, { delay: '5' });
+  let buf = await capture(`https://global.oliveyoung.com/search?query=${encodeURIComponent(keyword)}`);
   if (buf) return buf;
-  // 국내 시도
-  buf = await capture(`https://www.oliveyoung.co.kr/store/search/getSearchMain.do?query=${encodeURIComponent(keyword)}`, { delay: '5' });
+  buf = await capture(`https://www.oliveyoung.co.kr/store/search/getSearchMain.do?query=${encodeURIComponent(keyword)}`);
   if (buf) return buf;
   // 올리브영 실패 → 쿠팡으로 fallback
   console.log(`[Screenshot] Oliveyoung failed, trying Coupang`);
