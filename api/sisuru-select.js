@@ -20,11 +20,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // Claude API rate limit 재시도 래퍼
 async function callClaude(body, extraHeaders = {}) {
+  const waits = [0, 60000, 90000]; // 첫 시도, 60초, 90초
   for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) {
-      const wait = attempt * 30000; // 30초, 60초
-      console.log(`[Claude] Rate limit → ${wait / 1000}s 대기 후 재시도 (${attempt + 1}/3)`);
-      await sleep(wait);
+    if (waits[attempt] > 0) {
+      console.log(`[Claude] Rate limit → ${waits[attempt] / 1000}s 대기 후 재시도 (${attempt + 1}/3)`);
+      await sleep(waits[attempt]);
     }
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -114,8 +114,8 @@ JSON으로 응답:
     console.log(`[Research] 웹 리서치 시작: "${title}"`);
     const data = await callClaude({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 4000,
-      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
+      max_tokens: 2000,
+      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
       messages: [{ role: 'user', content: prompt }],
     }, { 'anthropic-beta': 'web-search-2025-03-05' });
 
@@ -378,8 +378,8 @@ export default async function handler(req, res) {
       const researchData = await researchTopic(topic);
       await redis.set('sisuru:research', JSON.stringify(researchData), { ex: 86400 });
 
-      // rate limit 방지: 리서치 후 15초 대기
-      await sleep(15000);
+      // rate limit 방지: 리서치 후 60초 대기 (분당 30K input token 한도)
+      await sleep(60000);
 
       // STEP 3: 리서치 기반 기획
       let plan;
