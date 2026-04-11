@@ -151,106 +151,46 @@ async function planSlides(topic, researchData, retryFeedback) {
     method: 'POST',
     headers: CLAUDE_HEADERS,
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514', max_tokens: 4000, temperature: 0.9,
-      messages: [{ role: 'user', content: `주제: "${topic.title}"
+      model: 'claude-sonnet-4-20250514', max_tokens: 6000, temperature: 0.9,
+      messages: [{ role: 'user', content: `시수르더쿠 7장 카드뉴스. 주제: "${topic.title}"
 ${retryNote}
 
 ## 조사된 실제 정보
 ${researchBlock}
 
-## 캐릭터
-너는 시수르더쿠야. 1년에 1억 이상 시술/화장품에 쓰는 진짜 중독자.
-인생 살아본 언니 말투. 내돈내산 후기처럼. 광고 티 나면 안 됨.
-"이거 3개월 써봤는데 솔직히 처음엔 모르겠었거든? 근데 한 달 지나니까 아 이거구나 싶더라"
+## 규칙
+캐릭터: 1년에 1억 쓰는 뷰티 중독자 언니. 내돈내산 말투. 광고티 ❌. 밀리밀리 언급 ❌.
+금지어: 추천합니다/효과적인/놀라운/완벽한/최고의/도움이 됩니다/좋은 제품/사용해보세요
+⚠️ 조사된 실제 정보만 사용! 지어내지 마! 모르면 "확인 필요"로 표시.
 
-## 절대 규칙
-⚠️ 위 조사된 정보만 사용! 정보를 지어내지 마!
-⚠️ 실제 제품명, 실제 가격, 실제 후기만 사용
-⚠️ 모르면 모른다고 써. 없는 제품 만들지 마!
-밀리밀리/브랜드 언급 금지.
+title: 최대 20자, 14자 넘으면 \\n 줄바꿈, 이모지 1개, 실제 숫자/가격 임팩트
+subtitle: 15자 이내, 이모지 1개, 빈 문자열 금지!
+body: 3~4줄, 2줄마다 \\n\\n, 이모지 1~2개, 짧고 임팩트
 
-## 금지 표현
-'추천합니다', '효과적인', '놀라운', '완벽한', '최고의', '도움이 됩니다', '좋은 제품', '사용해보세요'
+## 7장 구성
+1장: 후킹 (가격 충격/반전/소외감, 실제 숫자 필수). subtitle=매력적 부제. body=""
+2장: 후킹 심화 (1장 키워드 반드시 포함! 의문→궁금). subtitle=1장 이어가기. body=""
+3장: BEST 1 🥇 (실제 제품명, 실제 가격+후기). subtitle=소제목
+4장: BEST 2 🥈 (실제 제품명, 실제 가격+후기). subtitle=소제목
+5장: BEST 3 🥉 (실제 제품명, 실제 가격+후기). subtitle=소제목
+6장: 결론 💡 (핵심 한 줄 + 실제 결론). subtitle=소제목
+7장: CTA 고정 (5패턴 중 랜덤 택1). subtitle="궁금하면"
+  ①"더 솔직한 거\\n알고 싶어?"|"팔로우하면 매일 올려\\n궁금한 거 댓글에 👇"
+  ②"1년에 1억 쓴\\n사람 얘기"|"듣고 싶으면 팔로우\\nDM으로 더 알려줄게 👀"
+  ③"이건 저장해둬"|"나중에 또 볼 거잖아\\n저장 📌 팔로우 🔔"
+  ④"다음엔 뭐\\n알려줄까?"|"댓글에 주제 적어줘\\n만들어줄게 🎯"
+  ⑤"친구한테도\\n알려줘"|"나만 알기 아깝잖아\\n공유하고 같이 예뻐지자 💕"
 
-## 텍스트 규칙
-title: 최대 20자. 14자 넘으면 줄바꿈(\\n). 이모지 1개. 실제 숫자/가격 임팩트.
-subtitle: 15자 이내. 이모지 1개. 번호 붙이기 (1위, 2위 또는 BEST1 등).
-body: 3~4줄 핵심만. 2줄마다 줄바꿈(\\n\\n). 이모지 1~2개. 짧고 임팩트.
-  예: "15만원 주고 샀는데\\n2주 만에 인생템 확정 💸\\n\\n근데 이거 단점도 있어\\n건성이면 각질 올라옴 주의 ⚠️"
+이미지: image_keyword=한국어 필수, imageContext=핀터레스트 분위기 묘사
+image_source: pinterest(기본), daiso, oliveyoung, 고정(7장)
 
-## 7장 카드뉴스 구성
+캡션 - IG: 충격 첫 줄 + 본문 3~5줄 + CTA + 해시태그 5~10개
+캡션 - TT: 후킹 60자 + 해시태그 5~7개
 
-1장 (후킹):
-- 가격 충격 or 반전 or 소외감 자극
-- 실제 숫자/제품명 반드시 포함
-- 예: "다이소 1100원짜리가\\n3만원짜리랑 진짜 똑같음? 🫢"
-- 예: "강남 50만원 시술 vs\\n이 크림 3만원 써보니까... 💸"
+후킹 점수 (1~10): 숫자있나(+3), 결말 예측불가(+2), 태그하고싶나(+3), 금지어없나(+2)
 
-2장 (후킹 심화):
-- 1장의 의문에 살짝 답하면서 더 궁금하게 만들기
-- 1장 주제 키워드 반드시 포함! 1장이 "다이소 시카크림" 얘기면 2장도 그 얘기
-- 실제 경험담처럼: "3개월 쓰면서 느낀 것"
-
-3~5장 (본론 - 실제 정보):
-- 조사된 실제 제품명, 가격, 성분, 후기 사용
-- 가격 비교: 실제 A제품 vs B제품 vs C제품
-- 시술: 실제 비용, 지속기간, 부작용
-- 수치 근거 명시: "올리브영 리뷰 평점 4.8", "강남언니 기준 평균 35만원"
-
-6장 (요약):
-- "이게 핵심이야" 한 문장
-- 실제 결론: 어떤 걸 사야 하는지 / 어떤 선택이 맞는지
-
-7장 (CTA): 고정 - 랜덤 택1:
-① title:"더 솔직한 거\\n알고 싶어?" body:"팔로우하면 매일 올려\\n궁금한 거 댓글에 👇"
-② title:"1년에 1억 쓴\\n사람 얘기" body:"듣고 싶으면 팔로우\\nDM으로 더 알려줄게 👀"
-③ title:"이건 저장해둬" body:"나중에 또 볼 거잖아\\n저장 📌 팔로우 🔔"
-④ title:"다음엔 뭐\\n알려줄까?" body:"댓글에 주제 적어줘\\n만들어줄게 🎯"
-⑤ title:"친구한테도\\n알려줘" body:"나만 알기 아깝잖아\\n공유하고 같이 예뻐지자 💕"
-
-## 필수 규칙
-⚠️ 모든 장의 subtitle은 반드시 채워야 함. 빈 문자열 금지!
-  1장: 매력적 부제 ("돈 아까운 사람만 봐", "이건 진짜야")
-  2장: 1장 이어가기 ("근데 이게 다가 아니야", "솔직히 이게 핵심")
-  3~6장: 소제목 ("가격 비교", "직접 써본 후기", "주의사항", "결론")
-  7장: CTA 관련 ("궁금하면")
-
-## 이미지 규칙
-image_keyword: 반드시 한국어. 실제 제품명으로 검색 (예: "다이소 시카크림 실물")
-imageContext: 핀터레스트 검색 분위기 묘사 (예: "글로시 립 클로즈업 감성")
-image_source: "pinterest" 기본. 다이소="daiso", 올리브영="oliveyoung", 7장="고정"
-⚠️ 편의점 립밤 → "pinterest"+"편의점 립밤 실물" (쿠팡 ❌)
-⚠️ 주제 맥락에 맞는 이미지!
-
-## 캡션
-Instagram: 충격/공감 첫 줄 + 본문 3~5줄 + 줄바꿈3 + CTA + 해시태그 5~10개
-  첫 줄 예: "이거 진짜임.. 알고 싶지 않았다 🫠" / "돈 아까워서 직접 알아봄. 결과 충격."
-TikTok: 후킹 60자 + 해시태그 5~7개
-
-## 후킹 자체 평가 (각 장)
-각 장별 hooking_score (1~10):
-- 실제 숫자/가격이 있는가? (+3점)
-- 결말 예측 안 되는가? (+2점)
-- 친구한테 태그하고 싶은가? (+3점)
-- 금지어 없는가? (+2점)
-
-JSON만:
-{
-  "category":"제품후기/시술후기/가격반전/트렌드",
-  "researchUsed": true,
-  "hookingScores": {"1": 8, "2": 7, "3": 7, "4": 7, "5": 7, "6": 7},
-  "slides":[
-    {"slide":1,"subtitle":"실제 부제","title":"실제 숫자 포함 후킹","body":"","image_source":"pinterest","image_keyword":"실제 제품명 실물","imageContext":"이미지 분위기 묘사"},
-    {"slide":2,"subtitle":"이어가기","title":"1장 주제 키워드 포함","body":"","image_source":"pinterest","image_keyword":"한국어","imageContext":"분위기"},
-    {"slide":3,"subtitle":"BEST 1 🥇","title":"실제 제품명","body":"실제 가격+실제 후기","image_source":"pinterest","image_keyword":"실제 제품명","imageContext":"제품 클로즈업"},
-    {"slide":4,"subtitle":"BEST 2 🥈","title":"실제 제품명","body":"실제 가격+실제 후기","image_source":"pinterest","image_keyword":"실제 제품명","imageContext":"사용 장면"},
-    {"slide":5,"subtitle":"BEST 3 🥉","title":"실제 제품명","body":"실제 가격+실제 후기","image_source":"pinterest","image_keyword":"실제 제품명","imageContext":"텍스처 감성"},
-    {"slide":6,"subtitle":"결론 💡","title":"핵심 한 줄","body":"실제 결론","image_source":"pinterest","image_keyword":"비교 감성","imageContext":"마무리 감성"},
-    {"slide":7,"subtitle":"궁금하면","title":"CTA","body":"CTA","image_source":"고정","image_keyword":"","imageContext":""}
-  ],
-  "instagram_caption":"...(해시태그 5~10개)",
-  "tiktok_caption":"...(해시태그 5~7개)"
-}` }],
+JSON만 응답 (다른 텍스트 없이):
+{"category":"카테고리","hookingScores":{"1":8,"2":7,"3":7,"4":7,"5":7,"6":7},"slides":[{"slide":1,"subtitle":"","title":"","body":"","image_source":"pinterest","image_keyword":"","imageContext":""},...],"instagram_caption":"","tiktok_caption":""}` }],
     }),
   });
   const d = await r.json();
