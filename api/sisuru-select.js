@@ -194,16 +194,23 @@ JSON만 응답 (다른 텍스트 없이):
     }),
   });
   const d = await r.json();
-  if (d.error) { console.error('[Plan] Claude API error:', d.error); return null; }
-  const t = d.content?.[0]?.text || '{}';
-  const m = t.match(/\{[\s\S]*\}/);
-  if (!m) { console.error('[Plan] JSON not found in response:', t.substring(0, 500)); return null; }
+  if (d.error) { console.error('[Plan] Claude API error:', JSON.stringify(d.error)); return null; }
+  if (!d.content?.length) { console.error('[Plan] No content in response:', JSON.stringify(d).substring(0, 500)); return null; }
+
+  // 모든 text 블록 합치기 (thinking 등 다른 블록 무시)
+  const allText = d.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+  console.log(`[Plan] Response: ${d.content.length} blocks, stop=${d.stop_reason}, text length=${allText.length}`);
+
+  if (!allText) { console.error('[Plan] No text blocks. Block types:', d.content.map(b => b.type)); return null; }
+
+  const m = allText.match(/\{[\s\S]*\}/);
+  if (!m) { console.error('[Plan] JSON not found:', allText.substring(0, 500)); return null; }
   try {
     const plan = JSON.parse(m[0]);
     if (!plan.slides?.length) { console.error('[Plan] slides 누락:', Object.keys(plan)); return null; }
-    console.log(`[Plan] 기획 완료: ${plan.slides.length}장, IG=${!!plan.instagram_caption}, TT=${!!plan.tiktok_caption}`);
+    console.log(`[Plan] 기획 완료: ${plan.slides.length}장, IG=${!!plan.instagram_caption}, TT=${!!plan.tiktok_caption}, hooking=${JSON.stringify(plan.hookingScores)}`);
     return plan;
-  } catch (e) { console.error('[Plan] JSON 파싱 실패:', e.message, t.substring(0, 300)); return null; }
+  } catch (e) { console.error('[Plan] JSON parse error:', e.message, '\nRaw:', m[0].substring(0, 300)); return null; }
 }
 
 // ─── STEP 5: 후킹 강도 체크 + 재생성 ───
@@ -337,8 +344,14 @@ export default async function handler(req, res) {
       await redis.set('sisuru:research', JSON.stringify(researchData), { ex: 86400 });
 
       // STEP 3: 리서치 기반 기획
-      const plan = await planSlides(topic, researchData);
-      if (!plan) return res.status(200).json({ success: false, error: 'Planning failed' });
+      let plan;
+      try {
+        plan = await planSlides(topic, researchData);
+      } catch (e) {
+        console.error('[Plan] Exception:', e.message);
+        return res.status(200).json({ success: false, error: `Planning exception: ${e.message}` });
+      }
+      if (!plan) return res.status(200).json({ success: false, error: 'Planning failed — check Vercel logs for [Plan] errors' });
 
       // STEP 5: 후킹 체크 (1장 7점 미만이면 최대 2회 재생성)
       const finalPlan = await checkAndRetryPlan(topic, researchData, plan, 0);
