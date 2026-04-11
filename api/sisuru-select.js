@@ -16,6 +16,28 @@ const CLAUDE_HEADERS = {
   'anthropic-version': '2023-06-01',
 };
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Claude API rate limit 재시도 래퍼
+async function callClaude(body, extraHeaders = {}) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      const wait = attempt * 30000; // 30초, 60초
+      console.log(`[Claude] Rate limit → ${wait / 1000}s 대기 후 재시도 (${attempt + 1}/3)`);
+      await sleep(wait);
+    }
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { ...CLAUDE_HEADERS, ...extraHeaders },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.error?.type === 'rate_limit_error') continue;
+    return d;
+  }
+  return { error: { type: 'rate_limit_error', message: '3회 재시도 실패' } };
+}
+
 // ─── STEP 2: 웹 리서치 (Claude + web_search) ───
 async function researchTopic(topic) {
   const title = topic.title || '';
@@ -90,17 +112,12 @@ JSON으로 응답:
 
   try {
     console.log(`[Research] 웹 리서치 시작: "${title}"`);
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { ...CLAUDE_HEADERS, 'anthropic-beta': 'web-search-2025-03-05' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-    const data = await r.json();
+    const data = await callClaude({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4000,
+      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
+      messages: [{ role: 'user', content: prompt }],
+    }, { 'anthropic-beta': 'web-search-2025-03-05' });
 
     // Extract text from all text blocks
     const textBlocks = (data.content || []).filter(b => b.type === 'text');
@@ -154,12 +171,9 @@ async function planSlides(topic, researchData, retryFeedback) {
     ? `\n\n⚠️ 이전 기획 피드백: ${retryFeedback}\n더 강한 후킹으로 재기획해줘!`
     : '';
 
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: CLAUDE_HEADERS,
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514', max_tokens: 8000, temperature: 0.9,
-      messages: [{ role: 'user', content: `시수르더쿠 7장 카드뉴스. 주제: "${topic.title}"
+  const d = await callClaude({
+    model: 'claude-sonnet-4-20250514', max_tokens: 8000, temperature: 0.9,
+    messages: [{ role: 'user', content: `시수르더쿠 7장 카드뉴스. 주제: "${topic.title}"
 ${retryNote}
 
 ## 조사된 실제 정보
@@ -198,9 +212,7 @@ image_source: pinterest(기본), daiso, oliveyoung, 고정(7장)
 
 JSON만 응답 (다른 텍스트 없이):
 {"category":"카테고리","hookingScores":{"1":8,"2":7,"3":7,"4":7,"5":7,"6":7},"slides":[{"slide":1,"subtitle":"","title":"","body":"","image_source":"pinterest","image_keyword":"","imageContext":""},...],"instagram_caption":"","tiktok_caption":""}` }],
-    }),
   });
-  const d = await r.json();
   if (d.error) return { _error: `Claude API: ${JSON.stringify(d.error)}` };
   if (!d.content?.length) return { _error: `No content: ${JSON.stringify(d).substring(0, 300)}` };
 
@@ -365,6 +377,9 @@ export default async function handler(req, res) {
       // STEP 2: 웹 리서치
       const researchData = await researchTopic(topic);
       await redis.set('sisuru:research', JSON.stringify(researchData), { ex: 86400 });
+
+      // rate limit 방지: 리서치 후 15초 대기
+      await sleep(15000);
 
       // STEP 3: 리서치 기반 기획
       let plan;
