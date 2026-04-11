@@ -22,9 +22,16 @@ export default async function handler(req, res) {
       try {
         const baseUrl = `https://${req.headers.host || 'mine-ai-team.vercel.app'}`;
 
-        // 채팅에 수정 요청이 있으면 Claude로 기획 업데이트
-        const chatHistory = messages.filter(m => m.role === 'user').map(m => m.content).join('\n');
-        const hasEdits = messages.length > 2; // 초안 표시 후 사용자 메시지가 있으면 수정 있음
+        // 마지막 초안 표시 이후의 사용자 메시지만 추출 (이전 주제 메시지 무시)
+        let lastDraftIdx = -1;
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].role === 'assistant' && /카드뉴스 초안|━━━ \d장 ━━━/.test(messages[i].content || '')) {
+            lastDraftIdx = i; break;
+          }
+        }
+        const editMessages = messages.slice(lastDraftIdx + 1).filter(m => m.role === 'user' && !/^(생성해|생성하자|만들어|발행해)$/.test(m.content.trim()));
+        const chatHistory = editMessages.map(m => m.content).join('\n');
+        const hasEdits = editMessages.length > 0;
 
         if (hasEdits) {
           // KV에서 기존 draft 가져와서 수정사항 반영
