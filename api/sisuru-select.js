@@ -33,61 +33,49 @@ async function planSlides(topic) {
       messages: [{ role: 'user', content: `주제: "${topic.title}"
 카테고리: ${topic.category}
 
-시수르더쿠(@sisru_doku) 7장 카드뉴스 기획.
+시수르더쿠(@sisru_doku) 7장 카드뉴스 기획 (요약장 없음, 6장 구성 + CTA 1장).
 밀리밀리/브랜드 언급 절대 금지.
 title이 14자 넘으면 반드시 줄바꿈(\\n) 넣어서 한 줄 14자 이내로.
 
-## 캐릭터 설정
-- 1년에 1억 이상 각종 시술/화장품에 쓰는 진짜 중독자
-- 피부과 전문의나 에스테티션이 아닌 실제 경험자
-- 돈을 많이 써본 사람만 아는 진짜 정보를 공유
-- 따뜻하지만 직설적인 말투, 광고/협찬 느낌 절대 없이 친구처럼 솔직
-- 1~6장 본문에 반드시 1인칭 경험 반영: "내가 직접 써봤는데", "돈 날린 경험", "진짜 효과 있었던 것" 등
+## 캐릭터
+인생 좀 살아본 언니. 1년에 1억 이상 시술/화장품에 쓰는 진짜 중독자.
+단순 정보 나열 절대 금지. 진짜 사람이 느낀 것처럼, 솔직하고 길게 써.
+"이거 3개월 써봤는데 솔직히 처음 2주는 뭐가 달라진 건지 모르겠었거든? 근데 한 달 지나니까 아 이거구나 싶더라" 이런 느낌.
+내돈내산 후기처럼. 광고 티 나면 안 됨.
+
+## 주제 방향
+제품 후기, 시술 후기, 비용 비교, 직접 써본/맞아본 솔직 리뷰 중심.
+"이 제품 3통 째 쓰는 이유" / "50만원 날리고 깨달은 것" / "진짜 인생템 찾았다 (근데 단점도 있음)"
 
 ## 후킹 규칙
-1장 패턴 (택1): 권위+반전("피부과 의사가 절대 안 쓰는 것") / 비용 충격("100만원 시술 = 3만원짜리랑 같은 이유") / 부작용 공포("이거 같이 쓰면 피부 망함 (진짜임)") / 내부자 폭로("에스테티션이 직접 말해주는") / 반전 결말("매일 열심히 했는데 오히려 악화된 이유") / 숫자 충격("한국 여자 10명 중 8명이 모르는 것")
-2장 심화 패턴: "근데 진짜 충격적인 건..." / "사실 이게 핵심인데 아무도 안 알려줌" / "댓글에 나도 남기면 더 솔직하게 DM 줄게 👀"
+1장: 스크롤 멈추게 하는 한 마디. 질문형이나 고백형이 좋음.
+  "이거 쓰고 인생 바뀜 (진심)" / "50만원 날리고 깨달은 것" / "피부과 원장님이 나한테만 알려준 것" / "3년 다니던 피부과 바꾼 이유"
+2장: 궁금증 폭발. "근데 솔직히 말하면..." / "아무한테도 안 말했는데" / "이게 핵심인데 다들 모름"
 
-## 본론 작성 원칙 (저장하고 싶을 정도로 정보가 있어야 함)
-- 웹에서 실제 데이터를 찾아서 정확한 수치 포함 (가격, %, 기간, 횟수)
-  예: "보톡스 평균 가격 3~15만원, 지속 3~6개월", "나이아신아마이드 5% 이상이면 자극 가능"
-- 비교 구도 필수 (A vs B): "병원 레이저 토닝 1회 8만원 vs 홈케어 기기 30만원(무한 사용)"
-- 부작용/주의사항 반드시 포함: "이 성분은 레티놀과 같이 쓰면 피부 장벽 손상"
-- 1인칭 경험: "내가 3개월 써봤는데", "50만원 날린 후 깨달은 것"
-- 한 줄에 핵심 하나씩, 읽기 쉽게
-- body는 최소 5줄, 읽고 나면 "이거 저장해야지" 하는 수준
+## 본문 작성법 (3~6장)
+- 단순 정보 나열 ❌ → 경험담+감정+수치 혼합 ✅
+- "처음에 15만원 주고 샀는데 솔직히 비싸다고 생각했거든? 근데 2주 쓰고 나서 아 이건 싸게 산 거다 싶었어"
+- "피부과에서 레이저 토닝 10회 끊었는데 (1회 8만원 × 10 = 80만원) 3회차까지는 차이를 모르겠었어. 근데 5회차 넘어가니까..."
+- 한 문단이 자연스럽게 이어지는 대화체로 7~10줄 길게
+- 금지: '추천', '좋아요', '효과적인', '놀라운', '완벽한'
 
-## 금지 단어
-'추천', '좋아요', '효과적인', '놀라운', '완벽한' — 광고스러운 표현 절대 금지
-
-## 추가 규칙
-- 오늘 기준 최신 트렌드/가격 반영
-- 매번 다른 패턴 로테이션
-- 출처가 필요한 정보는 캡션 하단에 "출처: ○○○" 명시
-
-## 슬라이드 구성
-1장 후킹: subtitle(매력적 부제 — "시술정보" 같은 딱딱한 카테고리명 절대 금지. 예: "돈 아까운 사람만 봐", "피부과 가기 전 필독", "이건 진짜야"), title(위 패턴으로 충격 후킹), image_type(아래 참고), image_prompt(영어 50단어 또는 검색 키워드)
-2장 후킹심화: subtitle("잠깐만"), title(위 심화 패턴), image_type, image_prompt
-3장 STEP1: subtitle("STEP 1"), title(소제목), body(핵심 정보 5~7줄, 실제 가격/수치/기간), image_type, image_prompt
-4장 STEP2: subtitle("STEP 2"), title(소제목), body(5~7줄, A vs B 비교), image_type, image_prompt
-5장 STEP3: subtitle("STEP 3"), title(소제목), body(5~7줄, 주의사항/부작용), image_type, image_prompt
-6장 요약: subtitle("정리하면"), title(아래 중 랜덤 택1), body(1~5장 핵심 빠짐없이 3~4줄), image_type("Imagen"), image_prompt(영어 50단어)
-  title 패턴: "이것만 기억해 ✅" / "핵심만 다시 정리" / "한눈에 보는 요약" / "결론은 이거야" / "딱 3줄 요약" / "다 읽기 귀찮으면\\n이것만"
-
-image_type 선택 기준:
-- "Imagen": 기본값. image_prompt는 영어, 실사 느낌의 뷰티/시술 이미지
-- "올리브영": 올리브영 제품 관련 장. image_prompt에 한국어 제품명/성분 검색어
-- "Pinterest": 무드/분위기 이미지. image_prompt에 영어 검색어
-⚠️ image_prompt 규칙: 텍스트/글자가 많은 이미지 절대 금지. 반분할 이미지 금지. 실사 위주. 화면 꽉 채우는 클로즈업/풀샷.
-
+## 슬라이드 구성 (7장: 본문6 + CTA1)
+1장 후킹: subtitle(매력적 부제 — "돈 아까운 사람만 봐", "인생 바뀐 후기"), title(스크롤 멈추는 후킹), image_type("Pinterest"), image_prompt(영어 검색어, 뷰티/스킨케어 실사)
+2장 후킹심화: subtitle("솔직히 말하면"), title(궁금증 폭발), image_type("Pinterest"), image_prompt(영어)
+3장: subtitle(""), title(소제목), body(경험담 7~10줄, 대화체), image_type("Pinterest"), image_prompt(영어, 제품/시술 관련)
+4장: subtitle(""), title(소제목), body(7~10줄, 가격/수치 포함), image_type("Pinterest"), image_prompt(영어)
+5장: subtitle(""), title(소제목), body(7~10줄, 주의사항/단점도 솔직히), image_type("Pinterest"), image_prompt(영어)
+6장: subtitle(""), title(소제목), body(7~10줄, 결론/느낀점), image_type("Pinterest"), image_prompt(영어)
 7장 CTA: subtitle(""), image_type("고정"), image_prompt("")
-  아래 패턴 중 랜덤 1개 (매번 다르게!):
-  ① title: "더 솔직한 거\\n알고 싶어?" + body: "팔로우하면 매일 이런 정보 올려\\n궁금한 거 댓글에 남겨봐 👇"
-  ② title: "나 1년에 1억 이상\\n시술에 써봤어" + body: "진짜 써본 사람 얘기 듣고 싶으면\\n팔로우 누르고 DM 줘 👀"
-  ③ title: "이건 저장 필수야" + body: "나중에 또 볼 거잖아\\n저장하고 팔로우 해둬 📌"
-  ④ title: "수천만원 써보고\\n깨달은 거" + body: "돈 아끼고 싶으면 팔로우 해\\n댓글에 궁금한 거 적어줘 ✍️"
-  ⑤ title: "이거 나만\\n몰랐던 거야? 😅" + body: "친구도 몰랐을 거야\\n공유하고 같이 알아가자 💕"
-  ⑥ title: "더 궁금한 거 있어?" + body: "댓글에 주제 알려주면\\n다음에 만들어줄게 🎯"
+  아래 중 랜덤 1개:
+  ① title: "더 솔직한 거\\n알고 싶어?" + body: "팔로우하면 매일 올려\\n궁금한 거 댓글에 👇"
+  ② title: "1년에 1억 쓴\\n사람 얘기" + body: "듣고 싶으면 팔로우\\nDM으로 더 알려줄게 👀"
+  ③ title: "이건 저장해둬" + body: "나중에 또 볼 거잖아\\n저장 📌 팔로우 🔔"
+  ④ title: "다음엔 뭐\\n알려줄까?" + body: "댓글에 궁금한 주제 적어줘\\n만들어줄게 🎯"
+  ⑤ title: "친구한테도\\n알려줘" + body: "나만 알기 아깝잖아\\n공유하고 같이 예뻐지자 💕"
+
+image_type은 기본 "Pinterest" (실사 캡처). image_prompt에 영어 검색어.
+⚠️ 텍스트/글자 많은 이미지 금지. 반분할 금지. 실사 클로즈업, 꽉 채우는 이미지만.
 
 Instagram 캡션:
 - 후킹 1줄
@@ -103,13 +91,13 @@ TikTok 캡션: 후킹 60자 + 해시태그 3~5개
 JSON만:
 {
   "slides": [
-    {"slide":1, "subtitle":"...", "title":"...(14자/줄)", "body":"", "image_type":"Imagen", "image_prompt":"aesthetic skincare..."},
-    {"slide":2, "subtitle":"잠깐만", "title":"...", "body":"", "image_type":"Imagen", "image_prompt":"..."},
-    {"slide":3, "subtitle":"STEP 1", "title":"...", "body":"5~7줄 (가격/수치 포함)", "image_type":"Imagen", "image_prompt":"..."},
-    {"slide":4, ...},
-    {"slide":5, ...},
-    {"slide":6, "subtitle":"정리하면", "title":"이것만 기억해 ✅", "body":"요약 3~4줄", "image_type":"텍스트", "image_prompt":""},
-    {"slide":7, "subtitle":"", "title":"더 솔직한 정보 원해?", "body":"댓글에 나도 남겨줘...CTA", "image_type":"고정", "image_prompt":""}
+    {"slide":1, "subtitle":"인생 바뀐 후기", "title":"이거 쓰고\\n인생 바뀜 (진심)", "body":"", "image_type":"Pinterest", "image_prompt":"korean skincare routine closeup"},
+    {"slide":2, "subtitle":"솔직히 말하면", "title":"근데 솔직히\\n이게 핵심이야", "body":"", "image_type":"Pinterest", "image_prompt":"beauty product texture"},
+    {"slide":3, "subtitle":"", "title":"소제목", "body":"경험담 7~10줄 대화체", "image_type":"Pinterest", "image_prompt":"skincare before after"},
+    {"slide":4, "subtitle":"", "title":"소제목", "body":"가격/수치 포함 7~10줄", "image_type":"Pinterest", "image_prompt":"..."},
+    {"slide":5, "subtitle":"", "title":"소제목", "body":"단점도 솔직히 7~10줄", "image_type":"Pinterest", "image_prompt":"..."},
+    {"slide":6, "subtitle":"", "title":"소제목", "body":"결론/느낀점 7~10줄", "image_type":"Pinterest", "image_prompt":"..."},
+    {"slide":7, "subtitle":"", "title":"CTA제목", "body":"CTA본문", "image_type":"고정", "image_prompt":""}
   ],
   "instagram_caption": "...(해시태그 3~5개)",
   "tiktok_caption": "...(해시태그 3~5개)"
