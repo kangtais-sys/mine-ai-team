@@ -2,7 +2,6 @@ import { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import Dashboard from './components/Dashboard';
-import ExportsView from './components/ExportsView';
 
 export default function App() {
   const [page, setPage] = useState('dashboard');
@@ -14,7 +13,6 @@ export default function App() {
       </div>
       <div style={{ marginLeft: 240, width: 'calc(100vw - 240px)', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#F5F5F7' }}>
         {page === 'dashboard' && <Dashboard />}
-        {page === 'exports' && <ExportsView />}
         {page === 'chat' && <ChatView />}
       </div>
     </div>

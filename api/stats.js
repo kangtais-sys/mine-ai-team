@@ -1,5 +1,5 @@
 import { Redis } from '@upstash/redis';
-import { readSheet } from './utils/sheets.js';
+import { readPublicSheet } from './utils/sheets.js';
 import { getEcommerceData } from './utils/ga4.js';
 
 const redis = new Redis({
@@ -12,17 +12,6 @@ const zFetch = (path) => fetch(`${ZERNIO}${path}`, {
   headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}` },
 }).then(r => r.json());
 
-// Username-based matching (from Zernio API 2026-04-05 확인)
-const YUMINHYE_ACCOUNTS = {
-  tiktok: 'peerstory',
-  youtube: '15초유민혜',
-  // instagram: Zernio 미연결 → 스크래핑으로 대체
-};
-const MILLIMILLI_ACCOUNTS = {
-  instagram: 'millimilli.official',
-  tiktok: 'millimilli.official',
-  youtube: 'millimilli.official', // Zernio에서 username=millimilli.official로 등록됨
-};
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
@@ -43,29 +32,33 @@ export default async function handler(req, res) {
         const accounts = zData.accounts || [];
         console.log(`[Stats] Zernio accounts: ${accounts.length}`);
 
+        const ymId = (process.env.ZERNIO_YUMINHYE_PROFILE_ID || '').trim();
+        const mmId = (process.env.ZERNIO_MILLIMILLI_PROFILE_ID || '').trim();
+
         for (const acc of accounts) {
           const followers = acc.metadata?.profileData?.followersCount || 0;
           const plat = acc.platform;
           const username = acc.username;
-          console.log(`[Stats] account: ${plat} ${username} followers=${followers}`);
+          const pid = acc.profileId?._id || '';
+          console.log(`[Stats] account: ${plat} ${username} profileId=${pid} followers=${followers}`);
 
-          // Match by username (reliable, no env var needed)
-          if (username === YUMINHYE_ACCOUNTS[plat]) {
+          if (ymId && pid === ymId) {
             yuminhye[plat] = { count: followers, source: 'zernio', username };
-          }
-          if (username === MILLIMILLI_ACCOUNTS[plat]) {
+          } else if (mmId && pid === mmId) {
             millimilli[plat] = { count: followers, source: 'zernio', username };
           }
         }
 
-        // 유민혜 인스타: Zernio 미연결 → KV or fallback 31만
-        const igFollowers = await redis.get('followers:yuminhye:instagram');
-        const igCount = igFollowers?.count || 310000; // fallback: 31만
-        yuminhye.instagram = {
-          count: igCount,
-          source: igFollowers?.count > 0 ? 'scrape' : 'manual',
-          username: igFollowers?.username || 'lala_lounge_',
-        };
+        // 유민혜 인스타: Zernio에서 못 가져왔으면 KV or fallback
+        if (!yuminhye.instagram?.count) {
+          const igFollowers = await redis.get('followers:yuminhye:instagram');
+          const igCount = igFollowers?.count || 310000;
+          yuminhye.instagram = {
+            count: igCount,
+            source: igFollowers?.count > 0 ? 'scrape' : 'manual',
+            username: igFollowers?.username || 'lala_lounge_',
+          };
+        }
       } catch (e) {
         console.error('[Stats] Zernio error:', e.message, e.stack);
       }
@@ -91,13 +84,13 @@ export default async function handler(req, res) {
       redis.get('stat:dm:total'),
     ]);
 
-    // === D. Olive Young revenue (Google Sheets) ===
-    // 시트: 스킨케어파트 [A:날짜(YYYYMMDD), B:기간계코드, C:상품코드, D:상품명, E:올리브영매출(₩), F:판매량, G:납품가매출(₩)]
+    // === D. Olive Young revenue (공개 Google Sheet — CSV export, no OAuth) ===
+    // 시트: 스킨케어파트 gid=352972103 [A:날짜(YYYYMMDD), D:상품명, E:올리브영매출(₩), F:판매량, G:납품가매출(₩)]
     const parseWon = (v) => Number((v || '0').replace(/[₩,\s]/g, '')) || 0;
     let oliveyoungRevenue = null;
     if (process.env.OLIVEYOUNG_SHEET_ID) {
       try {
-        const rows = await readSheet(process.env.OLIVEYOUNG_SHEET_ID, '스킨케어파트!A1:G500');
+        const rows = await readPublicSheet(process.env.OLIVEYOUNG_SHEET_ID, 352972103);
         const dataRows = rows.slice(1);
         const totalSales = dataRows.reduce((s, r) => s + parseWon(r[4]), 0);
         const totalQty = dataRows.reduce((s, r) => s + (Number(r[5]) || 0), 0);
@@ -140,12 +133,48 @@ export default async function handler(req, res) {
           byMonth,
         };
       } catch (e) {
-        const msg = e.message || '';
-        if (msg.includes('has not been used') || msg.includes('not been enabled') || msg.includes('PERMISSION_DENIED')) {
-          oliveyoungRevenue = { status: 'sheets_api_disabled', message: 'Google Sheets API 활성화 필요' };
-        } else {
-          oliveyoungRevenue = { status: 'error', error: msg };
+        oliveyoungRevenue = { status: 'error', error: e.message };
+      }
+    }
+
+    // === D2. Export/Amazon revenue (공개 Google Sheet) ===
+    let exportRevenue = null;
+    if (process.env.EXPORT_SHEET_ID) {
+      try {
+        const rows = await readPublicSheet(process.env.EXPORT_SHEET_ID);
+        const dataRows = rows.slice(1).filter(r => r.some(c => c));
+        // Try to find date/amount columns (flexible — unknown structure)
+        const nowYear = String(new Date().getFullYear());
+        const nowMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+        // Scan for numeric amounts in each row, date in col 0
+        let yearlyTotal = 0, monthlyTotal = 0;
+        const byMonth = {};
+        for (const r of dataRows) {
+          const dateStr = (r[0] || '').toString().replace(/\//g, '-');
+          const isThisYear = dateStr.startsWith(nowYear);
+          const isThisMonth = dateStr.startsWith(nowMonth) || dateStr.replace('-', '').startsWith(nowMonth.replace('-', ''));
+          // Find largest numeric value in row as amount
+          let maxVal = 0;
+          for (let ci = 1; ci < r.length; ci++) {
+            const v = Number((r[ci] || '').toString().replace(/[,$₩\s]/g, ''));
+            if (v > maxVal) maxVal = v;
+          }
+          if (maxVal > 0 && isThisYear) {
+            yearlyTotal += maxVal;
+            const mk = dateStr.slice(0, 7);
+            byMonth[mk] = (byMonth[mk] || 0) + maxVal;
+          }
+          if (maxVal > 0 && isThisMonth) monthlyTotal += maxVal;
         }
+        exportRevenue = {
+          status: 'connected',
+          rows: dataRows.length,
+          yearlyTotal,
+          monthlyTotal,
+          byMonth,
+        };
+      } catch (e) {
+        exportRevenue = { status: 'error', error: e.message };
       }
     }
 
@@ -213,14 +242,14 @@ export default async function handler(req, res) {
       ga4: ga4Revenue?.month?.revenue || ga4Revenue?.revenue || 0,
       smartstore: naverMonthSales,
       cafe24: cafe24MonthSales,
-      export: 0,
+      amazon: exportRevenue?.monthlyTotal || 0,
     };
     const channelSalesYearly = {
       oliveyoung: oliveyoungRevenue?.yearlySales || 0,
       ga4: ga4Revenue?.year?.revenue || ga4Revenue?.revenue || 0,
       smartstore: naverYearly,
       cafe24: cafe24Yearly,
-      export: 0,
+      amazon: exportRevenue?.yearlyTotal || 0,
     };
     const totalRevenue = Object.values(channelSales).reduce((s, v) => s + v, 0);
     const totalRevenueYearly = Object.values(channelSalesYearly).reduce((s, v) => s + v, 0);
@@ -244,6 +273,7 @@ export default async function handler(req, res) {
       contentCount,
       engagement: { comments: Number(commentTotal) || 0, dm: Number(dmTotal) || 0 },
       oliveyoungRevenue,
+      exportRevenue,
       ga4Revenue,
       totalRevenue,
       totalRevenueYearly,

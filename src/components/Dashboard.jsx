@@ -145,7 +145,7 @@ export default function Dashboard() {
         {/* ── 매출 현황 ── */}
         <div style={{ marginBottom: 14 }}>
           <div style={SEC_LABEL}>매출 현황</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
 
             {/* 한국 매출 */}
             <div style={CARD}>
@@ -212,40 +212,40 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
+          </div>
 
-            {/* 월별 추이 — 멀티라인 */}
-            <div style={{ ...CARD, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>2026 월별 채널별 추이</span>
-              </div>
-              <ResponsiveContainer width="100%" height={160}>
-                <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                  <XAxis dataKey="month" stroke="#AEAEB2" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#AEAEB2" fontSize={9} tickLine={false} axisLine={false} width={48}
-                    tickFormatter={v => v > 0 ? fmtM(v) : '0'} />
-                  <Tooltip contentStyle={tip}
-                    formatter={(v, name) => [fmtKRW(v), CH_LABELS[name] || name]}
-                    cursor={{ stroke: '#E5E5EA' }} />
-                  <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }}
-                    formatter={(v) => CH_LABELS[v] || v} />
-                  <Line type="monotone" dataKey="oliveyoung" stroke={CH_COLORS.oliveyoung} strokeWidth={1.8}
-                    dot={{ r: 2.5, fill: CH_COLORS.oliveyoung, strokeWidth: 0 }} activeDot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="smartstore" stroke={CH_COLORS.smartstore} strokeWidth={1.8}
-                    dot={{ r: 2.5, fill: CH_COLORS.smartstore, strokeWidth: 0 }} activeDot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="cafe24" stroke={CH_COLORS.cafe24} strokeWidth={1.8}
-                    dot={{ r: 2.5, fill: CH_COLORS.cafe24, strokeWidth: 0 }} activeDot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="total" stroke={CH_COLORS.total} strokeWidth={2.5}
-                    strokeDasharray="4 2"
-                    dot={{ r: 2.5, fill: CH_COLORS.total, strokeWidth: 0 }} activeDot={{ r: 4 }} />
-                </LineChart>
-              </ResponsiveContainer>
-              {chief?.report && (
-                <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #F2F2F5' }}>
-                  <div style={{ fontSize: 10, color: '#AEAEB2', marginBottom: 3 }}>AI 커머스MD · {prevDate} 보고</div>
-                  <div style={{ fontSize: 11.5, color: '#1D1D1F', lineHeight: 1.6 }}>{chief.report.slice(0, 120)}...</div>
-                </div>
-              )}
+          {/* 월별 추이 — 풀너비 */}
+          <div style={{ ...CARD, marginTop: 12, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>2026 월별 채널별 추이</span>
             </div>
+            <ResponsiveContainer width="100%" height={140}>
+              <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <XAxis dataKey="month" stroke="#AEAEB2" fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis stroke="#AEAEB2" fontSize={9} tickLine={false} axisLine={false} width={48}
+                  tickFormatter={v => v >= 100000000 ? `${(v/100000000).toFixed(1)}억` : v >= 10000000 ? `${(v/10000000).toFixed(0)}천만` : v >= 10000 ? `${(v/10000).toFixed(0)}만` : '0'} />
+                <Tooltip contentStyle={tip}
+                  formatter={(v, name) => [fmtKRW(v), CH_LABELS[name] || name]}
+                  cursor={{ stroke: '#E5E5EA' }} />
+                <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }}
+                  formatter={(v) => CH_LABELS[v] || v} />
+                <Line type="monotone" dataKey="oliveyoung" stroke={CH_COLORS.oliveyoung} strokeWidth={1.8}
+                  dot={{ r: 2.5, fill: CH_COLORS.oliveyoung, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+                <Line type="monotone" dataKey="smartstore" stroke={CH_COLORS.smartstore} strokeWidth={1.8}
+                  dot={{ r: 2.5, fill: CH_COLORS.smartstore, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+                <Line type="monotone" dataKey="cafe24" stroke={CH_COLORS.cafe24} strokeWidth={1.8}
+                  dot={{ r: 2.5, fill: CH_COLORS.cafe24, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+                <Line type="monotone" dataKey="total" stroke={CH_COLORS.total} strokeWidth={2.5}
+                  strokeDasharray="4 2"
+                  dot={{ r: 2.5, fill: CH_COLORS.total, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+            {chief?.report && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #F2F2F5' }}>
+                <div style={{ fontSize: 10, color: '#AEAEB2', marginBottom: 3 }}>AI 커머스MD · {prevDate} 보고</div>
+                <div style={{ fontSize: 11.5, color: '#1D1D1F', lineHeight: 1.6 }}>{chief.report.slice(0, 120)}...</div>
+              </div>
+            )}
           </div>
         </div>
 

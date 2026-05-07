@@ -3,13 +3,6 @@ const zFetch = (path) => fetch(`${ZERNIO}${path}`, {
   headers: { 'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}` },
 }).then(r => r.json());
 
-// 계정별 Zernio username 매핑
-const ACCOUNTS = {
-  yuminhye: { tiktok: 'peerstory', youtube: '15초유민혜' },
-  millimilli: { instagram: 'millimilli.official', tiktok: 'millimilli.official', youtube: 'millimilli.official' },
-  ulsera: {}, // Zernio 미연결
-};
-
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
   if (!process.env.ZERNIO_API_KEY) return res.status(200).json({ status: 'disconnected', message: 'Zernio 연결 필요' });
@@ -48,14 +41,16 @@ export default async function handler(req, res) {
       }
     }
 
-    // 계정별 팔로워
-    const followers = {};
-    for (const [profile, mapping] of Object.entries(ACCOUNTS)) {
-      followers[profile] = {};
-      for (const [plat, username] of Object.entries(mapping)) {
-        const acc = accounts.find(a => a.username === username && a.platform === plat);
-        followers[profile][plat] = acc?.metadata?.profileData?.followersCount || 0;
-      }
+    // 계정별 팔로워 (profileId 기반 매칭)
+    const ymId = (process.env.ZERNIO_YUMINHYE_PROFILE_ID || '').trim();
+    const mmId = (process.env.ZERNIO_MILLIMILLI_PROFILE_ID || '').trim();
+    const followers = { yuminhye: {}, millimilli: {} };
+    for (const acc of accounts) {
+      const pid = acc.profileId?._id || '';
+      const plat = acc.platform;
+      const count = acc.metadata?.profileData?.followersCount || 0;
+      if (ymId && pid === ymId) followers.yuminhye[plat] = count;
+      else if (mmId && pid === mmId) followers.millimilli[plat] = count;
     }
 
     // 최근 발행
