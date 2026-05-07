@@ -1,9 +1,19 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowUp, Loader2, TrendingUp, TrendingDown, Users, Eye, MessageCircle, DollarSign, Star, Globe, Package, Headphones, ShoppingCart, FileText, BarChart3, CheckCircle2, XCircle, Circle, Target, Percent, Play, Clock } from 'lucide-react';
+import { ArrowUp, Loader2, TrendingUp, TrendingDown, Users, MessageCircle, DollarSign, Star, Globe, Package, Headphones, ShoppingCart, FileText, BarChart3, CheckCircle2, XCircle, Circle, Target, Percent, Clock, Plus, Trash2, RefreshCw } from 'lucide-react';
 import useChatStore from '../store/chatStore';
 import { getAgent } from '../lib/agents';
 
 // ─── Helpers ────────────────────────────────────────────────
+
+const fmtKRW = (v) => v > 0 ? `${Math.round(v).toLocaleString('ko-KR')}원` : '-';
+const fmtUSD = (v) => v > 0 ? `$${Number(v).toFixed(0)}` : '-';
+const fmt = (v) => {
+  if (!v || v === 0) return '0';
+  if (v >= 100000000) return `${(v / 100000000).toFixed(1)}억`;
+  if (v >= 10000000) return `${(v / 10000000).toFixed(0)}천만`;
+  if (v >= 10000) return `${(v / 10000).toFixed(0)}만`;
+  return v.toLocaleString();
+};
 
 function timeAgo(ts) {
   if (!ts) return '';
@@ -16,249 +26,77 @@ function timeAgo(ts) {
   return `${Math.floor(h / 24)}일 전`;
 }
 
-const fmt = (v) => {
-  if (v >= 100000000) return `${(v / 100000000).toFixed(1)}억`;
-  if (v >= 10000000) return `${(v / 10000000).toFixed(1)}천만`;
-  if (v >= 10000) return `${(v / 10000).toFixed(0)}만`;
-  return v.toLocaleString();
-};
-
 // ─── Reusable Components ────────────────────────────────────
 
-function KpiCard({ label, value, delta, up, icon: Icon }) {
+function KpiCard({ label, value, sub, accent, icon: Icon }) {
   return (
     <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: '14px 16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
         <span style={{ fontSize: 11, color: '#AEAEB2', fontWeight: 500 }}>{label}</span>
         {Icon && <Icon size={13} strokeWidth={1.5} color="#D1D1D6" />}
       </div>
-      <div style={{ fontSize: 24, fontWeight: 700, color: '#1D1D1F', lineHeight: 1, letterSpacing: '-0.02em' }}>{value}</div>
-      {delta && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 6 }}>
-          {up ? <TrendingUp size={11} color="#34C759" /> : <TrendingDown size={11} color="#FF3B30" />}
-          <span style={{ fontSize: 11, color: up ? '#34C759' : '#FF3B30', fontWeight: 500 }}>{delta}</span>
-        </div>
-      )}
+      <div style={{ fontSize: 22, fontWeight: 700, color: accent || '#1D1D1F', lineHeight: 1, letterSpacing: '-0.02em' }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, color: '#AEAEB2', marginTop: 5 }}>{sub}</div>}
     </div>
   );
 }
 
-function ApiStatusPanel({ agent }) {
-  const apis = agent.apis || [];
-  if (apis.length === 0) return null;
+function ConnBadge({ connected, label }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 6, background: connected ? 'rgba(52,199,89,0.06)' : '#F5F5F7' }}>
+      {connected
+        ? <CheckCircle2 size={11} color="#34C759" />
+        : <Circle size={11} color="#D1D1D6" />}
+      <span style={{ fontSize: 11, color: connected ? '#1D1D1F' : '#6E6E73', flex: 1 }}>{label}</span>
+      <span style={{ fontSize: 10, color: connected ? '#34C759' : '#AEAEB2', fontWeight: 500 }}>
+        {connected ? '연결됨' : '미연결'}
+      </span>
+    </div>
+  );
+}
 
-  // Check real connection status from localStorage
-  const getStatus = (api) => {
-    if (api.connected) return 'connected';
-    const keyMap = {
-      google_drive: 'google_connected',
-      youtube: 'google_connected',
-      tiktok: 'tiktok_connected',
-    };
-    if (api.key === 'instagram') return 'automated';
-    const lsKey = keyMap[api.key];
-    if (lsKey && localStorage.getItem(lsKey) === 'true') return 'connected';
-    return 'disconnected';
-  };
+// ─── ZernioStatusPanel ──────────────────────────────────────
+
+function ZernioStatusPanel({ creatorData }) {
+  const connected = creatorData?.status === 'connected';
+  const followers = creatorData?.followers || {};
+
+  const platforms = [
+    { key: 'instagram', label: 'Instagram', abbr: 'IG', color: '#E1306C' },
+    { key: 'tiktok', label: 'TikTok', abbr: 'TT', color: '#69C9D0' },
+    { key: 'youtube', label: 'YouTube', abbr: 'YT', color: '#FF0000' },
+  ];
+  const accounts = ['yuminhye', 'millimilli'];
 
   return (
     <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>API 연동 상태</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {apis.map((api, i) => {
-          const status = getStatus(api);
-          const color = (status === 'connected' || status === 'automated') ? '#34C759' : status === 'error' ? '#FF3B30' : '#D1D1D6';
-          const bg = (status === 'connected' || status === 'automated') ? 'rgba(52,199,89,0.06)' : status === 'error' ? 'rgba(255,59,48,0.06)' : '#F5F5F7';
-          return (
-            <div key={i} style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px',
-              borderRadius: 6, background: bg, cursor: status === 'disconnected' ? 'pointer' : 'default',
-            }}
-              onClick={() => {
-                if (status !== 'disconnected') return;
-                if (api.key === 'google_drive' || api.key === 'youtube' || api.key === 'google_sheets' || api.key === 'adsense') window.location.href = '/api/auth/google';
-                else if (api.key === 'tiktok' || api.key === 'tiktok_ads' || api.key === 'tiktokshop') window.location.href = '/api/auth/tiktok';
-              }}
-            >
-              {status === 'connected' ? <CheckCircle2 size={11} color={color} /> : status === 'error' ? <XCircle size={11} color={color} /> : <Circle size={11} color={color} />}
-              <span style={{ fontSize: 11, color: status === 'connected' ? '#1D1D1F' : '#6E6E73', flex: 1 }}>{api.name}</span>
-              <span style={{ fontSize: 10, color, fontWeight: 500 }}>
-                {status === 'automated' ? '자동화 연결됨' : status === 'connected' ? '연결됨' : status === 'error' ? '오류' : '미연결'}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─── API-connected sub-components ───────────────────────────
-
-function CommunityKpis() {
-  const [d, setD] = useState(null);
-  const [platTab, setPlatTab] = useState('all');
-  useEffect(() => { fetch('/api/agents/community').then(r => r.json()).then(setD).catch(() => {}); }, []);
-  const ts = d?.typeStats || {};
-  const typeTotal = ts.event + ts.product + ts.claim + ts.other || 1;
-  return (
-    <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <KpiCard label="오늘 댓글" value={d ? `${d.today?.comments || 0}건` : '-'} delta="오늘 누적" up icon={MessageCircle} />
-        <KpiCard label="오늘 DM" value={d ? `${d.today?.dm || 0}건` : '-'} delta="오늘 누적" up icon={MessageCircle} />
-        <KpiCard label="당월 댓글" value={d ? `${d.monthly?.comments || 0}건` : '-'} delta="당월 누적" up icon={CheckCircle2} />
-        <KpiCard label="당월 DM" value={d ? `${d.monthly?.dm || 0}건` : '-'} delta="당월 누적" up icon={Users} />
-      </div>
-      {/* Type breakdown */}
-      <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>댓글 유형 분류 (오늘)</div>
-        {[
-          { label: '이벤트 참여', key: 'event', color: '#5E6AD2' },
-          { label: '상품/배송 문의', key: 'product', color: '#7C6BDE' },
-          { label: '클레임', key: 'claim', color: '#FF3B30' },
-          { label: '기타', key: 'other', color: '#AEAEB2' },
-        ].map((t, i) => (
-          <div key={i} style={{ marginBottom: 6 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-              <span style={{ fontSize: 11, color: '#1D1D1F' }}>{t.label}</span>
-              <span style={{ fontSize: 11, color: '#6E6E73' }}>{ts[t.key] || 0}건</span>
-            </div>
-            <div style={{ height: 3, background: '#F5F5F7', borderRadius: 2, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${((ts[t.key] || 0) / typeTotal) * 100}%`, background: t.color, borderRadius: 2 }} />
-            </div>
-          </div>
-        ))}
-      </div>
-      {/* Platform tabs + recent comments */}
-      <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-          {[['all','전체'],['instagram','인스타'],['youtube','유튜브'],['threads','쓰레드']].map(([id,label]) => (
-            <button key={id} onClick={() => setPlatTab(id)} style={{ fontSize: 10, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: platTab === id ? '#5E6AD2' : '#1A1A1A', color: platTab === id ? '#FFF' : '#777' }}>{label}</button>
-          ))}
-        </div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 8 }}>최근 댓글</div>
-        {(d?.recentComments || []).filter(c => platTab === 'all' || c.platform === platTab).slice(0, 6).map((c, i) => (
-          <div key={i} style={{ display: 'flex', gap: 8, padding: '5px 0', borderBottom: i < 5 ? '1px solid #F5F5F7' : 'none' }}>
-            <span style={{ fontSize: 9, color: '#5E6AD2', width: 16, flexShrink: 0 }}>{c.platform?.slice(0,2).toUpperCase()}</span>
-            <span style={{ fontSize: 10, color: '#1D1D1F', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.text}</span>
-            <span style={{ fontSize: 9, color: '#AEAEB2', flexShrink: 0 }}>{c.date?.slice(5,10)}</span>
-          </div>
-        ))}
-        {(!d?.recentComments || d.recentComments.length === 0) && (
-          <div style={{ fontSize: 11, color: '#AEAEB2', padding: '8px 0' }}>댓글 데이터 로딩 중...</div>
-        )}
-      </div>
-    </>
-  );
-}
-
-// ─── Sisuru Proposals ───────────────────────────────────────
-
-function SisuruProposals() {
-  const [proposals, setProposals] = useState(null);
-  const [selecting, setSelecting] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [result, setResult] = useState(null);
-
-  const loadProposals = () => {
-    fetch('/api/sisuru-select').then(r => r.json()).then(d => setProposals(d)).catch(() => {});
-  };
-
-  const refresh = async () => {
-    setRefreshing(true);
-    setResult(null);
-    try {
-      const r = await fetch('/api/cron/sisuru-trend', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-      const d = await r.json();
-      if (d.proposals) setProposals({ proposals: d, selected: null });
-    } catch {}
-    setRefreshing(false);
-  };
-
-  useEffect(() => { loadProposals(); }, []);
-
-  const select = async (id) => {
-    const item = items.find(p => p.id === Number(id));
-    setSelecting(id);
-    setResult(null);
-
-    // 즉시 채팅에 "기획 중" 표시
-    const store = useChatStore.getState();
-    store.addMessage('creator', { role: 'user', content: `시수르더쿠 주제 선택: ${item?.title || id}`, timestamp: Date.now() });
-    store.addMessage('creator', { role: 'assistant', content: '📝 7장 카드뉴스 기획 중... 30초 정도 걸립니다.', timestamp: Date.now() });
-
-    try {
-      const r = await fetch('/api/sisuru-select', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-      const d = await r.json();
-      setResult(d);
-
-      if (d.chatText) {
-        store.addMessage('creator', { role: 'assistant', content: d.chatText, timestamp: Date.now() });
-      } else if (d.error) {
-        store.addMessage('creator', { role: 'assistant', content: `❌ 기획 실패: ${d.error}`, timestamp: Date.now() });
-      }
-    } catch (e) {
-      useChatStore.getState().addMessage('creator', { role: 'assistant', content: `❌ 오류: ${e.message}`, timestamp: Date.now() });
-      setResult({ error: e.message });
-    }
-    setSelecting(null);
-  };
-
-  // API: { proposals: { date, proposals: [...] }, selected: {...} }
-  const raw = proposals?.proposals;
-  const items = (raw?.proposals || (Array.isArray(raw) ? raw : []));
-  const selected = proposals?.selected;
-
-  return (
-    <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>시수르더쿠 오늘의 주제</div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {selected && <span style={{ fontSize: 9, background: '#22C55E22', color: '#34C759', padding: '2px 6px', borderRadius: 3 }}>선택됨</span>}
-          <button onClick={refresh} disabled={refreshing} style={{ fontSize: 9, padding: '2px 8px', borderRadius: 3, border: 'none', cursor: refreshing ? 'default' : 'pointer', fontFamily: 'inherit', background: refreshing ? '#333' : '#1A1A1A', color: refreshing ? '#555' : '#888' }}>
-            {refreshing ? '찾는 중...' : '다시 찾기'}
-          </button>
-        </div>
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>SNS 연동 상태</span>
+        <span style={{ fontSize: 10, color: connected ? '#34C759' : '#AEAEB2', fontWeight: 500 }}>
+          {connected ? 'Zernio 연동됨' : 'Zernio 미연결'}
+        </span>
       </div>
-      {selected && (
-        <div style={{ background: '#5E6AD215', border: '1px solid #5E6AD233', borderRadius: 6, padding: '8px 10px', marginBottom: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#5E6AD2' }}>{selected.title || selected.topic}</div>
-          <div style={{ fontSize: 10, color: '#6E6E73', marginTop: 2 }}>{selected.hook}</div>
-        </div>
-      )}
-      {items.length > 0 ? items.map((p, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 0', borderBottom: i < items.length - 1 ? '1px solid #1F1F1F' : 'none' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: p.category?.includes('시술') || p.category?.includes('성형') || p.category?.includes('부작용') ? '#EF4444' : '#5E6AD2', width: 16, flexShrink: 0, marginTop: 2 }}>{p.id}</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: '#1D1D1F', fontWeight: 500 }}>{p.title || p.topic}</div>
-            <div style={{ fontSize: 10, color: '#6E6E73', marginTop: 2 }}>{p.hook}</div>
-            <div style={{ fontSize: 9, color: '#AEAEB2', marginTop: 1 }}>{p.category || p.type} · 후킹 {p.hook_score || p.engagement_score}/10{p.source ? ` · ${p.source}` : ''}</div>
+      {accounts.map((acct) => (
+        <div key={acct} style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: '#6E6E73', marginBottom: 4 }}>
+            @{acct}
           </div>
-          <button
-            onClick={() => select(p.id)}
-            disabled={selecting === p.id}
-            style={{ fontSize: 9, padding: '3px 8px', borderRadius: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: selecting === p.id ? '#333' : '#5E6AD2', color: '#FFF', flexShrink: 0, marginTop: 2 }}
-          >
-            {selecting === p.id ? '생성 중...' : '선택'}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {platforms.map((p) => {
+              const count = followers[acct]?.[p.key];
+              return (
+                <div key={p.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 8px', borderRadius: 6, background: connected ? 'rgba(52,199,89,0.06)' : '#F5F5F7' }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: p.color, width: 18 }}>{p.abbr}</span>
+                  <span style={{ fontSize: 11, color: connected ? '#1D1D1F' : '#6E6E73', flex: 1 }}>{p.label}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: '#1D1D1F' }}>
+                    {connected && count ? fmt(count) : connected ? 'Zernio 연동됨' : '미연결'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      )) : (
-        <div style={{ fontSize: 11, color: '#AEAEB2', padding: '8px 0' }}>
-          {proposals ? '제안 없음 — 매일 아침 9시 자동 생성' : '로딩 중...'}
-        </div>
-      )}
-      {result?.success && result.action === 'draft' && (
-        <div style={{ fontSize: 10, color: '#5E6AD2', marginTop: 8, background: '#5E6AD211', padding: '6px 8px', borderRadius: 4 }}>
-          ✏️ 초안이 채팅에 표시됐습니다. 수정 후 "생성해"라고 입력하세요.
-        </div>
-      )}
-      {result?.error && (
-        <div style={{ fontSize: 10, color: '#FF3B30', marginTop: 8 }}>{result.error}</div>
-      )}
+      ))}
     </div>
   );
 }
@@ -266,185 +104,210 @@ function SisuruProposals() {
 // ─── Agent KPI Dashboards ───────────────────────────────────
 
 const AGENT_DASHBOARDS = {
+
+  // ── Chief ──────────────────────────────────────────────────
   chief: () => {
     const [data, setData] = useState(null);
-    useEffect(() => { fetch('/api/stats').then(r => r.json()).then(setData).catch(() => {}); }, []);
-    const conns = data?.connections || {};
-    const report = data?.chiefReport;
-    const connKeys = { zernio: 'Zernio', google: 'Google', anthropic: 'Claude API', instagram: 'Instagram', oliveyoung: '올리브영 시트', naverAds: '네이버 광고', ga4: 'GA4', googleAds: '구글 광고' };
+    useEffect(() => {
+      fetch('/api/stats').then(r => r.json()).then(setData).catch(() => {});
+    }, []);
+
+    const stats = data || {};
+    const agentConns = stats.agentConnections || stats.connections || {};
+    const report = stats.agentReports?.chief || stats.chiefReport;
+    const totalFollowers = (stats.yuminhye?.total || 0) + (stats.millimilli?.total || 0);
+    const connectedCount = Object.values(agentConns).filter(v => v?.connected).length;
+    const totalCount = Object.keys(agentConns).length;
+
+    const connLabels = {
+      zernio: 'Zernio',
+      google: 'Google',
+      anthropic: 'Claude API',
+      instagram: 'Instagram',
+      oliveyoung: '올리브영 시트',
+      naverAds: '네이버 광고',
+      ga4: 'GA4',
+      googleAds: '구글 광고',
+      meta: 'Meta 광고',
+      tiktok: 'TikTok',
+    };
+
     return (
       <>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-          <KpiCard label="연결 수" value={`${Object.values(conns).filter(v => v?.connected).length}/${Object.keys(conns).length}`} delta="실시간" up icon={Users} />
-          <KpiCard label="당월 매출" value={data?.totalRevenue ? fmt(data.totalRevenue) + '원' : '-'} delta="한국 합산" up icon={DollarSign} />
-          <KpiCard label="총 팔로워" value={data ? fmt((data.yuminhye?.total || 0) + (data.millimilli?.total || 0)) : '-'} delta="전채널" up icon={Target} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <KpiCard label="당월 매출 (한국합산)" value={stats.totalRevenue ? fmtKRW(stats.totalRevenue) : '-'} sub="이번 달 누적" icon={DollarSign} />
+          <KpiCard label="총 팔로워" value={totalFollowers > 0 ? fmt(totalFollowers) : '-'} sub="유민혜 + 밀리밀리" icon={Users} />
+          <KpiCard label="연결된 에이전트" value={totalCount > 0 ? `${connectedCount}/${totalCount}` : '-'} sub="실시간 연결 현황" icon={Target} />
+          <KpiCard label="Amazon YTD" value={stats.amazonYTD ? fmtUSD(stats.amazonYTD) : '-'} sub="2026년 누적" icon={Globe} />
         </div>
 
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>API 연결 현황</div>
-          {Object.entries(conns).map(([key, val], i, arr) => {
-            const connected = val?.connected;
-            return (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < arr.length - 1 ? '1px solid #F5F5F7' : 'none' }}>
-                <span style={{ fontSize: 10 }}>{connected ? '🟢' : '🔴'}</span>
-                <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{connKeys[key] || key}</span>
-                <span style={{ fontSize: 10, color: connected ? '#34C759' : '#AEAEB2' }}>{connected ? '연결됨' : '미연결'}</span>
-              </div>
-            );
-          })}
-        </div>
+        {totalCount > 0 && (
+          <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>에이전트 연결 현황</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {Object.entries(agentConns).map(([key, val], i) => {
+                const connected = val?.connected;
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderRadius: 6, background: connected ? 'rgba(52,199,89,0.06)' : '#F5F5F7' }}>
+                    {connected ? <CheckCircle2 size={11} color="#34C759" /> : <Circle size={11} color="#D1D1D6" />}
+                    <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{connLabels[key] || key}</span>
+                    <span style={{ fontSize: 10, color: connected ? '#34C759' : '#AEAEB2', fontWeight: 500 }}>
+                      {connected ? '연결됨' : '미연결'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 8 }}>일간 종합 보고</div>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 8 }}>오늘의 종합 보고</div>
           {report?.report ? (
             <>
-              <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{report.report}</div>
+              <div style={{ fontSize: 12, color: '#1D1D1F', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{report.report}</div>
               <div style={{ fontSize: 9, color: '#AEAEB2', marginTop: 6 }}>{report.date} · 매일 오전 8시 자동 생성</div>
             </>
           ) : (
-            <div style={{ fontSize: 11, color: '#AEAEB2' }}>매일 오전 8시 자동 생성 (첫 보고 대기 중)</div>
+            <div style={{ fontSize: 12, color: '#AEAEB2' }}>매일 오전 8시 자동 생성됩니다. (첫 보고 대기 중)</div>
           )}
         </div>
       </>
     );
   },
 
+  // ── Channel ────────────────────────────────────────────────
   channel: () => {
-    const [tab, setTab] = useState('millimilli');
-    const [data, setData] = useState(null);
-    const [communityData, setCommunityData] = useState(null);
-    const [igLogs, setIgLogs] = useState(null);
-    const [igRunning, setIgRunning] = useState(false);
-    const [igError, setIgError] = useState(null);
+    const [tab, setTab] = useState('yuminhye');
+    const [creatorData, setCreatorData] = useState(null);
+    const [personaData, setPersonaData] = useState(null);
+    const [rules, setRules] = useState([]);
+    const [newRule, setNewRule] = useState('');
+    const [ruleAccount, setRuleAccount] = useState('전체');
+    const [addingRule, setAddingRule] = useState(false);
+    const [deletingId, setDeletingId] = useState(null);
 
     useEffect(() => {
-      fetch('/api/agents/creator').then(r => r.json()).then(setData).catch(() => {});
-      fetch('/api/agents/community').then(r => r.json()).then(setCommunityData).catch(() => {});
-      fetch('/api/instagram-logs').then(r => r.json()).then(d => { if (d.logs?.length > 0) setIgLogs(d.logs); }).catch(() => {});
+      fetch('/api/agents/creator').then(r => r.json()).then(setCreatorData).catch(() => {});
+      fetch('/api/channel/persona').then(r => r.json()).then(d => {
+        setPersonaData(d);
+        setRules(d?.rules || []);
+      }).catch(() => {});
     }, []);
 
-    const tabBtn = (id, label) => (
-      <button onClick={() => setTab(id)} style={{ fontSize: 11, padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: tab === id ? '#5E6AD2' : '#F5F5F7', color: tab === id ? '#FFF' : '#6E6E73' }}>{label}</button>
-    );
-
-    const f = data?.followers || {};
-    const c = data?.counts || {};
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDay = new Date(year, month, 1).getDay();
-    const byDate = data?.byDate || {};
-    const hour = now.getHours();
-    const schedules = [
-      { time: '09:00', done: hour >= 9 },
-      { time: '13:00', done: hour >= 13 },
-      { time: '18:00', done: hour >= 18 },
-      { time: '22:00', done: hour >= 22 },
-    ];
-    const replied = (igLogs || []).filter(l => l.status === 'replied').length;
-    const skipped = (igLogs || []).filter(l => l.status === 'skipped').length;
+    const byDate = creatorData?.byDate || {};
+    const followers = creatorData?.followers || {};
+    const counts = creatorData?.counts || {};
 
-    const runNow = () => {
-      setIgRunning(true);
-      setIgError(null);
-      fetch('/api/cron/instagram-comments', { method: 'POST' })
-        .then(r => r.json())
-        .then(d => {
-          if (d.success) fetch('/api/instagram-logs').then(r => r.json()).then(d => { if (d.logs?.length > 0) setIgLogs(d.logs); }).catch(() => {});
-          else setIgError(d.error || '실행 실패');
-        })
-        .catch(e => setIgError(e.message))
-        .finally(() => setIgRunning(false));
+    const tabAccounts = { yuminhye: '유민혜', millimilli: '밀리밀리' };
+    const platforms = [
+      { key: 'instagram', label: 'Instagram', abbr: 'IG', color: '#E1306C' },
+      { key: 'tiktok', label: 'TikTok', abbr: 'TT', color: '#69C9D0' },
+      { key: 'youtube', label: 'YouTube', abbr: 'YT', color: '#FF0000' },
+    ];
+
+    const persona = personaData?.personas?.[tab] || personaData?.[tab] || null;
+
+    const handleAddRule = async () => {
+      const text = newRule.trim();
+      if (!text) return;
+      setAddingRule(true);
+      try {
+        const res = await fetch('/api/channel/persona', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'rule', account: ruleAccount, data: { text } }),
+        });
+        const d = await res.json();
+        if (d.rules) setRules(d.rules);
+        else setRules(prev => [...prev, { id: Date.now(), text, account: ruleAccount, createdAt: new Date().toISOString() }]);
+        useChatStore.getState().addMessage('channel', {
+          role: 'assistant',
+          content: `컨텍스트 규칙 추가됨 [${ruleAccount}]: "${text}"`,
+          timestamp: Date.now(),
+        });
+        setNewRule('');
+      } catch {
+        // silent fail
+      }
+      setAddingRule(false);
     };
+
+    const handleDeleteRule = async (id) => {
+      setDeletingId(id);
+      try {
+        const res = await fetch('/api/channel/persona', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'delete_rule', data: { id } }),
+        });
+        const d = await res.json();
+        if (d.rules) setRules(d.rules);
+        else setRules(prev => prev.filter(r => r.id !== id));
+      } catch {
+        setRules(prev => prev.filter(r => r.id !== id));
+      }
+      setDeletingId(null);
+    };
+
+    const tabBtn = (id, label) => (
+      <button
+        key={id}
+        onClick={() => setTab(id)}
+        style={{ fontSize: 12, padding: '5px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: tab === id ? '#5E6AD2' : '#F5F5F7', color: tab === id ? '#FFF' : '#6E6E73', fontWeight: tab === id ? 600 : 400 }}
+      >
+        {label}
+      </button>
+    );
 
     return (
       <>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-          {tabBtn('millimilli', '밀리밀리')}
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
           {tabBtn('yuminhye', '유민혜')}
+          {tabBtn('millimilli', '밀리밀리')}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <KpiCard label="오늘 발행" value={`${c.today || 0}건`} delta="오늘 누적" up icon={FileText} />
-          <KpiCard label="당월 발행" value={`${c.thisMonth || 0}건`} delta="당월 누적" up icon={FileText} />
-        </div>
-
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 8 }}>
-            {tab === 'yuminhye' ? '유민혜' : '밀리밀리'} 채널별 팔로워
+        {/* Follower stats from Zernio */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>
+            {tabAccounts[tab]} 채널별 팔로워
+            {creatorData?.status === 'connected' && (
+              <span style={{ fontSize: 9, color: '#34C759', fontWeight: 500, marginLeft: 8 }}>Zernio 연동됨</span>
+            )}
           </div>
-          {Object.entries(f[tab] || {}).length > 0 ? (
-            Object.entries(f[tab] || {}).map(([plat, count], i, arr) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < arr.length - 1 ? '1px solid #F5F5F7' : 'none' }}>
-                <span style={{ fontSize: 10, color: plat === 'instagram' ? '#E1306C' : plat === 'tiktok' ? '#69C9D0' : '#FF0000', fontWeight: 600, width: 18 }}>
-                  {plat === 'instagram' ? 'IG' : plat === 'tiktok' ? 'TT' : 'YT'}
+          {platforms.map((p, i, arr) => {
+            const count = followers[tab]?.[p.key];
+            return (
+              <div key={p.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < arr.length - 1 ? '1px solid #F5F5F7' : 'none' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: p.color, width: 20 }}>{p.abbr}</span>
+                <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{p.label}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#1D1D1F' }}>
+                  {count ? fmt(count) : creatorData?.status === 'connected' ? 'Zernio 연동됨' : '-'}
                 </span>
-                <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{plat}</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#1D1D1F' }}>{count ? fmt(count) : '-'}</span>
               </div>
-            ))
-          ) : (
-            <div style={{ fontSize: 11, color: '#AEAEB2' }}>Zernio 연동 중...</div>
-          )}
+            );
+          })}
         </div>
 
+        {/* Content counts */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
-          <KpiCard label="오늘 댓글" value={communityData ? `${communityData.today?.comments || 0}건` : '-'} delta="오늘 누적" up icon={MessageCircle} />
-          <KpiCard label="오늘 DM" value={communityData ? `${communityData.today?.dm || 0}건` : '-'} delta="오늘 누적" up icon={MessageCircle} />
+          <KpiCard label="오늘 발행" value={`${counts.today || 0}건`} sub="오늘 누적" icon={FileText} />
+          <KpiCard label="당월 발행" value={`${counts.thisMonth || 0}건`} sub="이번 달 누적" icon={FileText} />
         </div>
 
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>Instagram 댓글 자동화</div>
-            <button onClick={runNow} disabled={igRunning} style={{ fontSize: 10, padding: '3px 10px', borderRadius: 4, border: 'none', background: '#5E6AD2', color: '#FFF', cursor: igRunning ? 'default' : 'pointer', opacity: igRunning ? 0.5 : 1, fontFamily: 'inherit' }}>
-              {igRunning ? '실행 중...' : '지금 실행'}
-            </button>
-          </div>
-          <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
-            {schedules.map((s, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                {s.done ? <CheckCircle2 size={11} color="#22C55E" /> : <Clock size={11} color="#D1D1D6" />}
-                <span style={{ fontSize: 11, color: s.done ? '#22C55E' : '#AEAEB2' }}>{s.time}</span>
-              </div>
-            ))}
-          </div>
-          {igLogs ? (
-            <>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
-                <div style={{ background: '#F5F5F7', borderRadius: 6, padding: '8px 10px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 10, color: '#6E6E73' }}>수신</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: '#1D1D1F' }}>{igLogs.length}</div>
-                </div>
-                <div style={{ background: '#F5F5F7', borderRadius: 6, padding: '8px 10px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 10, color: '#6E6E73' }}>답글</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: '#34C759' }}>{replied}</div>
-                </div>
-                <div style={{ background: '#F5F5F7', borderRadius: 6, padding: '8px 10px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 10, color: '#6E6E73' }}>스킵</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: '#F59E0B' }}>{skipped}</div>
-                </div>
-              </div>
-              {igLogs.slice(0, 4).map((l, i) => (
-                <div key={i} style={{ display: 'flex', gap: 6, padding: '4px 0', borderBottom: i < 3 ? '1px solid #F5F5F7' : 'none' }}>
-                  <span style={{ width: 70, fontSize: 10, color: '#5E6AD2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.user}</span>
-                  <span style={{ flex: 1, fontSize: 10, color: '#1D1D1F', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.comment}</span>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: l.status === 'replied' ? '#34C759' : '#AEAEB2' }}>{l.status === 'replied' ? '✓' : '–'}</span>
-                </div>
-              ))}
-            </>
-          ) : (
-            <div style={{ fontSize: 11, color: '#AEAEB2' }}>오늘 실행 내역 없음</div>
-          )}
-          {igError && <div style={{ fontSize: 10, color: '#FF3B30', marginTop: 6 }}>{igError}</div>}
-        </div>
-
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
+        {/* Content calendar */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>
             {year}년 {month + 1}월 발행 캘린더
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, textAlign: 'center' }}>
-            {['일','월','화','수','목','금','토'].map(d => (
+            {['일', '월', '화', '수', '목', '금', '토'].map(d => (
               <div key={d} style={{ fontSize: 9, color: '#AEAEB2', padding: '2px 0' }}>{d}</div>
             ))}
             {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} />)}
@@ -463,35 +326,170 @@ const AGENT_DASHBOARDS = {
           </div>
         </div>
 
-        <SisuruProposals />
+        {/* Persona card */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>
+            {tabAccounts[tab]} 페르소나
+          </div>
+          {persona ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {persona.character && (
+                <div>
+                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, marginBottom: 3 }}>캐릭터</div>
+                  <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6 }}>{persona.character}</div>
+                </div>
+              )}
+              {persona.tone && (
+                <div>
+                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, marginBottom: 3 }}>톤 & 매너</div>
+                  <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6 }}>{persona.tone}</div>
+                </div>
+              )}
+              {persona.topics && (
+                <div>
+                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, marginBottom: 3 }}>주요 주제</div>
+                  <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6 }}>
+                    {Array.isArray(persona.topics) ? persona.topics.join(', ') : persona.topics}
+                  </div>
+                </div>
+              )}
+              {persona.commentStyle && (
+                <div>
+                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, marginBottom: 3 }}>댓글 스타일</div>
+                  <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6 }}>{persona.commentStyle}</div>
+                </div>
+              )}
+              {persona.dmStyle && (
+                <div>
+                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, marginBottom: 3 }}>DM 스타일</div>
+                  <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6 }}>{persona.dmStyle}</div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: '#AEAEB2' }}>
+              {personaData === null ? '페르소나 데이터 로딩 중...' : '/api/channel/persona에서 페르소나 데이터를 불러올 수 없습니다.'}
+            </div>
+          )}
+        </div>
+
+        {/* Active context rules */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>활성 컨텍스트 규칙</div>
+
+          {/* Rules list */}
+          {rules.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+              {rules.map((rule) => (
+                <div key={rule.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '7px 10px', borderRadius: 7, background: '#F5F5F7', border: '1px solid #E5E5EA' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.5 }}>{rule.text}</div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
+                      <span style={{ fontSize: 9, color: '#5E6AD2', fontWeight: 600, background: '#5E6AD211', padding: '1px 5px', borderRadius: 3 }}>
+                        {rule.account || '전체'}
+                      </span>
+                      {rule.createdAt && (
+                        <span style={{ fontSize: 9, color: '#AEAEB2' }}>{timeAgo(rule.createdAt)}</span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteRule(rule.id)}
+                    disabled={deletingId === rule.id}
+                    style={{ padding: '2px 4px', borderRadius: 4, border: 'none', background: 'transparent', cursor: deletingId === rule.id ? 'default' : 'pointer', opacity: deletingId === rule.id ? 0.4 : 1, flexShrink: 0 }}
+                  >
+                    <Trash2 size={12} color="#AEAEB2" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: '#AEAEB2', marginBottom: 12 }}>
+              활성 규칙 없음. 아래에서 새 규칙을 추가하세요.
+            </div>
+          )}
+
+          {/* Add rule input */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {['전체', '유민혜', '밀리밀리'].map(acct => (
+                <button
+                  key={acct}
+                  onClick={() => setRuleAccount(acct)}
+                  style={{ fontSize: 10, padding: '3px 9px', borderRadius: 5, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: ruleAccount === acct ? '#5E6AD2' : '#F5F5F7', color: ruleAccount === acct ? '#FFF' : '#6E6E73', fontWeight: ruleAccount === acct ? 600 : 400 }}
+                >
+                  {acct}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                type="text"
+                value={newRule}
+                onChange={e => setNewRule(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleAddRule()}
+                placeholder="새 컨텍스트 규칙 입력..."
+                style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: '1px solid #E5E5EA', background: '#F5F5F7', fontSize: 11, fontFamily: 'inherit', color: '#1D1D1F', outline: 'none' }}
+              />
+              <button
+                onClick={handleAddRule}
+                disabled={addingRule || !newRule.trim()}
+                style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: newRule.trim() && !addingRule ? '#5E6AD2' : '#E5E5EA', color: newRule.trim() && !addingRule ? '#FFF' : '#AEAEB2', cursor: newRule.trim() && !addingRule ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontFamily: 'inherit', flexShrink: 0 }}
+              >
+                <Plus size={13} />
+                {addingRule ? '추가 중...' : '추가'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <ZernioStatusPanel creatorData={creatorData} />
       </>
     );
   },
 
+  // ── CS ────────────────────────────────────────────────────
   cs: () => {
     const [d, setD] = useState(null);
-    useEffect(() => { fetch('/api/agents/cs').then(r => r.json()).then(setD).catch(() => {}); }, []);
+    useEffect(() => {
+      fetch('/api/agents/cs').then(r => r.json()).then(setD).catch(() => {});
+    }, []);
+
     const ts = d?.typeStats || {};
-    const typeTotal = ts.exchange + ts.delivery + ts.product + ts.other || 1;
-    const ch = d?.channels || {};
+    const typeTotal = (ts.exchange || 0) + (ts.delivery || 0) + (ts.product || 0) + (ts.other || 0) || 1;
+    const kakaoConnected = d?.channels?.kakao?.status === 'connected';
+    const hasData = d !== null;
+
+    if (hasData && !d?.today && !d?.monthly) {
+      return (
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 24, textAlign: 'center' }}>
+          <XCircle size={28} color="#D1D1D6" style={{ marginBottom: 10 }} />
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F', marginBottom: 6 }}>카카오채널 미연결</div>
+          <div style={{ fontSize: 11, color: '#AEAEB2', lineHeight: 1.6 }}>
+            카카오 비즈니스 채널 API를 연결하면<br />CS 현황을 자동으로 수집합니다.
+          </div>
+        </div>
+      );
+    }
+
     return (
       <>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <KpiCard label="오늘 문의" value={`${d?.today?.total || 0}건`} delta="오늘 누적" up icon={Headphones} />
-          <KpiCard label="당월 문의" value={`${d?.monthly?.total || 0}건`} delta="당월 누적" up icon={Headphones} />
-          <KpiCard label="완료" value={`${d?.today?.done || 0}건`} delta="오늘" up icon={CheckCircle2} />
-          <KpiCard label="미완료" value={`${d?.today?.pending || 0}건`} delta="오늘" up={false} icon={Clock} />
+          <KpiCard label="오늘 문의" value={`${d?.today?.total || 0}건`} sub="오늘 누적" icon={Headphones} />
+          <KpiCard label="당월 문의" value={`${d?.monthly?.total || 0}건`} sub="당월 누적" icon={Headphones} />
+          <KpiCard label="완료" value={`${d?.today?.done || 0}건`} sub="오늘 처리" icon={CheckCircle2} accent="#34C759" />
+          <KpiCard label="미완료" value={`${d?.today?.pending || 0}건`} sub="처리 대기" icon={Clock} accent={d?.today?.pending > 0 ? '#FF3B30' : undefined} />
         </div>
-        {/* Type breakdown */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>상담 유형 (오늘)</div>
+
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>CS 유형 분류 (오늘)</div>
           {[
             { label: '교환/반품', key: 'exchange', color: '#FF3B30' },
             { label: '배송문의', key: 'delivery', color: '#F59E0B' },
             { label: '제품문의', key: 'product', color: '#5E6AD2' },
             { label: '기타', key: 'other', color: '#AEAEB2' },
           ].map((t, i) => (
-            <div key={i} style={{ marginBottom: 6 }}>
+            <div key={i} style={{ marginBottom: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                 <span style={{ fontSize: 11, color: '#1D1D1F' }}>{t.label}</span>
                 <span style={{ fontSize: 11, color: '#6E6E73' }}>{ts[t.key] || 0}건</span>
@@ -502,108 +500,100 @@ const AGENT_DASHBOARDS = {
             </div>
           ))}
         </div>
-        {/* Commerce CS channels */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>채널별 CS 현황</div>
-          {[
-            { label: '카페24', key: 'cafe24' },
-            { label: '스마트스토어', key: 'smartstore' },
-            { label: '아마존', key: 'amazon' },
-            { label: '쇼피', key: 'shopee' },
-          ].map((c, i) => {
-            const s = ch[c.key] || {};
-            return (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < 5 ? '1px solid #F5F5F7' : 'none' }}>
-                <span style={{ fontSize: 11 }}>{s.status === 'connected' ? '🟢' : '🔴'}</span>
-                <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{c.label}</span>
-                <span style={{ fontSize: 10, color: s.status === 'connected' ? '#888' : '#555' }}>
-                  {s.status === 'connected' ? `미처리 ${s.pending || '-'}건` : '미연결'}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        {/* Kakao channel status */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 11, color: '#6E6E73' }}>카카오 채널 상담 연동 준비 중</div>
+
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>카카오 채널 CS</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <ConnBadge connected={kakaoConnected} label="카카오 비즈니스 채널" />
+          </div>
+          {!kakaoConnected && (
+            <div style={{ fontSize: 10, color: '#AEAEB2', marginTop: 8, lineHeight: 1.5 }}>
+              KAKAO_CHANNEL_ID, KAKAO_ADMIN_KEY 환경변수 설정 후 연결됩니다.
+            </div>
+          )}
         </div>
       </>
     );
   },
 
+  // ── Marketer ───────────────────────────────────────────────
   marketer: () => {
     const [d, setD] = useState(null);
-    const [agencyTab, setAgencyTab] = useState('inhouse');
-    useEffect(() => { fetch('/api/agents/marketer').then(r => r.json()).then(setD).catch(() => {}); }, []);
+    useEffect(() => {
+      fetch('/api/agents/marketer').then(r => r.json()).then(setD).catch(() => {});
+    }, []);
+
     const m = d?.meta || {};
+    const allDisconnected = d && !m.totalSpend && !d.totalSpend;
     const roasColor = (v) => { const n = Number(v); return n >= 3 ? '#22C55E' : n >= 2 ? '#F59E0B' : '#EF4444'; };
+
+    if (allDisconnected && Object.keys(d || {}).every(k => !d[k]?.spend && d[k]?.status !== 'connected')) {
+      return (
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 24, textAlign: 'center' }}>
+          <XCircle size={28} color="#D1D1D6" style={{ marginBottom: 10 }} />
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F', marginBottom: 6 }}>광고 API 연결 필요</div>
+          <div style={{ fontSize: 11, color: '#AEAEB2', lineHeight: 1.8, textAlign: 'left' }}>
+            연결에 필요한 환경변수:<br />
+            <code style={{ fontSize: 10, color: '#5E6AD2' }}>META_AD_ACCOUNTS</code> — Meta 광고 계정 JSON<br />
+            <code style={{ fontSize: 10, color: '#5E6AD2' }}>META_ACCESS_TOKEN</code> — Meta 액세스 토큰<br />
+            <code style={{ fontSize: 10, color: '#5E6AD2' }}>NAVER_API_KEY</code> — 네이버 광고 키<br />
+            <code style={{ fontSize: 10, color: '#5E6AD2' }}>GOOGLE_ADS_CUSTOMER_ID</code> — 구글 광고
+          </div>
+        </div>
+      );
+    }
+
     return (
       <>
-        {/* Meta Ads KPIs */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <KpiCard label="Meta 광고비" value={m.totalSpend ? `${fmt(m.totalSpend)}원` : m.status === 'disconnected' ? '미연결' : '-'} delta="주간 누적" up icon={DollarSign} />
-          <KpiCard label="총 광고비" value={d?.totalSpend ? `${fmt(d.totalSpend)}원` : '-'} delta="당월 누적" icon={DollarSign} />
+          <KpiCard label="Meta 광고비" value={m.totalSpend ? fmtKRW(m.totalSpend) : m.status === 'disconnected' ? '미연결' : '-'} sub="주간 누적" icon={DollarSign} />
+          <KpiCard label="총 광고비" value={d?.totalSpend ? fmtKRW(d.totalSpend) : '-'} sub="당월 누적" icon={DollarSign} />
         </div>
 
-        {/* Meta accounts with ROAS */}
         {m.accounts?.length > 0 && (
-          <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>Meta 계정별 ROAS</div>
             {m.accounts.map((acc, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < m.accounts.length - 1 ? '1px solid #1F1F1F' : 'none' }}>
-                <span style={{ fontSize: 10, color: '#1D1D1F', flex: 1 }}>{acc.name}</span>
-                <span style={{ fontSize: 10, color: '#6E6E73' }}>{acc.spend ? fmt(acc.spend) + '원' : '-'}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: acc.roas !== '-' ? roasColor(acc.roas) : '#555', width: 40, textAlign: 'right' }}>
-                  {acc.roas !== '-' ? `${acc.roas}x` : '-'}
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < m.accounts.length - 1 ? '1px solid #F5F5F7' : 'none' }}>
+                <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{acc.name}</span>
+                <span style={{ fontSize: 10, color: '#6E6E73' }}>{acc.spend ? fmtKRW(acc.spend) : '-'}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: acc.roas && acc.roas !== '-' ? roasColor(acc.roas) : '#AEAEB2', width: 44, textAlign: 'right' }}>
+                  {acc.roas && acc.roas !== '-' ? `${acc.roas}x` : '-'}
                 </span>
               </div>
             ))}
-            <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 6 }}>목표 ROAS 3.0x · 🟢3.0+ 🟡2.0~3.0 🔴2.0-</div>
+            <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 6 }}>목표 ROAS 3.0x · 초록 3.0+ 노랑 2.0~3.0 빨강 2.0 미만</div>
           </div>
         )}
 
-        {/* Agency tabs */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>대행사별 현황</div>
-          <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
-            {[['inhouse','인하우스'],['growth','그로스'],['en','이엔'],['epro','이프로']].map(([id,label]) => (
-              <button key={id} onClick={() => setAgencyTab(id)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: agencyTab === id ? '#5E6AD2' : '#1A1A1A', color: agencyTab === id ? '#FFF' : '#777' }}>{label}</button>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>광고 채널 연결 현황</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {[
+              { key: 'meta', label: 'Meta Ads (5계정)' },
+              { key: 'naver', label: '네이버 광고' },
+              { key: 'google', label: '구글 광고' },
+              { key: 'tiktok', label: '틱톡 광고' },
+              { key: 'ga', label: 'GA4' },
+            ].map(({ key, label }) => (
+              <ConnBadge key={key} connected={d?.[key]?.status === 'connected'} label={label} />
             ))}
           </div>
-          {(() => {
-            const ag = d?.agencies?.[agencyTab] || {};
-            return ag.status === 'connected' ? (
-              <div style={{ fontSize: 11, color: '#1D1D1F' }}>🟢 {ag.name} 연동됨 · 데이터 {ag.rows}행</div>
-            ) : (
-              <div style={{ fontSize: 11, color: '#AEAEB2' }}>🔴 {ag.name || agencyTab} 시트 미연결<div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 4 }}>AGENCY_SHEET_{agencyTab.toUpperCase()} 환경변수 필요</div></div>
-            );
-          })()}
+          {d && [d.meta, d.naver, d.google, d.tiktok, d.ga].every(ch => !ch || ch.status !== 'connected') && (
+            <div style={{ fontSize: 10, color: '#AEAEB2', marginTop: 8, lineHeight: 1.5 }}>
+              광고 API 미연결 상태입니다. 환경변수를 확인해주세요.
+            </div>
+          )}
         </div>
 
-        {/* Ad channels */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>광고 채널</div>
-          {[['meta','Meta Ads'],['naver','네이버 광고'],['google','구글 광고'],['tiktok','틱톡 광고'],['ga','GA4']].map(([ch,label], i) => {
-            const s = d?.[ch] || {};
-            return (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < 5 ? '1px solid #F5F5F7' : 'none' }}>
-                <span style={{ fontSize: 11 }}>{s.status === 'connected' ? '🟢' : '🔴'}</span>
-                <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{label}</span>
-                <span style={{ fontSize: 10, color: s.status === 'connected' ? '#22C55E' : '#555' }}>{s.status === 'connected' ? '연결됨' : '미연결'}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Optimization suggestions */}
         {d?.suggestions && (
-          <div style={{ background: '#FFFFFF', border: '1px solid #F59E0B33', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ background: '#FFFFFF', border: '1px solid #F59E0B33', borderRadius: 10, padding: 14, marginTop: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#F59E0B', marginBottom: 8 }}>광고 최적화 제안</div>
             {d.suggestions.lowRoas?.length > 0 && (
-              <div style={{ fontSize: 10, color: '#FF3B30', marginBottom: 6 }}>ROAS 2.0 미만 캠페인: {d.suggestions.lowRoas.length}개</div>
+              <div style={{ fontSize: 11, color: '#FF3B30', marginBottom: 6 }}>ROAS 2.0 미만 캠페인: {d.suggestions.lowRoas.length}개</div>
             )}
             {d.suggestions.suggestion && (
-              <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{d.suggestions.suggestion}</div>
+              <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{d.suggestions.suggestion}</div>
             )}
             <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 6 }}>{d.suggestions.updatedAt?.slice(0, 10)}</div>
           </div>
@@ -612,32 +602,86 @@ const AGENT_DASHBOARDS = {
     );
   },
 
+  // ── Commerce ───────────────────────────────────────────────
   commerce: () => {
-    const [d, setD] = useState(null);
-    useEffect(() => { fetch('/api/agents/commerce').then(r => r.json()).then(setD).catch(() => {}); }, []);
-    const channels = ['oliveyoung', 'smartstore', 'cafe24', 'amazon', 'shopee', 'qoo10', 'tiktokShop'];
-    const labels = { oliveyoung: '올리브영', smartstore: '스마트스토어', cafe24: '카페24', amazon: '아마존', shopee: '쇼피', qoo10: '큐텐', tiktokShop: '틱톡샵' };
+    const [stats, setStats] = useState(null);
+    const [commerceData, setCommerceData] = useState(null);
+
+    useEffect(() => {
+      fetch('/api/stats').then(r => r.json()).then(setStats).catch(() => {});
+      fetch('/api/agents/commerce').then(r => r.json()).then(setCommerceData).catch(() => {});
+    }, []);
+
     const now = new Date();
-    const year = now.getFullYear(), month = now.getMonth();
+    const year = now.getFullYear();
+    const month = now.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDay = new Date(year, month, 1).getDay();
-    const promos = d?.promotions?.upcoming || d?.promotions?.thisMonth || [];
-    const importColor = { high: '#EF4444', medium: '#F59E0B', low: '#555' };
-    // Map promos to calendar dates
+    const promos = commerceData?.promotions?.upcoming || commerceData?.promotions?.thisMonth || [];
+
+    const importColor = { high: '#EF4444', medium: '#F59E0B', low: '#AEAEB2' };
     const promoByDate = {};
     for (const p of promos) {
       const pd = p.date?.slice(8, 10);
-      if (pd && p.date?.startsWith(`${year}-${String(month+1).padStart(2,'0')}`)) promoByDate[Number(pd)] = p;
+      if (pd && p.date?.startsWith(`${year}-${String(month + 1).padStart(2, '0')}`)) promoByDate[Number(pd)] = p;
     }
+
+    const channels = [
+      { key: 'oliveyoung', label: '올리브영' },
+      { key: 'smartstore', label: '스마트스토어' },
+      { key: 'cafe24', label: '카페24' },
+    ];
+
+    const krTotal = (stats?.oliveyoung?.monthly || 0) + (stats?.smartstore?.monthly || 0) + (stats?.cafe24?.monthly || 0);
+
     return (
       <>
-        {/* Promo Calendar */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <KpiCard label="당월 합계 (한국)" value={krTotal > 0 ? fmtKRW(krTotal) : '-'} sub="올리브영+스마트+카페24" icon={ShoppingCart} />
+          <KpiCard label="올리브영" value={stats?.oliveyoung?.monthly ? fmtKRW(stats.oliveyoung.monthly) : '-'} sub="이번 달" icon={ShoppingCart} />
+          <KpiCard label="스마트스토어" value={stats?.smartstore?.monthly ? fmtKRW(stats.smartstore.monthly) : '-'} sub="이번 달" icon={ShoppingCart} />
+          <KpiCard label="카페24" value={stats?.cafe24?.monthly ? fmtKRW(stats.cafe24.monthly) : '-'} sub="이번 달" icon={ShoppingCart} />
+        </div>
+
+        {/* Channel connection status */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>판매 채널 연결 현황</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {[
+              { key: 'oliveyoung', label: '올리브영' },
+              { key: 'smartstore', label: '스마트스토어' },
+              { key: 'cafe24', label: '카페24' },
+              { key: 'amazon', label: '아마존' },
+              { key: 'shopee', label: '쇼피' },
+              { key: 'qoo10', label: '큐텐' },
+              { key: 'tiktokShop', label: '틱톡샵' },
+            ].map(({ key, label }) => {
+              const s = commerceData?.[key] || {};
+              const monthly = stats?.[key]?.monthly;
+              return (
+                <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderRadius: 6, background: s.status === 'connected' ? 'rgba(52,199,89,0.06)' : '#F5F5F7' }}>
+                  {s.status === 'connected' ? <CheckCircle2 size={11} color="#34C759" /> : <Circle size={11} color="#D1D1D6" />}
+                  <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{label}</span>
+                  {monthly ? (
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#1D1D1F' }}>{fmtKRW(monthly)}</span>
+                  ) : (
+                    <span style={{ fontSize: 10, color: s.status === 'connected' ? '#34C759' : '#AEAEB2', fontWeight: 500 }}>
+                      {s.status === 'connected' ? '연결됨' : '미연결'}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Promo calendar */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>
-            {year}년 {month+1}월 프로모션 캘린더
+            {year}년 {month + 1}월 프로모션 캘린더
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, textAlign: 'center' }}>
-            {['일','월','화','수','목','금','토'].map(dd => (
+            {['일', '월', '화', '수', '목', '금', '토'].map(dd => (
               <div key={dd} style={{ fontSize: 9, color: '#AEAEB2', padding: '2px 0' }}>{dd}</div>
             ))}
             {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} />)}
@@ -646,110 +690,94 @@ const AGENT_DASHBOARDS = {
               const promo = promoByDate[day];
               const isToday = day === now.getDate();
               return (
-                <div key={day} title={promo?.name || ''} style={{
-                  padding: '3px 0', borderRadius: 4, fontSize: 10, cursor: promo ? 'pointer' : 'default',
-                  background: isToday ? '#5E6AD222' : promo ? `${importColor[promo.importance] || '#555'}15` : 'transparent',
-                  color: isToday ? '#5E6AD2' : promo ? '#FFF' : '#444',
-                  fontWeight: isToday || promo ? 600 : 400,
-                  border: promo ? `1px solid ${importColor[promo.importance] || '#555'}44` : '1px solid transparent',
-                }}>
+                <div key={day} title={promo?.name || ''} style={{ padding: '3px 0', borderRadius: 4, fontSize: 10, cursor: promo ? 'pointer' : 'default', background: isToday ? '#5E6AD222' : promo ? `${importColor[promo.importance] || '#AEAEB2'}18` : 'transparent', color: isToday ? '#5E6AD2' : '#444', fontWeight: isToday || promo ? 600 : 400, border: promo ? `1px solid ${importColor[promo.importance] || '#AEAEB2'}44` : '1px solid transparent' }}>
                   {day}
-                  {promo && <div style={{ width: 4, height: 4, borderRadius: 2, background: importColor[promo.importance] || '#555', margin: '1px auto 0' }} />}
+                  {promo && <div style={{ width: 4, height: 4, borderRadius: 2, background: importColor[promo.importance] || '#AEAEB2', margin: '1px auto 0' }} />}
                 </div>
               );
             })}
           </div>
-          <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 9, color: '#AEAEB2' }}>
-            <span><span style={{ color: '#FF3B30' }}>●</span> 대형</span>
-            <span><span style={{ color: '#F59E0B' }}>●</span> 중요</span>
-            <span><span style={{ color: '#AEAEB2' }}>●</span> 보통</span>
+          {promos.length === 0 && (
+            <div style={{ fontSize: 10, color: '#AEAEB2', marginTop: 8, textAlign: 'center' }}>
+              프로모션 데이터 없음 — 매주 월요일 자동 업데이트
+            </div>
+          )}
+        </div>
+
+        {promos.length > 0 && (
+          <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>다가오는 프로모션</div>
+            {promos.slice(0, 5).map((p, i) => {
+              const pDate = new Date(p.date);
+              const dDay = Math.ceil((pDate - now) / 86400000);
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < Math.min(promos.length, 5) - 1 ? '1px solid #F5F5F7' : 'none' }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: importColor[p.importance] || '#AEAEB2', width: 32 }}>
+                    {dDay >= 0 ? `D-${dDay}` : 'END'}
+                  </span>
+                  <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{p.name}</span>
+                  <span style={{ fontSize: 9, color: '#AEAEB2' }}>{p.channel}</span>
+                </div>
+              );
+            })}
           </div>
-        </div>
-
-        {/* Upcoming promos list */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>다가오는 프로모션</div>
-          {promos.slice(0, 5).map((p, i) => {
-            const pDate = new Date(p.date);
-            const dDay = Math.ceil((pDate - now) / 86400000);
-            return (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < Math.min(promos.length, 5) - 1 ? '1px solid #1F1F1F' : 'none' }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: importColor[p.importance] || '#555', width: 32 }}>
-                  {dDay >= 0 ? `D-${dDay}` : 'END'}
-                </span>
-                <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{p.name}</span>
-                <span style={{ fontSize: 9, color: '#AEAEB2' }}>{p.channel}</span>
-              </div>
-            );
-          })}
-          {promos.length === 0 && <div style={{ fontSize: 11, color: '#AEAEB2' }}>매주 월요일 자동 업데이트</div>}
-        </div>
-
-        {/* Channel status */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>판매 채널</div>
-          {channels.map((ch, i) => {
-            const s = d?.[ch] || {};
-            return (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < channels.length - 1 ? '1px solid #1F1F1F' : 'none' }}>
-                <span style={{ fontSize: 11 }}>{s.status === 'connected' ? '🟢' : '🔴'}</span>
-                <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{labels[ch]}</span>
-                <span style={{ fontSize: 10, color: s.status === 'connected' ? '#22C55E' : '#555' }}>{s.status === 'connected' ? '연결됨' : '미연결'}</span>
-              </div>
-            );
-          })}
-        </div>
+        )}
       </>
     );
   },
 
+  // ── Admin ─────────────────────────────────────────────────
   admin: () => {
     const [d, setD] = useState(null);
-    useEffect(() => { fetch('/api/agents/management').then(r => r.json()).then(setD).catch(() => {}); }, []);
+    useEffect(() => {
+      fetch('/api/agents/management').then(r => r.json()).then(setD).catch(() => {});
+    }, []);
+
     const voucher = d?.exportVoucher;
     const govItems = d?.govAnnouncements?.items || [];
     const now = new Date();
+
+    const defaultSteps = [
+      { name: '신청', status: 'done' },
+      { name: '선정', status: 'done' },
+      { name: '계획제출', status: 'done' },
+      { name: '진행중', status: 'active' },
+      { name: '정산', status: 'pending' },
+    ];
+
     return (
       <>
-        {/* Export voucher flow */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 16 }}>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 12 }}>수출바우처 현황</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 14 }}>
-            {(voucher?.steps || [{ name: '신청', status: 'done' }, { name: '선정', status: 'done' }, { name: '계획제출', status: 'done' }, { name: '진행중', status: 'active' }, { name: '정산', status: 'pending' }]).map((s, i, arr) => (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexWrap: 'wrap', marginBottom: 14, rowGap: 6 }}>
+            {(voucher?.steps || defaultSteps).map((s, i, arr) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center' }}>
-                <div style={{
-                  padding: '4px 10px', borderRadius: 4, fontSize: 10, fontWeight: 600,
-                  background: s.status === 'done' ? '#22C55E22' : s.status === 'active' ? '#5E6AD222' : '#1A1A1A',
-                  color: s.status === 'done' ? '#22C55E' : s.status === 'active' ? '#5E6AD2' : '#555',
-                  border: `1px solid ${s.status === 'done' ? '#22C55E44' : s.status === 'active' ? '#5E6AD244' : '#242424'}`,
-                }}>
-                  {s.status === 'done' ? '✅' : s.status === 'active' ? '🟢' : '⬜'} {s.name}
+                <div style={{ padding: '4px 10px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: s.status === 'done' ? '#22C55E22' : s.status === 'active' ? '#5E6AD222' : '#F5F5F7', color: s.status === 'done' ? '#22C55E' : s.status === 'active' ? '#5E6AD2' : '#AEAEB2', border: `1px solid ${s.status === 'done' ? '#22C55E44' : s.status === 'active' ? '#5E6AD244' : '#E5E5EA'}` }}>
+                  {s.status === 'done' ? '✓ ' : s.status === 'active' ? '● ' : '○ '}{s.name}
                 </div>
-                {i < arr.length - 1 && <span style={{ color: '#333', margin: '0 4px', fontSize: 10 }}>→</span>}
+                {i < arr.length - 1 && <span style={{ color: '#D1D1D6', margin: '0 4px', fontSize: 10 }}>→</span>}
               </div>
             ))}
           </div>
-          <div style={{ fontSize: 11, color: '#6E6E73', marginBottom: 6 }}>사용 계획</div>
-          {(voucher?.programs || [{ name: '해외마케팅', status: 'active', color: '#34C759' }, { name: 'IP/인증 획득', status: 'active', color: '#34C759' }]).map((p, i) => (
+          {(voucher?.programs || [{ name: '해외마케팅', status: 'active' }, { name: 'IP/인증 획득', status: 'active' }]).map((p, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0' }}>
-              <div style={{ width: 6, height: 6, borderRadius: 3, background: p.color }} />
+              <div style={{ width: 6, height: 6, borderRadius: 3, background: '#34C759' }} />
               <span style={{ fontSize: 11, color: '#1D1D1F' }}>{p.name}</span>
-              <span style={{ fontSize: 10, color: p.color, marginLeft: 'auto' }}>진행중</span>
+              <span style={{ fontSize: 10, color: '#34C759', marginLeft: 'auto' }}>진행중</span>
             </div>
           ))}
         </div>
 
-        {/* Gov announcements */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 16, marginTop: 12 }}>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 16, marginTop: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>정부지원사업 공고</div>
           {govItems.length > 0 ? govItems.slice(0, 8).map((item, i) => {
             const deadline = item.deadline ? new Date(item.deadline) : null;
             const daysLeft = deadline ? Math.ceil((deadline - now) / 86400000) : null;
             const urgent = daysLeft !== null && daysLeft <= 7 && daysLeft >= 0;
             return (
-              <div key={i} style={{ padding: '6px 0', borderBottom: i < Math.min(govItems.length, 8) - 1 ? '1px solid #1F1F1F' : 'none' }}>
+              <div key={i} style={{ padding: '6px 0', borderBottom: i < Math.min(govItems.length, 8) - 1 ? '1px solid #F5F5F7' : 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {urgent && <span style={{ fontSize: 8, background: '#EF4444', color: '#FFF', padding: '1px 4px', borderRadius: 3, fontWeight: 600 }}>D-{daysLeft}</span>}
+                  {urgent && <span style={{ fontSize: 8, background: '#EF4444', color: '#FFF', padding: '1px 4px', borderRadius: 3, fontWeight: 600, flexShrink: 0 }}>D-{daysLeft}</span>}
                   <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</span>
                 </div>
                 <div style={{ fontSize: 9, color: '#AEAEB2', marginTop: 2 }}>
@@ -759,44 +787,59 @@ const AGENT_DASHBOARDS = {
             );
           }) : (
             <div style={{ fontSize: 11, color: '#AEAEB2', padding: '12px 0', textAlign: 'center' }}>
-              {d?.govAnnouncements?.status === 'no_data' ? '매주 월요일 자동 업데이트' : '공고 로딩 중...'}
+              {d?.govAnnouncements?.status === 'no_data' ? '매주 월요일 자동 업데이트' : d === null ? '로딩 중...' : '공고 데이터 없음'}
             </div>
           )}
           <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 8 }}>
-            K-스타트업 · 코트라 · 중기부 공고 자동 수집 {d?.govAnnouncements?.updatedAt ? `· ${d.govAnnouncements.updatedAt.slice(0, 10)}` : ''}
+            K-스타트업 · 코트라 · 중기부 공고 자동 수집{d?.govAnnouncements?.updatedAt ? ` · ${d.govAnnouncements.updatedAt.slice(0, 10)}` : ''}
           </div>
         </div>
       </>
     );
   },
 
+  // ── Brand ─────────────────────────────────────────────────
   brand: () => {
     const [d, setD] = useState(null);
-    useEffect(() => { fetch('/api/agents/brand').then(r => r.json()).then(setD).catch(() => {}); }, []);
+    const [stats, setStats] = useState(null);
+    useEffect(() => {
+      fetch('/api/agents/brand').then(r => r.json()).then(setD).catch(() => {});
+      fetch('/api/stats').then(r => r.json()).then(setStats).catch(() => {});
+    }, []);
+
     const rankings = d?.rankings;
     const reviews = d?.reviews;
     const proposal = d?.suggestions;
+
     return (
       <>
-        {/* Category Rankings — real data from KV only */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14 }}>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>카테고리 랭킹</div>
           {rankings?.status === 'connected' && rankings.items?.length > 0 ? (
             rankings.items.map((item, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < rankings.items.length - 1 ? '1px solid #F5F5F7' : 'none' }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: item.ours ? '#5E6AD2' : '#AEAEB2', width: 20 }}>{item.rank}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: item.ours ? '#5E6AD2' : '#AEAEB2', width: 22 }}>{item.rank}</span>
                 <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{item.name}</span>
                 <span style={{ fontSize: 9, color: '#AEAEB2' }}>{item.category}</span>
               </div>
             ))
           ) : (
-            <div style={{ fontSize: 11, color: '#AEAEB2', padding: '8px 0' }}>랭킹 데이터 수집 대기 중 — 주간 자동 업데이트</div>
+            <div style={{ fontSize: 11, color: '#AEAEB2', padding: '8px 0' }}>
+              랭킹 데이터 수집 대기 중 — 주간 자동 업데이트
+            </div>
           )}
           <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 8 }}>마지막: {rankings?.updatedAt || '대기 중'}</div>
         </div>
 
-        {/* Product Reviews — real data from KV only */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 4 }}>올리브영 당월 매출</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: '#1D1D1F', letterSpacing: '-0.02em' }}>
+            {stats?.oliveyoung?.monthly ? fmtKRW(stats.oliveyoung.monthly) : '-'}
+          </div>
+          <div style={{ fontSize: 10, color: '#AEAEB2', marginTop: 4 }}>이번 달 누적</div>
+        </div>
+
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>상품별 리뷰</div>
           {reviews?.status === 'connected' && reviews.products?.length > 0 ? (
             reviews.products.map((p, i) => (
@@ -806,62 +849,68 @@ const AGENT_DASHBOARDS = {
                   {p.attention > 0 && <span style={{ fontSize: 8, background: '#EF4444', color: '#FFF', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>관리 {p.attention}건</span>}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 14, color: '#F59E0B' }}>{'★'.repeat(Math.floor(p.rating))}</span>
+                  <span style={{ fontSize: 13, color: '#F59E0B' }}>{'★'.repeat(Math.floor(p.rating || 0))}</span>
                   <span style={{ fontSize: 11, fontWeight: 700, color: '#1D1D1F' }}>{p.rating}</span>
                   <span style={{ fontSize: 10, color: '#AEAEB2' }}>({p.count}건)</span>
                 </div>
               </div>
             ))
           ) : (
-            <div style={{ fontSize: 11, color: '#AEAEB2', padding: '8px 0' }}>리뷰 모니터링 데이터 대기 중</div>
+            <div style={{ fontSize: 11, color: '#AEAEB2', padding: '8px 0' }}>
+              리뷰 모니터링 데이터 대기 중
+            </div>
           )}
         </div>
 
-        {/* Weekly Proposal */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 8 }}>주간 상품 제안</div>
           {proposal?.status === 'connected' ? (
-            <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+            <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
               {proposal.content || proposal.text || '제안 내용 로딩 중...'}
               <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 6 }}>{proposal.updatedAt?.slice(0, 10)}</div>
             </div>
           ) : (
-            <div style={{ fontSize: 11, color: '#AEAEB2' }}>매주 월요일 리뷰 분석 → AI 제안 자동 생성</div>
+            <div style={{ fontSize: 11, color: '#AEAEB2' }}>매주 월요일 리뷰 분석 후 AI 제안 자동 생성</div>
           )}
         </div>
       </>
     );
   },
 
+  // ── Global ─────────────────────────────────────────────────
   global: () => {
     const [d, setD] = useState(null);
-    useEffect(() => { fetch('/api/agents/export').then(r => r.json()).then(setD).catch(() => {}); }, []);
+    const [stats, setStats] = useState(null);
+    useEffect(() => {
+      fetch('/api/agents/export').then(r => r.json()).then(setD).catch(() => {});
+      fetch('/api/stats').then(r => r.json()).then(setStats).catch(() => {});
+    }, []);
+
     const rates = d?.exchangeRates || {};
     const pipeline = d?.buyerPipeline || {};
     const countries = d?.byCountry || [];
-    const maxAmount = countries.length > 0 ? countries[0].amount : 1;
+    const maxAmount = countries.length > 0 ? Math.max(...countries.map(c => c.amount || 0)) || 1 : 1;
+
     return (
       <>
-        {/* Total export + exchange */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <KpiCard label="총 수출액" value={d?.exports?.totalAmount ? `${fmt(d.exports.totalAmount)}원` : d?.exports?.status === 'connected' ? `${d.exports.totalOrders}건` : '미연결'} delta="2026 누적" up icon={Globe} />
-          <KpiCard label="수출공급가" value={d?.prices?.status === 'connected' ? `${d.prices.products}개` : '-'} icon={DollarSign} />
-          <KpiCard label="USD" value={rates.USD ? `${rates.USD.toLocaleString()}원` : '-'} icon={DollarSign} />
-          <KpiCard label="JPY" value={rates.JPY ? `${rates.JPY.toLocaleString()}원` : '-'} icon={DollarSign} />
+          <KpiCard label="Amazon YTD" value={stats?.amazonYTD ? fmtUSD(stats.amazonYTD) : d?.exports?.totalAmount ? fmtKRW(d.exports.totalAmount) : '-'} sub="2026년 누적" icon={Globe} />
+          <KpiCard label="당월 아마존" value={stats?.amazon?.monthly ? fmtUSD(stats.amazon.monthly) : '-'} sub="이번 달" icon={Globe} />
+          <KpiCard label="USD/KRW" value={rates.USD ? `${rates.USD.toLocaleString()}원` : '-'} sub="현재 환율" icon={DollarSign} />
+          <KpiCard label="JPY/KRW" value={rates.JPY ? `${(rates.JPY * 100).toFixed(1)}원` : '-'} sub="100엔 기준" icon={DollarSign} />
         </div>
 
-        {/* Country breakdown bar chart */}
         {countries.length > 0 && (
-          <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>국가별 수출 현황</div>
             {countries.slice(0, 8).map((c, i) => (
               <div key={i} style={{ marginBottom: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                   <span style={{ fontSize: 11, color: '#1D1D1F' }}>{c.name}</span>
-                  <span style={{ fontSize: 10, color: '#6E6E73' }}>{fmt(c.amount)}원 ({c.products}건)</span>
+                  <span style={{ fontSize: 10, color: '#6E6E73' }}>{fmt(c.amount)}원 ({c.products || 0}건)</span>
                 </div>
                 <div style={{ height: 4, background: '#F5F5F7', borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${(c.amount / maxAmount) * 100}%`, background: '#5E6AD2', borderRadius: 2 }} />
+                  <div style={{ height: '100%', width: `${((c.amount || 0) / maxAmount) * 100}%`, background: '#5E6AD2', borderRadius: 2 }} />
                 </div>
               </div>
             ))}
@@ -869,10 +918,9 @@ const AGENT_DASHBOARDS = {
           </div>
         )}
 
-        {/* Buyer Pipeline */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>바이어 파이프라인</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexWrap: 'nowrap', overflowX: 'auto' }}>
             {[
               { label: 'DB확보', value: pipeline.db },
               { label: '1차메일', value: pipeline.firstMail },
@@ -881,44 +929,57 @@ const AGENT_DASHBOARDS = {
               { label: '제안서', value: pipeline.proposal },
               { label: '계약', value: pipeline.contract },
             ].map((step, i, arr) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center' }}>
-                <div style={{ textAlign: 'center', padding: '4px 6px', borderRadius: 4, background: '#F5F5F7', border: '1px solid #E5E5EA', minWidth: 44 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#FFF' }}>{step.value || 0}</div>
+              <div key={i} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                <div style={{ textAlign: 'center', padding: '6px 8px', borderRadius: 6, background: '#F5F5F7', border: '1px solid #E5E5EA', minWidth: 46 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#1D1D1F' }}>{step.value ?? 0}</div>
                   <div style={{ fontSize: 8, color: '#6E6E73' }}>{step.label}</div>
                 </div>
-                {i < arr.length - 1 && <span style={{ color: '#333', margin: '0 2px', fontSize: 10 }}>→</span>}
+                {i < arr.length - 1 && <span style={{ color: '#D1D1D6', margin: '0 3px', fontSize: 10 }}>→</span>}
               </div>
             ))}
           </div>
           <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 6 }}>당월 누적</div>
         </div>
 
-        {/* Daily report */}
         {d?.dailyReport && (
-          <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 8 }}>일간 성과 보고</div>
-            <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-              {d.dailyReport.summary || d.dailyReport.text || '보고 내용 로딩 중...'}
+            <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+              {d.dailyReport.summary || d.dailyReport.text}
             </div>
             <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 4 }}>{d.dailyReport.updatedAt?.slice(0, 10)}</div>
           </div>
         )}
 
-        {/* Channels */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>해외 채널</div>
-          {Object.entries(d?.channels || {}).map(([ch, s], i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: i < Object.keys(d?.channels || {}).length - 1 ? '1px solid #1F1F1F' : 'none' }}>
-              <span style={{ fontSize: 11 }}>{s.status === 'connected' ? '🟢' : '🔴'}</span>
-              <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{ch}</span>
-              <span style={{ fontSize: 10, color: s.status === 'connected' ? '#22C55E' : '#555' }}>{s.status === 'connected' ? '연결됨' : '미연결'}</span>
-            </div>
-          ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {Object.entries(d?.channels || {}).length > 0 ? (
+              Object.entries(d.channels).map(([ch, s], i) => (
+                <ConnBadge key={i} connected={s?.status === 'connected'} label={ch} />
+              ))
+            ) : (
+              <div style={{ fontSize: 11, color: '#AEAEB2' }}>채널 연결 데이터 없음</div>
+            )}
+          </div>
         </div>
       </>
     );
   },
 
+};
+
+// ─── Quick Actions ──────────────────────────────────────────
+
+const quickActions = {
+  chief: ['오늘 전체 브리핑해줘', '각 에이전트 업무 지시해줘', '이번 주 우선순위 정리해줘'],
+  channel: ['유민혜 이번 주 콘텐츠 기획해줘', '밀리밀리 인스타 캡션 작성해줘', '팔로워 증대 전략 제안해줘'],
+  cs: ['오늘 CS 현황 요약해줘', 'CS 유형별 분류 리포트', 'CS 감소 방안 제안해줘'],
+  marketer: ['오늘 광고 ROAS 분석해줘', '채널별 광고비 현황', '광고 최적화 제안해줘'],
+  commerce: ['채널별 매출 현황 보고해줘', '이번 달 프로모션 제안해줘', '올리브영 운영 전략'],
+  admin: ['대금출금 현황 보고해줘', '정부지원사업 공고 알려줘', '임직원 현황 정리해줘'],
+  brand: ['이번 주 리뷰 분석해줘', '경쟁사 분석해줘', '상품 개선안 제안해줘'],
+  global: ['수출 현황 보고해줘', '아마존 판매 분석해줘', '바이어 컨택 메일 작성해줘'],
 };
 
 // ─── Main ChatView ──────────────────────────────────────────
@@ -931,7 +992,9 @@ export default function ChatView() {
   const agent = getAgent(activeAgent);
   const messages = conversations[activeAgent] || [];
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -956,19 +1019,9 @@ export default function ChatView() {
   const Icon = agent.icon;
   const AgentDashboard = AGENT_DASHBOARDS[activeAgent];
 
-  const quickActions = {
-    chief: ['오늘 전체 브리핑해줘', '각 에이전트 업무 지시해줘', '긴급 이슈 있어?'],
-    channel: ['이번 주 콘텐츠 캘린더 짜줘', '오늘 댓글/DM 현황 요약', '인스타 릴스 기획안 줘', '악성댓글 현황 보고'],
-    cs: ['오늘 카카오 상담 현황', 'CS 유형별 분류 리포트', 'CS 감소 방안 제안해줘'],
-    marketer: ['오늘 광고 ROAS 분석', '채널별 광고비 현황', '광고 최적화 제안해줘'],
-    commerce: ['채널별 매출 현황', '프로모션 제안해줘', '아마존 운영 리포트'],
-    admin: ['대금출금 현황 보고', '임직원 현황 정리', '인증/상표/임상 현황'],
-    brand: ['오늘 리뷰 분석 리포트', '경쟁사 분석해줘', '상품 개선안 제안해줘'],
-    global: ['수출 현황 보고', '환율 변동 리포트', '바이어 컨택 메일 작성'],
-  };
-
   return (
     <>
+      {/* Header */}
       <div style={{ height: 48, minHeight: 48, padding: '0 20px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid #E5E5EA', background: '#FFFFFF', flexShrink: 0 }}>
         <Icon size={16} strokeWidth={1.5} color="#5E6AD2" />
         <span style={{ fontSize: 15, fontWeight: 600, color: '#1D1D1F' }}>{agent.name}</span>
@@ -976,44 +1029,63 @@ export default function ChatView() {
       </div>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
-        {/* LEFT: Chat 55% */}
-        <div style={{ width: '55%', display: 'flex', flexDirection: 'column', borderRight: '1px solid #E5E5EA', background: '#FFFFFF' }}>
+        {/* LEFT: KPI Dashboard 65% */}
+        <div style={{ width: '65%', overflowY: 'auto', padding: 16, background: '#F5F5F7', borderRight: '1px solid #E5E5EA', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+            <Icon size={14} strokeWidth={1.5} color="#5E6AD2" />
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#AEAEB2', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {agent.name} Dashboard
+            </span>
+          </div>
+          {AgentDashboard && <AgentDashboard />}
+        </div>
+
+        {/* RIGHT: Chat 35% */}
+        <div style={{ width: '35%', display: 'flex', flexDirection: 'column', background: '#FFFFFF', minWidth: 0 }}>
+          {/* Messages area */}
           <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
             {messages.length === 0 ? (
               <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 12, background: '#F5F5F7', border: '1px solid #E5E5EA', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-                  <Icon size={20} strokeWidth={1.5} color="#5E6AD2" />
+                <div style={{ width: 40, height: 40, borderRadius: 11, background: '#F5F5F7', border: '1px solid #E5E5EA', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                  <Icon size={18} strokeWidth={1.5} color="#5E6AD2" />
                 </div>
-                <div style={{ fontSize: 18, fontWeight: 600, color: '#1D1D1F', marginBottom: 4 }}>{agent.name}</div>
-                <div style={{ fontSize: 13, color: '#6E6E73', marginBottom: 24 }}>{agent.description}</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 400 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#1D1D1F', marginBottom: 4 }}>{agent.name}</div>
+                <div style={{ fontSize: 12, color: '#6E6E73', marginBottom: 20, textAlign: 'center', lineHeight: 1.5 }}>{agent.description}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, justifyContent: 'center' }}>
                   {(quickActions[activeAgent] || []).map((action, i) => (
-                    <button key={i} onClick={() => setInput(action)}
-                      style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #E5E5EA', background: '#FFFFFF', color: '#6E6E73', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#5E6AD2'; e.currentTarget.style.color = '#5E6AD2'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E5E5EA'; e.currentTarget.style.color = '#6E6E73'; }}>
+                    <button
+                      key={i}
+                      onClick={() => setInput(action)}
+                      style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #E5E5EA', background: '#FFFFFF', color: '#6E6E73', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = '#5E6AD2'; e.currentTarget.style.color = '#5E6AD2'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = '#E5E5EA'; e.currentTarget.style.color = '#6E6E73'; }}
+                    >
                       {action}
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <div style={{ padding: 16 }}>
+              <div style={{ padding: 14 }}>
                 {messages.map((msg, i) => (
-                  <div key={i} style={{ marginBottom: 20 }}>
+                  <div key={i} style={{ marginBottom: 18 }}>
                     {msg.role === 'user' ? (
                       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <div style={{ background: '#5E6AD2', color: '#FFF', borderRadius: '14px 14px 4px 14px', padding: '10px 16px', maxWidth: '80%', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+                        <div style={{ background: '#5E6AD2', color: '#FFF', borderRadius: '14px 14px 4px 14px', padding: '9px 14px', maxWidth: '85%', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                          {msg.content}
+                        </div>
                       </div>
                     ) : (
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                          <div style={{ width: 20, height: 20, borderRadius: 5, background: '#F5F5F7', border: '1px solid #E5E5EA', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <div style={{ width: 20, height: 20, borderRadius: 5, background: '#F5F5F7', border: '1px solid #E5E5EA', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                             <Icon size={10} strokeWidth={2} color="#5E6AD2" />
                           </div>
                           <span style={{ fontSize: 11, fontWeight: 500, color: '#AEAEB2' }}>{agent.name}</span>
                         </div>
-                        <div style={{ paddingLeft: 26, fontSize: 13, lineHeight: 1.75, color: '#1D1D1F', whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+                        <div style={{ paddingLeft: 26, fontSize: 13, lineHeight: 1.75, color: msg.error ? '#FF3B30' : '#1D1D1F', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                          {msg.content}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1021,30 +1093,36 @@ export default function ChatView() {
                 {isLoading && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 26 }}>
                     <Loader2 size={14} color="#AEAEB2" style={{ animation: 'spin 1s linear infinite' }} />
+                    <span style={{ fontSize: 12, color: '#AEAEB2' }}>생각 중...</span>
                   </div>
                 )}
                 <div ref={endRef} />
               </div>
             )}
           </div>
-          <div style={{ padding: '10px 16px 16px', flexShrink: 0, background: '#FFFFFF' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F5F5F7', border: `1px solid ${inputFocused ? '#5E6AD2' : '#E5E5EA'}`, borderRadius: 10, padding: '10px 14px', transition: 'border-color 0.15s' }}>
-              <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()} onFocus={() => setInputFocused(true)} onBlur={() => setInputFocused(false)} placeholder={`${agent.name}에게 메시지...`} style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#1D1D1F', fontSize: 13, fontFamily: 'inherit' }} />
-              <button onClick={send} disabled={!input.trim() || isLoading} style={{ width: 28, height: 28, borderRadius: 7, border: 'none', background: input.trim() && !isLoading ? '#5E6AD2' : '#E5E5EA', color: input.trim() && !isLoading ? '#FFF' : '#AEAEB2', cursor: input.trim() && !isLoading ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', flexShrink: 0 }}>
+
+          {/* Input area */}
+          <div style={{ padding: '10px 14px 16px', flexShrink: 0, background: '#FFFFFF', borderTop: '1px solid #F5F5F7' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F5F5F7', border: `1px solid ${inputFocused ? '#5E6AD2' : '#E5E5EA'}`, borderRadius: 10, padding: '9px 12px', transition: 'border-color 0.15s' }}>
+              <input
+                type="text"
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
+                placeholder={`${agent.name}에게 메시지...`}
+                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#1D1D1F', fontSize: 13, fontFamily: 'inherit', minWidth: 0 }}
+              />
+              <button
+                onClick={send}
+                disabled={!input.trim() || isLoading}
+                style={{ width: 28, height: 28, borderRadius: 7, border: 'none', background: input.trim() && !isLoading ? '#5E6AD2' : '#E5E5EA', color: input.trim() && !isLoading ? '#FFF' : '#AEAEB2', cursor: input.trim() && !isLoading ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s', flexShrink: 0 }}
+              >
                 <ArrowUp size={14} strokeWidth={2} />
               </button>
             </div>
           </div>
-        </div>
-
-        {/* RIGHT: KPI Dashboard 45% */}
-        <div style={{ width: '45%', overflowY: 'auto', padding: 16, background: '#F5F5F7' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-            <Icon size={14} strokeWidth={1.5} color="#5E6AD2" />
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#AEAEB2', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{agent.name} Dashboard</span>
-          </div>
-          {AgentDashboard && <AgentDashboard />}
-          <ApiStatusPanel agent={agent} />
         </div>
       </div>
     </>

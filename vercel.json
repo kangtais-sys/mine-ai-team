@@ -70,6 +70,7 @@
     { "source": "/api/cs/daily-report", "destination": "/api/cs/daily-report" },
     { "source": "/api/sales/sheets", "destination": "/api/sales/sheets" },
     { "source": "/api/sales/amazon", "destination": "/api/sales/amazon" },
+    { "source": "/api/channel/persona", "destination": "/api/channel/persona" },
     { "source": "/api/sales/cafe24", "destination": "/api/sales/cafe24" },
     { "source": "/api/sales/cafe24-debug", "destination": "/api/sales/cafe24-debug" },
     { "source": "/api/sales/naver", "destination": "/api/sales/naver" },
