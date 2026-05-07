@@ -73,6 +73,7 @@
     { "source": "/api/sales/cafe24", "destination": "/api/sales/cafe24" },
     { "source": "/api/sales/cafe24-debug", "destination": "/api/sales/cafe24-debug" },
     { "source": "/api/sales/naver", "destination": "/api/sales/naver" },
+    { "source": "/api/naver-debug", "destination": "/api/naver-debug" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
