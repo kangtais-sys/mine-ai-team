@@ -4,11 +4,8 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import useDashboardStore from '../store/dashboardStore';
 import { agents } from '../lib/agents';
 
-const fmt = (v) => {
-  if (v >= 100000000) return `${(v / 100000000).toFixed(1)}억`;
-  if (v >= 10000) return `${(v / 10000).toFixed(0)}만`;
-  return v.toLocaleString();
-};
+const fmt = (v) => v?.toLocaleString() ?? '-';
+const fmtKRW = (v) => v != null ? `${v.toLocaleString()}원` : '-';
 
 const tip = {
   background: '#1A1A1A',
@@ -117,13 +114,13 @@ export default function Dashboard() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 10, color: '#777' }}>당월 누적</div>
                 <div style={{ fontSize: 22, fontWeight: 700, color: '#FFF', letterSpacing: '-0.02em', marginTop: 4 }}>
-                  {stats?.totalRevenue ? fmt(stats.totalRevenue) + '원' : '-'}
+                  {fmtKRW(stats?.totalRevenue)}
                 </div>
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 10, color: '#777' }}>2026년 누적</div>
                 <div style={{ fontSize: 22, fontWeight: 700, color: '#9D8AE9', letterSpacing: '-0.02em', marginTop: 4 }}>
-                  {stats?.totalRevenueYearly ? fmt(stats.totalRevenueYearly) + '원' : '-'}
+                  {fmtKRW(stats?.totalRevenueYearly)}
                 </div>
               </div>
             </div>
@@ -141,8 +138,8 @@ export default function Dashboard() {
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <div style={{ width: 5, height: 5, borderRadius: 2, background: ch.color, flexShrink: 0 }} />
                     <span style={{ fontSize: 10, color: '#777', width: 58 }}>{ch.label}</span>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: '#FFF', flex: 1, textAlign: 'right' }}>{m ? fmt(m) : '-'}</span>
-                    <span style={{ fontSize: 10, color: '#9D8AE9', width: 60, textAlign: 'right' }}>{y ? fmt(y) : '-'}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#FFF', flex: 1, textAlign: 'right' }}>{fmtKRW(m)}</span>
+                    <span style={{ fontSize: 10, color: '#9D8AE9', width: 60, textAlign: 'right' }}>{fmtKRW(y)}</span>
                   </div>
                 );
               })}
@@ -160,8 +157,8 @@ export default function Dashboard() {
               <ResponsiveContainer width="100%" height={170}>
                 <LineChart data={stats?.monthlyRevenue || revenueData.map(d => ({ month: d.month, total: (d['올리브영']||0) + (d['스마트스토어']||0) + (d['자사몰']||0) + (d['해외']||0) }))}>
                   <XAxis dataKey="month" stroke="#444" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#444" fontSize={9} tickLine={false} axisLine={false} width={36} tickFormatter={(v) => v >= 10000 ? `${(v/10000).toFixed(0)}만` : v} />
-                  <Tooltip contentStyle={tip} formatter={(v) => [`${fmt(v)}원`, '총매출']} cursor={{ stroke: '#333' }} />
+                  <YAxis stroke="#444" fontSize={9} tickLine={false} axisLine={false} width={52} tickFormatter={(v) => v.toLocaleString()} />
+                  <Tooltip contentStyle={tip} formatter={(v) => [fmtKRW(v), '총매출']} cursor={{ stroke: '#333' }} />
                   <Line type="monotone" dataKey="total" stroke="#5E6AD2" strokeWidth={2} dot={{ r: 3, fill: '#5E6AD2' }} activeDot={{ r: 5 }} />
                 </LineChart>
               </ResponsiveContainer>
@@ -277,7 +274,7 @@ export default function Dashboard() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
                     <span style={{ fontSize: 14, color: '#CCC' }}>{ch.name}</span>
                     <div style={{ display: 'flex', gap: 12 }}>
-                      <span style={{ fontSize: 14, color: '#666' }}>{fmt(ch.value)}원</span>
+                      <span style={{ fontSize: 14, color: '#666' }}>{fmtKRW(ch.value)}</span>
                       <span style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5', width: 44, textAlign: 'right' }}>{ch.percentage}%</span>
                     </div>
                   </div>

@@ -46,6 +46,23 @@ async function cafe24Fetch(path, accessToken) {
   return JSON.parse(text);
 }
 
+async function fetchAllOrders(accessToken, startDate, endDate) {
+  let offset = 0;
+  const limit = 100;
+  let allOrders = [];
+  while (true) {
+    const data = await cafe24Fetch(
+      `/admin/orders?start_date=${startDate}&end_date=${endDate}&limit=${limit}&offset=${offset}&shop_no=1`,
+      accessToken
+    );
+    const orders = data?.orders || [];
+    allOrders = allOrders.concat(orders);
+    if (orders.length < limit) break;
+    offset += limit;
+  }
+  return allOrders;
+}
+
 async function fetchMonthlySales(accessToken, months = 5) {
   const monthly = {};
   const now = new Date();
@@ -58,11 +75,7 @@ async function fetchMonthlySales(accessToken, months = 5) {
     const endDate = `${monthStr}-${String(lastDay).padStart(2, '0')}`;
 
     try {
-      const data = await cafe24Fetch(
-        `/admin/orders?start_date=${startDate}&end_date=${endDate}&limit=100&shop_no=1`,
-        accessToken
-      );
-      const orders = data?.orders || [];
+      const orders = await fetchAllOrders(accessToken, startDate, endDate);
       const total = orders.reduce((sum, o) => {
         return sum + parseFloat(o.payment_amount || o.total_price || o.actual_payment_amount || 0);
       }, 0);
