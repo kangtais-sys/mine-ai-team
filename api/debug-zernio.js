@@ -24,18 +24,9 @@ export default async function handler(req, res) {
       followers: a.metadata?.profileData?.followersCount || a.followersCount || 0,
     }));
 
-    // Show post fields
-    const postList = (posts.posts || posts.data || posts.items || []).slice(0, 3).map(p => ({
-      id: p.id,
-      profileId: p.profileId,
-      accountId: p.accountId,
-      platform: p.platform,
-      commentsCount: p.commentsCount,
-      comments: p.comments,
-      metrics: p.metrics,
-      engagement: p.engagement,
-      publishedAt: p.publishedAt,
-    }));
+    // Show full raw post structure
+    const rawPosts = posts.posts || posts.data || posts.items || [];
+    const postList = rawPosts.slice(0, 3);
 
     return res.status(200).json({
       accountsStatus: accsRes.status,
