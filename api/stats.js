@@ -155,14 +155,13 @@ export default async function handler(req, res) {
         }
 
         if (amazonCached) {
-          const monthly = amazonCached.monthly || {};
+          const raw = typeof amazonCached === 'string' ? JSON.parse(amazonCached) : amazonCached;
+          const months = raw.months || Object.entries(raw.monthly || {}).map(([month, v]) => ({ month, ...v }));
           const nowMonthKey2 = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
           const nowYear2 = String(new Date().getFullYear());
-          const monthlyTotal = monthly[nowMonthKey2]?.revenue || 0;
-          const yearlyTotal = Object.entries(monthly)
-            .filter(([k]) => k.startsWith(nowYear2))
-            .reduce((s, [, v]) => s + (v.revenue || 0), 0);
-          exportRevenue = { status: 'connected', monthlyTotal, yearlyTotal, monthly, updatedAt: amazonCached.updatedAt };
+          const monthlyTotal = months.find(m => m.month === nowMonthKey2)?.revenue || 0;
+          const yearlyTotal = months.filter(m => (m.month || '').startsWith(nowYear2)).reduce((s, m) => s + (Number(m.revenue) || 0), 0);
+          exportRevenue = { status: 'connected', monthlyTotal, yearlyTotal, months, updatedAt: raw.updatedAt };
         } else {
           // Cache miss — trigger a background refresh (fire and forget)
           fetch(`https://${process.env.VERCEL_URL || 'mine-ai-team.vercel.app'}/api/sales/amazon`).catch(() => {});
@@ -205,17 +204,86 @@ export default async function handler(req, res) {
     const activityLog = await redis.lrange('activity:log', 0, 9);
     const parsedLog = (activityLog || []).map(l => { try { return typeof l === 'string' ? JSON.parse(l) : l; } catch { return l; } });
 
-    // === G. Channel connection status ===
+    // === G. Data source connection status (per service) ===
     const connections = {
-      zernio: { connected: !!process.env.ZERNIO_API_KEY },
-      google: { connected: !!process.env.GOOGLE_REFRESH_TOKEN },
-      anthropic: { connected: !!process.env.ANTHROPIC_API_KEY },
-      instagram: { connected: !!process.env.INSTAGRAM_ACCESS_TOKEN },
-      oliveyoung: { connected: !!process.env.OLIVEYOUNG_SHEET_ID },
-      naverAds: { connected: !!process.env.NAVER_AD_API_KEY },
-      googleAds: { connected: !!process.env.GOOGLE_ADS_CUSTOMER_ID },
-      ga4: { connected: !!process.env.GA4_PROPERTY_ID },
+      zernio: { connected: !!process.env.ZERNIO_API_KEY, label: 'Zernio SNS', source: 'SNS 자동화' },
+      google: { connected: !!process.env.GOOGLE_REFRESH_TOKEN, label: 'Google', source: 'OAuth' },
+      anthropic: { connected: !!process.env.ANTHROPIC_API_KEY, label: 'Anthropic', source: 'Claude AI' },
+      instagram: { connected: !!process.env.INSTAGRAM_ACCESS_TOKEN, label: 'Instagram', source: 'Graph API' },
+      oliveyoung: { connected: !!process.env.OLIVEYOUNG_SHEET_ID, label: '올리브영', source: 'Google Sheets CSV' },
+      naverAds: { connected: !!process.env.NAVER_AD_API_KEY, label: '네이버광고', source: 'Naver Ads API' },
+      googleAds: { connected: !!process.env.GOOGLE_ADS_CUSTOMER_ID, label: '구글광고', source: 'Google Ads API' },
+      amazon: { connected: !!(process.env.SP_API_REFRESH_TOKEN || process.env.AMAZON_REFRESH_TOKEN), label: 'Amazon', source: 'SP-API' },
+      cafe24: { connected: !!process.env.CAFE24_CLIENT_ID, label: 'Cafe24', source: 'API' },
+      smartstore: { connected: !!process.env.NAVER_SMARTSTORE_CLIENT_ID, label: '스마트스토어', source: 'Naver API' },
     };
+
+    // === G2. Per-agent connection status ===
+    const agentConnections = {
+      creator: {
+        name: 'AI 크리에이터',
+        connected: !!process.env.ZERNIO_API_KEY,
+        source: 'Zernio SNS',
+        description: '유민혜·밀리밀리 채널 자동화',
+      },
+      community: {
+        name: 'AI 커뮤니티',
+        connected: !!process.env.INSTAGRAM_ACCESS_TOKEN,
+        source: 'Instagram Graph API',
+        description: '댓글·DM 자동 응대',
+      },
+      cs: {
+        name: 'AI CS매니저',
+        connected: !!process.env.KAKAO_CHANNEL_ID,
+        source: 'KakaoTalk 채널',
+        description: '고객 문의 자동 처리',
+      },
+      marketer: {
+        name: 'AI 마케터',
+        connected: !!(process.env.NAVER_AD_API_KEY || process.env.META_AD_ACCOUNT_IDS),
+        source: '네이버/Meta 광고 API',
+        description: 'ROAS 최적화·광고 모니터링',
+      },
+      commerce: {
+        name: 'AI 커머스MD',
+        connected: !!process.env.CAFE24_CLIENT_ID,
+        source: 'Cafe24 API',
+        description: '프로모션 캘린더·재고 관리',
+      },
+      management: {
+        name: 'AI 경영지원',
+        connected: !!process.env.ANTHROPIC_API_KEY,
+        source: 'Claude AI',
+        description: '수출바우처·정부지원 모니터링',
+      },
+      brand: {
+        name: 'AI 랭킹&리뷰',
+        connected: !!process.env.OLIVEYOUNG_SHEET_ID,
+        source: '올리브영 Google Sheets',
+        description: '카테고리 랭킹·리뷰 분석',
+      },
+      export: {
+        name: 'AI 수출',
+        connected: !!(process.env.SP_API_REFRESH_TOKEN || process.env.AMAZON_REFRESH_TOKEN),
+        source: 'Amazon SP-API',
+        description: '국가별 매출·바이어 파이프라인',
+      },
+      chief: {
+        name: 'Chief AI',
+        connected: !!process.env.ANTHROPIC_API_KEY,
+        source: 'Claude AI + 전체 데이터',
+        description: '일간 통합 보고·의사결정 지원',
+      },
+    };
+
+    // === G3. Agent last report timestamps from Redis ===
+    const agentReportKeys = Object.keys(agentConnections);
+    const todayStr = now.toISOString().slice(0, 10);
+    const agentReports = {};
+    await Promise.all(agentReportKeys.map(async (id) => {
+      const r = await redis.get(`agent:report:${id}:${todayStr}`);
+      if (r) agentReports[id] = typeof r === 'string' ? JSON.parse(r) : r;
+    }));
 
     // === H. Naver + Cafe24 from Redis (Mac cron / Vercel cache) ===
     const [naverDaily, cafe24Daily, chiefReport] = await Promise.all([
@@ -231,17 +299,25 @@ export default async function handler(req, res) {
     const naverYearly = Object.values(naverMonthly).reduce((s, m) => s + (m.revenue || 0), 0);
     const cafe24Yearly = Object.values(cafe24Monthly).reduce((s, m) => s + (m.revenue || 0), 0);
 
+    // === Yesterday's sales per channel ===
+    const kstNow = new Date(Date.now() + 9 * 3600000);
+    const yesterday = new Date(kstNow - 86400000).toISOString().slice(0, 10).replace(/-/g, '');
+    const yesterdaySales = {
+      oliveyoung: oliveyoungRevenue?.byDate?.[yesterday]?.sales || 0,
+      smartstore: null, // no daily breakdown in naver data
+      cafe24: null,
+      amazon: null,
+    };
+
     // === Total Revenue (all channels) — monthly + yearly ===
     const channelSales = {
       oliveyoung: oliveyoungRevenue?.currentMonthSales || 0,
-      ga4: ga4Revenue?.month?.revenue || ga4Revenue?.revenue || 0,
       smartstore: naverMonthSales,
       cafe24: cafe24MonthSales,
       amazon: exportRevenue?.monthlyTotal || 0,
     };
     const channelSalesYearly = {
       oliveyoung: oliveyoungRevenue?.yearlySales || 0,
-      ga4: ga4Revenue?.year?.revenue || ga4Revenue?.revenue || 0,
       smartstore: naverYearly,
       cafe24: cafe24Yearly,
       amazon: exportRevenue?.yearlyTotal || 0,
@@ -275,10 +351,13 @@ export default async function handler(req, res) {
       totalRevenueYearly,
       channelSales,
       channelSalesYearly,
+      yesterdaySales,
       monthlyRevenue,
       followerHistory,
       activityLog: parsedLog,
       connections,
+      agentConnections,
+      agentReports,
       chiefReport: chiefData,
     });
   } catch (error) {
