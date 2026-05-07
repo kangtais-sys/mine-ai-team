@@ -48,7 +48,7 @@ async function fetchOrders(token, from, to) {
       page: String(page),
       size: '500',
     });
-    const res = await fetch(`${BASE}/v1/pay-order/seller/orders/last-changed-statuses?${params}`, {
+    const res = await fetch(`${BASE}/v1/pay-order/seller/product-orders/last-changed-statuses?${params}`, {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     });
     if (!res.ok) throw new Error(`Naver orders ${res.status}: ${await res.text()}`);
