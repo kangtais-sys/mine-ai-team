@@ -38,7 +38,7 @@ async function cafe24Fetch(path, accessToken) {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
-      'X-Cafe24-Api-Version': '2024-06-01',
+      'X-Cafe24-Api-Version': '2026-03-01',
     },
   });
   const text = await res.text();
