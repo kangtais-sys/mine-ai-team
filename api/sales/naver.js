@@ -1,4 +1,4 @@
-import { createHmac } from 'crypto';
+import bcrypt from 'bcryptjs';
 import { Redis } from '@upstash/redis';
 
 const redis = new Redis({
@@ -16,18 +16,17 @@ async function getToken() {
   const clientSecret = process.env.NAVER_CLIENT_SECRET;
   if (!clientId || !clientSecret) throw new Error('NOT_CONNECTED');
 
-  const timestamp = Date.now();
-  const sig = createHmac('sha256', clientSecret)
-    .update(`${clientId}_${timestamp}`)
-    .digest('base64');
+  const timestamp = String(Date.now() - 3000);
+  const hashed = bcrypt.hashSync(`${clientId}_${timestamp}`, clientSecret);
+  const client_secret_sign = Buffer.from(hashed).toString('base64');
 
   const res = await fetch(`${BASE}/v1/oauth2/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       client_id: clientId,
-      timestamp: String(timestamp),
-      client_secret_sign: sig,
+      timestamp,
+      client_secret_sign,
       grant_type: 'client_credentials',
       type: 'SELF',
       account_type: 'SELLER',
