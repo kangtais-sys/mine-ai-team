@@ -113,13 +113,20 @@ export default function Dashboard() {
   const agentConns = stats?.agentConnections || {};
   const agentReps = stats?.agentReports || {};
 
-  // 한국 합계
-  const krMonth = (chMonth.oliveyoung || 0) + (chMonth.smartstore || 0) + (chMonth.cafe24 || 0);
-  const krYear = (chYear.oliveyoung || 0) + (chYear.smartstore || 0) + (chYear.cafe24 || 0);
+  // 한국 B2C
+  const krMonth = stats?.krMonthTotal || (chMonth.oliveyoung || 0) + (chMonth.smartstore || 0) + (chMonth.cafe24 || 0);
+  const krYear = stats?.krYearTotal || (chYear.oliveyoung || 0) + (chYear.smartstore || 0) + (chYear.cafe24 || 0);
+  const krDaily = yday.total || yday.oliveyoung || 0;
 
-  // 미국 합계
-  const usMonth = chMonth.amazon || 0;
-  const usYear = chYear.amazon || 0;
+  // 미국 B2C (Amazon US + TikTok Shop US)
+  const usB2c = stats?.usB2cSales || {};
+  const usB2cYear = stats?.usB2cSalesYearly || {};
+  const usMonth = stats?.usMonthTotal || usB2c.amazon || 0;
+  const usYear = stats?.usYearTotal || usB2cYear.amazon || 0;
+
+  // 수출 B2B (수출시트)
+  const b2bData = stats?.b2bExportRevenue || null;
+  const b2bConnected = b2bData?.status === 'connected';
 
   const conn = stats?.connections || {};
   const agentKeyList = ['creator','community','cs','marketer','commerce','management','brand','export','chief'];
@@ -157,49 +164,40 @@ export default function Dashboard() {
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px 40px' }}>
 
-        {/* ── 1. 통합 매출 요약 ── */}
+        {/* ── 1. 전체 매출 합계 (일/월/연) ── */}
         <div style={{ marginBottom: 14 }}>
-          <SectionTitle>통합 매출 현황</SectionTitle>
+          <SectionTitle>전체 매출 합계</SectionTitle>
           <div style={{ ...CARD, padding: '16px 20px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1px 1fr 1px 1fr', gap: 0 }}>
-              {/* 한국 합계 */}
-              <div style={{ paddingRight: 20 }}>
-                <div style={{ fontSize: 11, color: '#AEAEB2', marginBottom: 4 }}>🇰🇷 한국 채널 합계</div>
-                <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end' }}>
-                  <div>
-                    <div style={{ fontSize: 10, color: '#AEAEB2' }}>{thisMonthLabel()} 누적</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: '#1D1D1F', letterSpacing: '-0.03em' }}>{fmtM(krMonth)}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10, color: '#5E6AD2' }}>2026 YTD</div>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: '#5E6AD2' }}>{fmtM(krYear)}</div>
-                  </div>
-                </div>
+            {/* 헤더 행 */}
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr 1fr', gap: 0, marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #F2F2F5' }}>
+              <div />
+              <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, textAlign: 'right' }}>전일</div>
+              <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, textAlign: 'right' }}>{thisMonthLabel()} 누적</div>
+              <div style={{ fontSize: 10, color: '#5E6AD2', fontWeight: 500, textAlign: 'right' }}>2026 YTD</div>
+            </div>
+            {/* 한국 B2C */}
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr 1fr', gap: 0, alignItems: 'center', padding: '7px 0', borderBottom: '1px solid #F5F5F7' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>🇰🇷 한국</div>
+              <div style={{ textAlign: 'right', fontSize: 13, color: '#6E6E73' }}>{krDaily > 0 ? fmtKRW(krDaily) : '-'}</div>
+              <div style={{ textAlign: 'right', fontSize: 17, fontWeight: 700, color: '#1D1D1F', letterSpacing: '-0.02em' }}>{fmtM(krMonth)}</div>
+              <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, color: '#5E6AD2' }}>{fmtM(krYear)}</div>
+            </div>
+            {/* 미국 B2C */}
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr 1fr', gap: 0, alignItems: 'center', padding: '7px 0', borderBottom: '1px solid #F5F5F7' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>🇺🇸 미국 B2C</div>
+              <div style={{ textAlign: 'right', fontSize: 13, color: '#6E6E73' }}>-</div>
+              <div style={{ textAlign: 'right', fontSize: 17, fontWeight: 700, color: '#1D1D1F', letterSpacing: '-0.02em' }}>{usMonth > 0 ? fmtUSD(usMonth) : '-'}</div>
+              <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, color: '#5E6AD2' }}>{usYear > 0 ? fmtUSD(usYear) : '-'}</div>
+            </div>
+            {/* 수출 B2B */}
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr 1fr', gap: 0, alignItems: 'center', padding: '7px 0' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>📦 수출 B2B</div>
+              <div style={{ textAlign: 'right', fontSize: 13, color: '#6E6E73' }}>-</div>
+              <div style={{ textAlign: 'right', fontSize: 13, color: b2bConnected ? '#6E6E73' : '#AEAEB2' }}>
+                {b2bConnected ? `${b2bData.totalRows || 0}건` : '미연결'}
               </div>
-              <div style={{ width: 1, background: '#F2F2F5', margin: '0 0' }} />
-              {/* 미국 합계 */}
-              <div style={{ paddingLeft: 20, paddingRight: 20 }}>
-                <div style={{ fontSize: 11, color: '#AEAEB2', marginBottom: 4 }}>🇺🇸 미국 채널 합계</div>
-                <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end' }}>
-                  <div>
-                    <div style={{ fontSize: 10, color: '#AEAEB2' }}>{thisMonthLabel()} 누적</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: '#1D1D1F', letterSpacing: '-0.03em' }}>{usMonth > 0 ? fmtUSD(usMonth) : '-'}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10, color: '#5E6AD2' }}>2026 YTD</div>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: '#5E6AD2' }}>{usYear > 0 ? fmtUSD(usYear) : '-'}</div>
-                  </div>
-                </div>
-              </div>
-              <div style={{ width: 1, background: '#F2F2F5' }} />
-              {/* 전체 합산 */}
-              <div style={{ paddingLeft: 20 }}>
-                <div style={{ fontSize: 11, color: '#AEAEB2', marginBottom: 4 }}>전체 통합 (KRW 기준)</div>
-                <div>
-                  <div style={{ fontSize: 10, color: '#AEAEB2' }}>{thisMonthLabel()} 누적</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: '#1D1D1F', letterSpacing: '-0.03em' }}>{fmtM(krMonth)}</div>
-                  <div style={{ fontSize: 10, color: '#AEAEB2', marginTop: 1 }}>+ 미국 {usMonth > 0 ? fmtUSD(usMonth) : '$0'}</div>
-                </div>
+              <div style={{ textAlign: 'right', fontSize: 13, color: b2bConnected ? '#6E6E73' : '#AEAEB2' }}>
+                {b2bConnected ? '시트 연결됨' : '수출시트 미연결'}
               </div>
             </div>
           </div>
@@ -244,11 +242,11 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* ── 3. 미국 채널별 매출 ── */}
+        {/* ── 3. 미국 B2C 채널별 매출 ── */}
         <div style={{ marginBottom: 14 }}>
-          <SectionTitle>미국 채널별 매출</SectionTitle>
+          <SectionTitle>미국 B2C 채널별 매출</SectionTitle>
           <SalesTable
-            title="미국"
+            title="미국 B2C"
             flag="🇺🇸"
             currency="USD"
             rows={[
@@ -256,16 +254,39 @@ export default function Dashboard() {
                 label: 'Amazon US',
                 dot: '#FF9900',
                 daily: null,
-                monthly: usMonth,
-                yearly: usYear,
+                monthly: usB2c.amazon,
+                yearly: usB2cYear.amazon,
                 connected: conn.amazon?.connected,
                 sourceLabel: 'SP-API',
               },
               { label: 'TikTok Shop US', dot: '#2D3436', daily: null, monthly: 0, yearly: 0, connected: false, sourceLabel: '' },
-              { label: 'Shopee', dot: '#EE4D2D', daily: null, monthly: 0, yearly: 0, connected: false, sourceLabel: '' },
-              { label: 'Qoo10', dot: '#9C4FFF', daily: null, monthly: 0, yearly: 0, connected: false, sourceLabel: '' },
             ]}
           />
+        </div>
+
+        {/* ── 3b. 수출 B2B ── */}
+        <div style={{ marginBottom: 14 }}>
+          <SectionTitle>수출 B2B</SectionTitle>
+          <div style={{ ...CARD }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>📦 수출 현황</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #F5F5F7' }}>
+              <ConnDot ok={b2bConnected} />
+              <span style={{ fontSize: 12, color: '#1D1D1F', flex: 1 }}>수출 시트 (EXPORT_SHEET_ID)</span>
+              <span style={{ fontSize: 11, color: b2bConnected ? '#34C759' : '#AEAEB2' }}>
+                {b2bConnected ? `${b2bData.totalRows}건 · Google Sheets` : '미연결'}
+              </span>
+            </div>
+            {b2bConnected && b2bData.headers?.length > 0 && (
+              <div style={{ marginTop: 8, fontSize: 10, color: '#AEAEB2' }}>
+                컬럼: {b2bData.headers.slice(0, 6).join(' · ')}
+              </div>
+            )}
+            {!b2bConnected && (
+              <div style={{ marginTop: 8, fontSize: 11, color: '#AEAEB2' }}>
+                EXPORT_SHEET_ID 환경변수를 설정하면 수출 B2B 데이터가 연결됩니다.
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── 4. 채널 현황 (팔로워 + 게시물) ── */}

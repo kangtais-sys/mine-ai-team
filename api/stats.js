@@ -137,7 +137,28 @@ export default async function handler(req, res) {
       }
     }
 
-    // === D2. Amazon SP-API (Redis hourly cache from /api/sales/amazon) ===
+    // === D2. 수출 B2B 시트 (EXPORT_SHEET_ID — 공개 구글시트) ===
+    let b2bExportRevenue = null;
+    if (process.env.EXPORT_SHEET_ID) {
+      try {
+        const exportRows = await readPublicSheet(process.env.EXPORT_SHEET_ID);
+        const exportData = exportRows.slice(1).filter(r => r.some(c => c?.trim()));
+        // 컬럼 구조 파악: 첫 row 헤더 기준으로 최대한 파싱
+        const header = (exportRows[0] || []).map(h => (h || '').trim().toLowerCase());
+        const nowYear = String(new Date().getFullYear());
+        const nowMonthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+        b2bExportRevenue = {
+          status: 'connected',
+          totalRows: exportData.length,
+          headers: exportRows[0] || [],
+          updatedAt: new Date().toISOString(),
+        };
+      } catch (e) {
+        b2bExportRevenue = { status: 'error', error: e.message };
+      }
+    }
+
+    // === D3. Amazon SP-API B2C (Redis hourly cache from /api/sales/amazon) ===
     let exportRevenue = null;
     if (process.env.SP_API_REFRESH_TOKEN || process.env.AMAZON_REFRESH_TOKEN) {
       try {
@@ -205,6 +226,9 @@ export default async function handler(req, res) {
     const parsedLog = (activityLog || []).map(l => { try { return typeof l === 'string' ? JSON.parse(l) : l; } catch { return l; } });
 
     // === G. Data source connection status (per service) ===
+    // 스마트스토어: Redis에 실제 데이터 있으면 연결됨 (Mac cron이 채움)
+    const naverHasData = Object.keys(naverMonthly).length > 0;
+    const cafe24HasData = Object.keys(cafe24Monthly).length > 0;
     const connections = {
       zernio: { connected: !!process.env.ZERNIO_API_KEY, label: 'Zernio SNS', source: 'SNS 자동화' },
       google: { connected: !!process.env.GOOGLE_REFRESH_TOKEN, label: 'Google', source: 'OAuth' },
@@ -213,9 +237,10 @@ export default async function handler(req, res) {
       oliveyoung: { connected: !!process.env.OLIVEYOUNG_SHEET_ID, label: '올리브영', source: 'Google Sheets CSV' },
       naverAds: { connected: !!process.env.NAVER_AD_API_KEY, label: '네이버광고', source: 'Naver Ads API' },
       googleAds: { connected: !!process.env.GOOGLE_ADS_CUSTOMER_ID, label: '구글광고', source: 'Google Ads API' },
-      amazon: { connected: !!(process.env.SP_API_REFRESH_TOKEN || process.env.AMAZON_REFRESH_TOKEN), label: 'Amazon', source: 'SP-API' },
-      cafe24: { connected: !!process.env.CAFE24_CLIENT_ID, label: 'Cafe24', source: 'API' },
-      smartstore: { connected: !!process.env.NAVER_SMARTSTORE_CLIENT_ID, label: '스마트스토어', source: 'Naver API' },
+      amazon: { connected: !!(process.env.SP_API_REFRESH_TOKEN || process.env.AMAZON_REFRESH_TOKEN), label: 'Amazon US', source: 'SP-API (B2C)' },
+      cafe24: { connected: cafe24HasData || !!process.env.CAFE24_CLIENT_ID, label: 'Cafe24', source: 'API' },
+      smartstore: { connected: naverHasData, label: '스마트스토어', source: 'Naver (Redis 캐시)' },
+      exportSheet: { connected: !!(process.env.EXPORT_SHEET_ID && b2bExportRevenue?.status === 'connected'), label: '수출시트', source: 'Google Sheets (B2B)' },
     };
 
     // === G2. Per-agent connection status ===
@@ -301,29 +326,54 @@ export default async function handler(req, res) {
 
     // === Yesterday's sales per channel ===
     const kstNow = new Date(Date.now() + 9 * 3600000);
-    const yesterday = new Date(kstNow - 86400000).toISOString().slice(0, 10).replace(/-/g, '');
+    const yesterdayDate = new Date(kstNow - 86400000).toISOString().slice(0, 10).replace(/-/g, '');
     const yesterdaySales = {
-      oliveyoung: oliveyoungRevenue?.byDate?.[yesterday]?.sales || 0,
-      smartstore: null, // no daily breakdown in naver data
+      oliveyoung: oliveyoungRevenue?.byDate?.[yesterdayDate]?.sales || 0,
+      smartstore: null, // Mac cron 월별 집계만 제공
       cafe24: null,
       amazon: null,
+      total: oliveyoungRevenue?.byDate?.[yesterdayDate]?.sales || 0, // 확보된 전일 합계
     };
 
-    // === Total Revenue (all channels) — monthly + yearly ===
+    // === 한국 B2C 채널 매출 ===
     const channelSales = {
       oliveyoung: oliveyoungRevenue?.currentMonthSales || 0,
       smartstore: naverMonthSales,
       cafe24: cafe24MonthSales,
-      amazon: exportRevenue?.monthlyTotal || 0,
     };
     const channelSalesYearly = {
       oliveyoung: oliveyoungRevenue?.yearlySales || 0,
       smartstore: naverYearly,
       cafe24: cafe24Yearly,
-      amazon: exportRevenue?.yearlyTotal || 0,
     };
-    const totalRevenue = Object.values(channelSales).reduce((s, v) => s + v, 0);
-    const totalRevenueYearly = Object.values(channelSalesYearly).reduce((s, v) => s + v, 0);
+
+    // === 미국 B2C 채널 (Amazon US, TikTok Shop US) ===
+    const usB2cSales = {
+      amazon: exportRevenue?.monthlyTotal || 0,
+      tiktokShopUS: 0, // 미연결
+    };
+    const usB2cSalesYearly = {
+      amazon: exportRevenue?.yearlyTotal || 0,
+      tiktokShopUS: 0,
+    };
+
+    // === 수출 B2B (수출시트) ===
+    const b2bSales = {
+      exportSheet: 0, // 시트에서 매출 파싱 시 추가
+    };
+    const b2bSalesYearly = {
+      exportSheet: 0,
+    };
+
+    // === 전체 합계 (KRW 기준, Amazon은 USD라 별도 표기) ===
+    const krMonthTotal = (channelSales.oliveyoung || 0) + (channelSales.smartstore || 0) + (channelSales.cafe24 || 0);
+    const krYearTotal = (channelSalesYearly.oliveyoung || 0) + (channelSalesYearly.smartstore || 0) + (channelSalesYearly.cafe24 || 0);
+    const usMonthTotal = usB2cSales.amazon || 0; // USD
+    const usYearTotal = usB2cSalesYearly.amazon || 0; // USD
+
+    // 하위 호환용
+    const totalRevenue = krMonthTotal;
+    const totalRevenueYearly = krYearTotal;
 
     // Monthly revenue array for chart (Jan-current month 2026) — per channel
     const monthNames = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
@@ -346,11 +396,25 @@ export default async function handler(req, res) {
       oliveyoungRevenue,
       amazonRevenue: exportRevenue,
       exportRevenue,
+      b2bExportRevenue,
       ga4Revenue,
-      totalRevenue,
-      totalRevenueYearly,
+      // 한국 채널
       channelSales,
       channelSalesYearly,
+      // 미국 B2C
+      usB2cSales,
+      usB2cSalesYearly,
+      // 수출 B2B
+      b2bSales,
+      b2bSalesYearly,
+      // 전체 합계
+      totalRevenue,
+      totalRevenueYearly,
+      krMonthTotal,
+      krYearTotal,
+      usMonthTotal,
+      usYearTotal,
+      // 전일
       yesterdaySales,
       monthlyRevenue,
       followerHistory,
