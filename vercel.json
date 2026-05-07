@@ -69,6 +69,10 @@
     { "source": "/api/sisuru-select", "destination": "/api/sisuru-select" },
     { "source": "/api/cs/kakao-webhook", "destination": "/api/cs/kakao-webhook" },
     { "source": "/api/cs/daily-report", "destination": "/api/cs/daily-report" },
+    { "source": "/api/sales/sheets", "destination": "/api/sales/sheets" },
+    { "source": "/api/sales/amazon", "destination": "/api/sales/amazon" },
+    { "source": "/api/sales/cafe24", "destination": "/api/sales/cafe24" },
+    { "source": "/api/sales/cafe24-debug", "destination": "/api/sales/cafe24-debug" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
