@@ -112,6 +112,7 @@ export default async function handler(req, res) {
     };
 
     await redis.set(cacheKey, result, { ex: 3600 });
+    await redis.set('sales:cafe24:daily', result, { ex: 90000 });
     res.status(200).json(result);
   } catch (e) {
     if (e.message === 'NOT_CONNECTED') return res.status(200).json({ connected: false });

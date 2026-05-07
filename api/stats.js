@@ -194,27 +194,45 @@ export default async function handler(req, res) {
       ga4: { connected: !!process.env.GA4_PROPERTY_ID },
     };
 
+    // === H. Naver + Cafe24 from Redis (Mac cron / Vercel cache) ===
+    const [naverDaily, cafe24Daily] = await Promise.all([
+      redis.get('sales:naver:daily'),
+      redis.get('sales:cafe24:daily'),
+    ]);
+    const nowMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const naverMonthly = naverDaily?.monthly || {};
+    const cafe24Monthly = cafe24Daily?.monthly || {};
+    const naverMonthSales = naverMonthly[nowMonthKey]?.revenue || 0;
+    const cafe24MonthSales = cafe24Monthly[nowMonthKey]?.revenue || 0;
+    const naverYearly = Object.values(naverMonthly).reduce((s, m) => s + (m.revenue || 0), 0);
+    const cafe24Yearly = Object.values(cafe24Monthly).reduce((s, m) => s + (m.revenue || 0), 0);
+
     // === Total Revenue (all channels) — monthly + yearly ===
     const channelSales = {
       oliveyoung: oliveyoungRevenue?.currentMonthSales || 0,
       ga4: ga4Revenue?.month?.revenue || ga4Revenue?.revenue || 0,
-      smartstore: 0,
+      smartstore: naverMonthSales,
+      cafe24: cafe24MonthSales,
       export: 0,
     };
     const channelSalesYearly = {
       oliveyoung: oliveyoungRevenue?.yearlySales || 0,
       ga4: ga4Revenue?.year?.revenue || ga4Revenue?.revenue || 0,
-      smartstore: 0,
+      smartstore: naverYearly,
+      cafe24: cafe24Yearly,
       export: 0,
     };
-    const totalRevenue = channelSales.oliveyoung + channelSales.ga4 + channelSales.smartstore + channelSales.export;
-    const totalRevenueYearly = channelSalesYearly.oliveyoung + channelSalesYearly.ga4 + channelSalesYearly.smartstore + channelSalesYearly.export;
+    const totalRevenue = Object.values(channelSales).reduce((s, v) => s + v, 0);
+    const totalRevenueYearly = Object.values(channelSalesYearly).reduce((s, v) => s + v, 0);
 
     // Monthly revenue array for chart (Jan-current month 2026)
     const monthNames = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
     const monthlyRevenue = monthNames.map((name, i) => {
       const key = `2026-${String(i + 1).padStart(2, '0')}`;
-      return { month: name, total: oliveyoungRevenue?.byMonth?.[key] || 0 };
+      return {
+        month: name,
+        total: (oliveyoungRevenue?.byMonth?.[key] || 0) + (naverMonthly[key]?.revenue || 0) + (cafe24Monthly[key]?.revenue || 0),
+      };
     }).filter((_, i) => i < new Date().getMonth() + 1);
 
     return res.status(200).json({
