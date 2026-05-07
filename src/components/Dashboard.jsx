@@ -84,8 +84,8 @@ export default function Dashboard() {
   const krYear  = (chYear.oliveyoung  || 0) + (chYear.smartstore  || 0) + (chYear.cafe24  || 0);
   const krYesterday = cs?.korea?.total || 0; // chief report 전일 마감 기준 당월 누적
 
-  const usMonth = chMonth.export || 0;
-  const usYear  = chYear.export  || 0;
+  const usMonth = chMonth.amazon || 0;
+  const usYear  = chYear.amazon  || 0;
   const usYesterday = cs?.usa?.amazon || 0;
 
   // 전월 성장률
@@ -198,18 +198,23 @@ export default function Dashboard() {
                 <PeriodBlock label="2026 YTD" value={usYear > 0 ? `$${usYear.toLocaleString()}` : '-'} accent="#5E6AD2" />
               </div>
               <div style={{ marginTop: 10 }}>
-                {[
-                  { label: 'Amazon US', status: false },
-                  { label: 'TikTok Shop US', status: false },
-                  { label: 'Shopee', status: false },
-                  { label: 'Qoo10', status: false },
-                ].map((ch, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', borderBottom: i < 3 ? '1px solid #F5F5F7' : 'none' }}>
-                    <div style={{ width: 5, height: 5, borderRadius: '50%', background: ch.status ? '#34C759' : '#D1D1D6' }} />
-                    <span style={{ fontSize: 11.5, color: '#6E6E73', flex: 1 }}>{ch.label}</span>
-                    <span style={{ fontSize: 11, color: '#AEAEB2' }}>연결 대기 중</span>
-                  </div>
-                ))}
+                {(() => {
+                  const exportOk = stats?.exportRevenue?.status === 'connected';
+                  return [
+                    { label: 'Amazon US', connected: exportOk, value: exportOk && usMonth > 0 ? `$${usMonth.toLocaleString()}` : null },
+                    { label: 'TikTok Shop US', connected: false, value: null },
+                    { label: 'Shopee', connected: false, value: null },
+                    { label: 'Qoo10', connected: false, value: null },
+                  ].map((ch, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', borderBottom: i < 3 ? '1px solid #F5F5F7' : 'none' }}>
+                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: ch.connected ? '#34C759' : '#D1D1D6' }} />
+                      <span style={{ fontSize: 11.5, color: '#6E6E73', flex: 1 }}>{ch.label}</span>
+                      <span style={{ fontSize: 11, color: ch.connected ? '#1D1D1F' : '#AEAEB2' }}>
+                        {ch.value || (ch.connected ? '시트 연동됨' : '연결 대기')}
+                      </span>
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
           </div>
