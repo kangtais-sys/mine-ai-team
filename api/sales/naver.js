@@ -23,11 +23,11 @@ async function getToken() {
 
   const res = await fetch(`${BASE}/v1/oauth2/token`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${clientId}_${timestamp}_${sig}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
+      client_id: clientId,
+      timestamp: String(timestamp),
+      client_secret_sign: sig,
       grant_type: 'client_credentials',
       type: 'SELF',
       account_type: 'SELLER',
