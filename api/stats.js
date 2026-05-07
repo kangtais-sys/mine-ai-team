@@ -195,9 +195,10 @@ export default async function handler(req, res) {
     };
 
     // === H. Naver + Cafe24 from Redis (Mac cron / Vercel cache) ===
-    const [naverDaily, cafe24Daily] = await Promise.all([
+    const [naverDaily, cafe24Daily, chiefReport] = await Promise.all([
       redis.get('sales:naver:daily'),
       redis.get('sales:cafe24:daily'),
+      redis.get('chief:daily-report'),
     ]);
     const nowMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
     const naverMonthly = naverDaily?.monthly || {};
@@ -235,6 +236,9 @@ export default async function handler(req, res) {
       };
     }).filter((_, i) => i < new Date().getMonth() + 1);
 
+    // Parse chiefReport if string
+    const chiefData = typeof chiefReport === 'string' ? JSON.parse(chiefReport) : chiefReport;
+
     return res.status(200).json({
       yuminhye,
       millimilli,
@@ -250,6 +254,7 @@ export default async function handler(req, res) {
       followerHistory,
       activityLog: parsedLog,
       connections,
+      chiefReport: chiefData,
     });
   } catch (error) {
     return res.status(200).json({ error: error.message });
