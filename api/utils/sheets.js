@@ -26,24 +26,35 @@ export async function readPublicSheet(sheetId, gid) {
   return parseCSV(await res.text());
 }
 
-// Legacy OAuth-based reader (kept for private sheets if needed)
-export async function readSheet(sheetId, range = 'A1:Z500') {
-  const token = process.env.GOOGLE_REFRESH_TOKEN;
-  if (!token) throw new Error('GOOGLE_REFRESH_TOKEN not set');
-  const oauth = await fetch('https://oauth2.googleapis.com/token', {
+let _cachedToken = null;
+let _tokenExpiry = 0;
+
+export async function getGoogleAccessToken() {
+  if (_cachedToken && Date.now() < _tokenExpiry - 60000) return _cachedToken;
+  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+  if (!refreshToken) throw new Error('GOOGLE_REFRESH_TOKEN not set');
+  const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       client_id: process.env.GOOGLE_CLIENT_ID,
       client_secret: process.env.GOOGLE_CLIENT_SECRET,
-      refresh_token: token,
+      refresh_token: refreshToken,
       grant_type: 'refresh_token',
     }),
   });
-  const { access_token, error } = await oauth.json();
-  if (error) throw new Error(`OAuth error: ${error}`);
+  const data = await res.json();
+  if (data.error) throw new Error(`OAuth: ${data.error}`);
+  _cachedToken = data.access_token;
+  _tokenExpiry = Date.now() + (data.expires_in || 3600) * 1000;
+  return _cachedToken;
+}
+
+// Legacy OAuth-based reader (for private sheets)
+export async function readSheet(sheetId, range = 'A1:Z500') {
+  const token = await getGoogleAccessToken();
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${access_token}` } });
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const data = await res.json();
   if (data.error) throw new Error(`Sheets API: ${data.error.message}`);
   return data.values || [];
