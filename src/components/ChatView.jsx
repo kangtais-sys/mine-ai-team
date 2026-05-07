@@ -639,12 +639,9 @@ const AGENT_DASHBOARDS = {
             );
           })}
         </div>
-        {/* Happytalk + Kakao banner */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #F59E0B33', borderRadius: 8, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 11, color: '#F59E0B', marginBottom: 4 }}>
-            {d?.happytalk?.status === 'connected' ? '🟢 해피톡 연동됨' : '🟡 해피톡 연동 준비 중'}
-          </div>
-          <div style={{ fontSize: 10, color: '#AEAEB2' }}>카카오톡 채널 CS: 추후 검토 예정</div>
+        {/* Kakao channel status */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 11, color: '#6E6E73' }}>카카오 채널 상담 연동 준비 중</div>
         </div>
       </>
     );

@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, CheckCircle2, Link2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { RefreshCw, CheckCircle2, Link2, AlertCircle } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import useDashboardStore from '../store/dashboardStore';
 import { agents } from '../lib/agents';
 
 const fmtKRW = (v) => (v != null && v > 0) ? `${v.toLocaleString('ko-KR')}원` : '-';
 const fmtCount = (v) => (v != null && v > 0) ? v.toLocaleString('ko-KR') : '-';
+const fmtM = (v) => v >= 100000000 ? `${(v / 100000000).toFixed(1)}억` : v >= 10000000 ? `${(v / 10000000).toFixed(0)}천만` : v >= 10000 ? `${(v / 10000).toFixed(0)}만` : v > 0 ? v.toLocaleString() : '0';
 
 const tip = {
   background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 8,
@@ -13,15 +14,10 @@ const tip = {
   boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
 };
 const CARD = { background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 12, padding: '18px 20px' };
-const DIVIDER = { borderTop: '1px solid #F2F2F5', margin: '10px 0' };
+const SEC_LABEL = { fontSize: 11, fontWeight: 600, color: '#AEAEB2', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 };
 
-function nowKST() {
-  return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
-}
-function thisMonthLabel() {
-  const d = new Date(Date.now() + 9 * 3600000);
-  return `${d.getUTCMonth() + 1}월`;
-}
+function nowKST() { return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10); }
+function thisMonthLabel() { const d = new Date(Date.now() + 9 * 3600000); return `${d.getUTCMonth() + 1}월`; }
 function timeAgo(ts) {
   if (!ts) return '';
   const diff = Date.now() - (typeof ts === 'number' ? ts : new Date(ts).getTime());
@@ -33,27 +29,23 @@ function timeAgo(ts) {
   return `${Math.floor(h / 24)}일 전`;
 }
 
-function GrowthBadge({ rate }) {
-  if (rate == null) return <span style={{ fontSize: 11, color: '#AEAEB2' }}>전월비 -</span>;
-  const n = parseFloat(rate);
-  const color = n > 0 ? '#34C759' : n < 0 ? '#FF3B30' : '#AEAEB2';
-  const Icon = n > 0 ? TrendingUp : n < 0 ? TrendingDown : Minus;
+function PeriodBlock({ label, value, sub, accent }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, color }}>
-      <Icon size={11} />전월비 {n > 0 ? '+' : ''}{n}%
-    </span>
-  );
-}
-
-function PeriodCol({ period, value, sub }) {
-  return (
-    <div style={{ flex: 1, textAlign: 'center' }}>
-      <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, marginBottom: 4 }}>{period}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: '#1D1D1F', letterSpacing: '-0.03em', lineHeight: 1.1 }}>{fmtKRW(value)}</div>
-      {sub && <div style={{ fontSize: 10, color: '#AEAEB2', marginTop: 3 }}>{sub}</div>}
+    <div style={{ flex: 1 }}>
+      <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: accent || '#1D1D1F', letterSpacing: '-0.03em', lineHeight: 1.1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, color: '#AEAEB2', marginTop: 2 }}>{sub}</div>}
     </div>
   );
 }
+
+const CH_COLORS = {
+  oliveyoung: '#5E6AD2',
+  smartstore: '#F59E0B',
+  cafe24: '#10B981',
+  total: '#1D1D1F',
+};
+const CH_LABELS = { oliveyoung: '올리브영', smartstore: '스마트스토어', cafe24: '카페24 자사몰', total: '한국 합계' };
 
 export default function Dashboard() {
   const { stats, revenueData, fetchStats } = useDashboardStore();
@@ -76,26 +68,40 @@ export default function Dashboard() {
 
   const ym = stats?.yuminhye || {};
   const ml = stats?.millimilli || {};
-  const connections = stats?.connections || {};
+  // connections — 해피톡 제외
+  const RAW_CONN = stats?.connections || {};
+  const connections = Object.fromEntries(Object.entries(RAW_CONN).filter(([k]) => k !== 'happytalk'));
   const activityLog = stats?.activityLog || [];
   const chief = stats?.chiefReport;
   const cs = chief?.salesSummary;
+  const oyStatus = stats?.oliveyoungRevenue?.status;
 
-  // === 매출 3개 기간 ===
-  // 전일 마감: chief-report에서 (매일 8시 갱신)
-  const prevDate = cs?.date || '-';
-  const krYesterday = cs?.korea?.total || 0; // 당월 누적(전일 마감 기준)
-  const krMonth = (stats?.channelSales?.oliveyoung || 0) + (stats?.channelSales?.smartstore || 0) + (stats?.channelSales?.cafe24 || 0);
-  const krYear = (stats?.channelSalesYearly?.oliveyoung || 0) + (stats?.channelSalesYearly?.smartstore || 0) + (stats?.channelSalesYearly?.cafe24 || 0);
-
+  // === 매출 데이터 ===
   const chMonth = stats?.channelSales || {};
   const chYear = stats?.channelSalesYearly || {};
 
-  const growthRate = cs?.growthRate;
+  const krMonth = (chMonth.oliveyoung || 0) + (chMonth.smartstore || 0) + (chMonth.cafe24 || 0);
+  const krYear  = (chYear.oliveyoung  || 0) + (chYear.smartstore  || 0) + (chYear.cafe24  || 0);
+  const krYesterday = cs?.korea?.total || 0; // chief report 전일 마감 기준 당월 누적
 
+  const usMonth = chMonth.export || 0;
+  const usYear  = chYear.export  || 0;
+  const usYesterday = cs?.usa?.amazon || 0;
+
+  // 전월 성장률
+  const growthRate = cs?.growthRate;
+  const prevDate = cs?.date || '-';
+
+  // === 차트 데이터 ===
   const chartData = stats?.monthlyRevenue?.length
     ? stats.monthlyRevenue
-    : revenueData.map(d => ({ month: d.month, total: (d['올리브영'] || 0) + (d['스마트스토어'] || 0) + (d['자사몰'] || 0) + (d['해외'] || 0) }));
+    : revenueData.map(d => ({
+        month: d.month,
+        oliveyoung: d['올리브영'] || 0,
+        smartstore: d['스마트스토어'] || 0,
+        cafe24: d['자사몰'] || 0,
+        total: (d['올리브영'] || 0) + (d['스마트스토어'] || 0) + (d['자사몰'] || 0),
+      }));
 
   const connKeys = {
     zernio: 'Zernio (SNS)',
@@ -108,12 +114,6 @@ export default function Dashboard() {
     ga4: 'GA4',
   };
 
-  const channels = [
-    { label: '올리브영', key: 'oliveyoung', dot: '#5E6AD2' },
-    { label: '스마트스토어', key: 'smartstore', dot: '#7C6BDE' },
-    { label: '카페24 자사몰', key: 'cafe24', dot: '#A78BFA' },
-  ];
-
   return (
     <>
       {/* Header */}
@@ -121,6 +121,12 @@ export default function Dashboard() {
         <span style={{ fontSize: 15, fontWeight: 600, color: '#1D1D1F' }}>MILLI AI 대시보드</span>
         <span style={{ fontSize: 11, color: '#AEAEB2' }}>· {nowKST()} 기준</span>
         <div style={{ flex: 1 }} />
+        {oyStatus === 'error' && (
+          <button onClick={() => { window.location.href = '/api/auth/google'; }}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 7, border: '1px solid #FF3B30', background: '#FFF5F5', color: '#FF3B30', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit', marginRight: 8 }}>
+            <AlertCircle size={12} />올리브영 Google 재연동 필요
+          </button>
+        )}
         {googleStatus?.connected ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <CheckCircle2 size={13} color="#34C759" />
@@ -136,91 +142,116 @@ export default function Dashboard() {
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px 32px' }}>
 
-        {/* ── 매출 섹션 ── */}
+        {/* ── 매출 현황 ── */}
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#AEAEB2', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>매출 현황</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 12 }}>
+          <div style={SEC_LABEL}>매출 현황</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: 12 }}>
 
-            {/* 한국 매출 카드 */}
+            {/* 한국 매출 */}
             <div style={CARD}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>🇰🇷 한국 매출</span>
-                <GrowthBadge rate={growthRate} />
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>
+                🇰🇷 한국
+                {growthRate != null && (
+                  <span style={{ fontSize: 11, color: parseFloat(growthRate) >= 0 ? '#34C759' : '#FF3B30', marginLeft: 8 }}>
+                    {parseFloat(growthRate) >= 0 ? '▲' : '▼'} 전월비 {parseFloat(growthRate) >= 0 ? '+' : ''}{growthRate}%
+                  </span>
+                )}
               </div>
-
-              {/* 3열 기간 */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #F2F2F5' }}>
-                <PeriodCol period={`전일 마감 (${prevDate})`} value={krYesterday} sub="당월 누적 기준" />
+              {/* 전일/당월/연간 */}
+              <div style={{ display: 'flex', gap: 8, paddingBottom: 10, borderBottom: '1px solid #F2F2F5' }}>
+                <PeriodBlock label={`전일 마감 (${prevDate})`} value={fmtKRW(krYesterday) !== '-' ? fmtKRW(krYesterday) : fmtKRW(krMonth)} sub="당월 누적 기준" />
                 <div style={{ width: 1, background: '#F2F2F5' }} />
-                <PeriodCol period={`${thisMonthLabel()} 누적`} value={krMonth} />
+                <PeriodBlock label={`${thisMonthLabel()} 누적`} value={fmtKRW(krMonth)} />
                 <div style={{ width: 1, background: '#F2F2F5' }} />
-                <PeriodCol period="2026년 누적" value={krYear} />
+                <PeriodBlock label="2026 YTD" value={fmtKRW(krYear)} accent="#5E6AD2" />
               </div>
-
-              {/* 채널 breakdown: 당월 vs 연간 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <span style={{ fontSize: 10, color: '#AEAEB2', width: 80 }}></span>
-                  <span style={{ fontSize: 10, color: '#AEAEB2', flex: 1, textAlign: 'right' }}>당월</span>
-                  <span style={{ fontSize: 10, color: '#5E6AD2', width: 70, textAlign: 'right' }}>연간YTD</span>
+              {/* 채널 breakdown */}
+              <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <div style={{ display: 'flex' }}>
+                  <span style={{ fontSize: 10, color: '#AEAEB2', flex: 1 }}></span>
+                  <span style={{ fontSize: 10, color: '#AEAEB2', width: 72, textAlign: 'right' }}>당월</span>
+                  <span style={{ fontSize: 10, color: '#5E6AD2', width: 72, textAlign: 'right' }}>연간</span>
                 </div>
-                {channels.map((c) => (
-                  <div key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ width: 4, height: 4, borderRadius: 2, background: c.dot, flexShrink: 0 }} />
-                    <span style={{ fontSize: 11.5, color: '#6E6E73', width: 76 }}>{c.label}</span>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', flex: 1, textAlign: 'right' }}>{fmtKRW(chMonth[c.key])}</span>
-                    <span style={{ fontSize: 11, color: '#5E6AD2', width: 70, textAlign: 'right' }}>{fmtKRW(chYear[c.key])}</span>
+                {[
+                  { label: '올리브영', key: 'oliveyoung', dot: CH_COLORS.oliveyoung },
+                  { label: '스마트스토어', key: 'smartstore', dot: CH_COLORS.smartstore },
+                  { label: '카페24 자사몰', key: 'cafe24', dot: CH_COLORS.cafe24 },
+                ].map((c) => (
+                  <div key={c.key} style={{ display: 'flex', alignItems: 'center' }}>
+                    <div style={{ width: 5, height: 5, borderRadius: 2, background: c.dot, flexShrink: 0, marginRight: 5 }} />
+                    <span style={{ fontSize: 11.5, color: '#6E6E73', flex: 1 }}>{c.label}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', width: 72, textAlign: 'right' }}>{fmtKRW(chMonth[c.key])}</span>
+                    <span style={{ fontSize: 11, color: '#5E6AD2', width: 72, textAlign: 'right' }}>{fmtKRW(chYear[c.key])}</span>
                   </div>
                 ))}
               </div>
-
-              <div style={DIVIDER} />
-
-              {/* 미국 */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>🇺🇸 미국 매출</span>
-                <span style={{ fontSize: 12, color: '#AEAEB2' }}>아마존 연결 대기 중</span>
-              </div>
-              {cs?.usa?.amazon > 0 && (
-                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                  <PeriodCol period="당월" value={cs.usa.amazon} />
-                  <div style={{ width: 1, background: '#F2F2F5' }} />
-                  <PeriodCol period="2026년 YTD" value={cs.usa.ytd} />
-                </div>
-              )}
             </div>
 
-            {/* 월별 추이 차트 */}
+            {/* 미국 매출 */}
+            <div style={CARD}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>🇺🇸 미국 수출</div>
+              <div style={{ display: 'flex', gap: 8, paddingBottom: 10, borderBottom: '1px solid #F2F2F5' }}>
+                <PeriodBlock label="전일 마감" value={usYesterday > 0 ? `$${usYesterday.toLocaleString()}` : '-'} />
+                <div style={{ width: 1, background: '#F2F2F5' }} />
+                <PeriodBlock label={`${thisMonthLabel()} 누적`} value={usMonth > 0 ? `$${usMonth.toLocaleString()}` : '-'} />
+                <div style={{ width: 1, background: '#F2F2F5' }} />
+                <PeriodBlock label="2026 YTD" value={usYear > 0 ? `$${usYear.toLocaleString()}` : '-'} accent="#5E6AD2" />
+              </div>
+              <div style={{ marginTop: 10 }}>
+                {[
+                  { label: 'Amazon US', status: false },
+                  { label: 'TikTok Shop US', status: false },
+                  { label: 'Shopee', status: false },
+                  { label: 'Qoo10', status: false },
+                ].map((ch, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', borderBottom: i < 3 ? '1px solid #F5F5F7' : 'none' }}>
+                    <div style={{ width: 5, height: 5, borderRadius: '50%', background: ch.status ? '#34C759' : '#D1D1D6' }} />
+                    <span style={{ fontSize: 11.5, color: '#6E6E73', flex: 1 }}>{ch.label}</span>
+                    <span style={{ fontSize: 11, color: '#AEAEB2' }}>연결 대기 중</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 월별 추이 — 멀티라인 */}
             <div style={{ ...CARD, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>2026 월별 매출 추이</span>
-                <span style={{ fontSize: 11, color: '#AEAEB2' }}>한국 전채널 합산</span>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>2026 월별 채널별 추이</span>
               </div>
-              <div style={{ flex: 1, minHeight: 160 }}>
-                <ResponsiveContainer width="100%" height={160}>
-                  <LineChart data={chartData}>
-                    <XAxis dataKey="month" stroke="#AEAEB2" fontSize={11} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#AEAEB2" fontSize={10} tickLine={false} axisLine={false} width={60}
-                      tickFormatter={v => v >= 10000000 ? `${(v / 10000000).toFixed(0)}천만` : `${(v / 10000).toFixed(0)}만`} />
-                    <Tooltip contentStyle={tip} formatter={v => [fmtKRW(v), '총매출']} cursor={{ stroke: '#E5E5EA' }} />
-                    <Line type="monotone" dataKey="total" stroke="#5E6AD2" strokeWidth={2}
-                      dot={{ r: 3, fill: '#5E6AD2', strokeWidth: 0 }} activeDot={{ r: 5 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+              <ResponsiveContainer width="100%" height={160}>
+                <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <XAxis dataKey="month" stroke="#AEAEB2" fontSize={10} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#AEAEB2" fontSize={9} tickLine={false} axisLine={false} width={48}
+                    tickFormatter={v => v > 0 ? fmtM(v) : '0'} />
+                  <Tooltip contentStyle={tip}
+                    formatter={(v, name) => [fmtKRW(v), CH_LABELS[name] || name]}
+                    cursor={{ stroke: '#E5E5EA' }} />
+                  <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }}
+                    formatter={(v) => CH_LABELS[v] || v} />
+                  <Line type="monotone" dataKey="oliveyoung" stroke={CH_COLORS.oliveyoung} strokeWidth={1.8}
+                    dot={{ r: 2.5, fill: CH_COLORS.oliveyoung, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="smartstore" stroke={CH_COLORS.smartstore} strokeWidth={1.8}
+                    dot={{ r: 2.5, fill: CH_COLORS.smartstore, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="cafe24" stroke={CH_COLORS.cafe24} strokeWidth={1.8}
+                    dot={{ r: 2.5, fill: CH_COLORS.cafe24, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="total" stroke={CH_COLORS.total} strokeWidth={2.5}
+                    strokeDasharray="4 2"
+                    dot={{ r: 2.5, fill: CH_COLORS.total, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
               {chief?.report && (
-                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #F2F2F5' }}>
-                  <div style={{ fontSize: 10.5, color: '#AEAEB2', marginBottom: 4 }}>AI 커머스MD 아침 8시 보고 · {prevDate}</div>
-                  <div style={{ fontSize: 12, color: '#1D1D1F', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{chief.report.slice(0, 200)}{chief.report.length > 200 ? '...' : ''}</div>
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #F2F2F5' }}>
+                  <div style={{ fontSize: 10, color: '#AEAEB2', marginBottom: 3 }}>AI 커머스MD · {prevDate} 보고</div>
+                  <div style={{ fontSize: 11.5, color: '#1D1D1F', lineHeight: 1.6 }}>{chief.report.slice(0, 120)}...</div>
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* ── 팔로워 섹션 ── */}
+        {/* ── 팔로워 ── */}
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#AEAEB2', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>채널 팔로워</div>
+          <div style={SEC_LABEL}>채널 팔로워</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             {[
               { name: '유민혜', data: ym, source: 'Zernio + 스크래핑', refresh: true },
@@ -230,7 +261,7 @@ export default function Dashboard() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                   <div>
                     <span style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>{acc.name}</span>
-                    <span style={{ fontSize: 10.5, color: '#AEAEB2', marginLeft: 6 }}>팔로워 · {acc.source}</span>
+                    <span style={{ fontSize: 10.5, color: '#AEAEB2', marginLeft: 6 }}>{acc.source}</span>
                   </div>
                   {acc.refresh && (
                     <button onClick={() => { setIgRefreshing(true); fetch('/api/scrape/instagram-followers').then(() => fetchStats()).catch(() => {}).finally(() => setIgRefreshing(false)); }}
@@ -247,7 +278,9 @@ export default function Dashboard() {
                   ].map((ch) => (
                     <div key={ch.key} style={{ background: '#F5F5F7', borderRadius: 8, padding: '10px 12px' }}>
                       <div style={{ fontSize: 9.5, fontWeight: 700, color: ch.color, marginBottom: 4 }}>{ch.icon}</div>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: '#1D1D1F', letterSpacing: '-0.02em' }}>{fmtCount(acc.data?.[ch.key]?.count)}</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: '#1D1D1F', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+                        {fmtCount(acc.data?.[ch.key]?.count)}
+                      </div>
                       <div style={{ fontSize: 10, color: '#AEAEB2', marginTop: 2 }}>{ch.label}</div>
                     </div>
                   ))}
@@ -261,9 +294,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── 활동 현황 + 연결 상태 ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: 12, marginBottom: 14 }}>
-          {/* 채널 활동 KPI */}
+        {/* ── 활동 + 연결 상태 ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 210px', gap: 12, marginBottom: 14 }}>
           <div style={CARD}>
             <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F', marginBottom: 12 }}>
               채널 활동 현황
@@ -284,23 +316,25 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* 채널 연결 상태 */}
           <div style={CARD}>
             <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>채널 연결 상태</div>
             {Object.entries(connKeys).map(([key, label], i, arr) => {
               const val = connections[key];
+              const hasError = key === 'oliveyoung' && oyStatus === 'error';
               return (
                 <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '4px 0', borderBottom: i < arr.length - 1 ? '1px solid #F5F5F7' : 'none' }}>
-                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: val?.connected ? '#34C759' : '#D1D1D6', flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, color: '#1D1D1F', flex: 1 }}>{label}</span>
-                  <span style={{ fontSize: 10.5, color: val?.connected ? '#34C759' : '#AEAEB2' }}>{val?.connected ? '연결' : '-'}</span>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: hasError ? '#FF3B30' : val?.connected ? '#34C759' : '#D1D1D6', flexShrink: 0 }} />
+                  <span style={{ fontSize: 11.5, color: '#1D1D1F', flex: 1 }}>{label}</span>
+                  <span style={{ fontSize: 10.5, color: hasError ? '#FF3B30' : val?.connected ? '#34C759' : '#AEAEB2' }}>
+                    {hasError ? '오류' : val?.connected ? '연결' : '-'}
+                  </span>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* ── 에이전트 활동 로그 ── */}
+        {/* ── 에이전트 활동 ── */}
         <div style={CARD}>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F', marginBottom: 12 }}>
             에이전트 최근 활동
@@ -319,13 +353,12 @@ export default function Dashboard() {
                   <span style={{ fontSize: 12.5, color: '#6E6E73', marginLeft: 6 }}>{item.action}</span>
                   {item.detail && <div style={{ fontSize: 11.5, color: '#AEAEB2', marginTop: 1 }}>{item.detail}</div>}
                 </div>
-                <span style={{ fontSize: 11, color: '#AEAEB2', flexShrink: 0, marginTop: 2 }}>{timeAgo(item.timestamp)}</span>
+                <span style={{ fontSize: 11, color: '#AEAEB2', flexShrink: 0 }}>{timeAgo(item.timestamp)}</span>
               </div>
             );
           }) : (
-            <div style={{ padding: '24px 0', textAlign: 'center' }}>
+            <div style={{ padding: '20px 0', textAlign: 'center' }}>
               <div style={{ fontSize: 12.5, color: '#AEAEB2' }}>아직 활동 내역이 없습니다.</div>
-              <div style={{ fontSize: 11.5, color: '#D1D1D6', marginTop: 4 }}>에이전트 작업 시작 시 자동 기록됩니다.</div>
             </div>
           )}
         </div>

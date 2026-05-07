@@ -188,7 +188,6 @@ export default async function handler(req, res) {
       anthropic: { connected: !!process.env.ANTHROPIC_API_KEY },
       instagram: { connected: !!process.env.INSTAGRAM_ACCESS_TOKEN },
       oliveyoung: { connected: !!process.env.OLIVEYOUNG_SHEET_ID },
-      happytalk: { connected: !!process.env.HAPPYTALK_API_KEY },
       naverAds: { connected: !!process.env.NAVER_AD_API_KEY },
       googleAds: { connected: !!process.env.GOOGLE_ADS_CUSTOMER_ID },
       ga4: { connected: !!process.env.GA4_PROPERTY_ID },
@@ -226,14 +225,14 @@ export default async function handler(req, res) {
     const totalRevenue = Object.values(channelSales).reduce((s, v) => s + v, 0);
     const totalRevenueYearly = Object.values(channelSalesYearly).reduce((s, v) => s + v, 0);
 
-    // Monthly revenue array for chart (Jan-current month 2026)
+    // Monthly revenue array for chart (Jan-current month 2026) — per channel
     const monthNames = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
     const monthlyRevenue = monthNames.map((name, i) => {
       const key = `2026-${String(i + 1).padStart(2, '0')}`;
-      return {
-        month: name,
-        total: (oliveyoungRevenue?.byMonth?.[key] || 0) + (naverMonthly[key]?.revenue || 0) + (cafe24Monthly[key]?.revenue || 0),
-      };
+      const oy = oliveyoungRevenue?.byMonth?.[key] || 0;
+      const ss = naverMonthly[key]?.revenue || 0;
+      const c24 = cafe24Monthly[key]?.revenue || 0;
+      return { month: name, oliveyoung: oy, smartstore: ss, cafe24: c24, total: oy + ss + c24 };
     }).filter((_, i) => i < new Date().getMonth() + 1);
 
     // Parse chiefReport if string

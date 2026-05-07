@@ -1,6 +1,6 @@
 import { agents } from '../lib/agents';
 import useChatStore from '../store/chatStore';
-import { LayoutDashboard } from 'lucide-react';
+import { LayoutDashboard, Globe } from 'lucide-react';
 
 export default function Sidebar({ page, onNavigate }) {
   const { activeAgent, setActiveAgent } = useChatStore();
@@ -49,14 +49,10 @@ export default function Sidebar({ page, onNavigate }) {
         </div>
       </div>
 
-      {/* Dashboard nav */}
+      {/* Nav items */}
       <div style={{ padding: '8px 8px 0', flexShrink: 0 }}>
-        {menuItem(
-          page === 'dashboard',
-          <LayoutDashboard size={15} strokeWidth={1.8} />,
-          '대시보드',
-          () => onNavigate('dashboard')
-        )}
+        {menuItem(page === 'dashboard', <LayoutDashboard size={15} strokeWidth={1.8} />, '대시보드', () => onNavigate('dashboard'))}
+        {menuItem(page === 'exports', <Globe size={15} strokeWidth={1.8} />, '수출 현황', () => onNavigate('exports'))}
       </div>
 
       {/* Section Label */}
