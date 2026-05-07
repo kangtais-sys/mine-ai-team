@@ -137,44 +137,39 @@ export default async function handler(req, res) {
       }
     }
 
-    // === D2. Export/Amazon revenue (공개 Google Sheet) ===
+    // === D2. Amazon SP-API (Redis hourly cache from /api/sales/amazon) ===
     let exportRevenue = null;
-    if (process.env.EXPORT_SHEET_ID) {
+    if (process.env.SP_API_REFRESH_TOKEN || process.env.AMAZON_REFRESH_TOKEN) {
       try {
-        const rows = await readPublicSheet(process.env.EXPORT_SHEET_ID);
-        const dataRows = rows.slice(1).filter(r => r.some(c => c));
-        // Try to find date/amount columns (flexible — unknown structure)
-        const nowYear = String(new Date().getFullYear());
-        const nowMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-        // Scan for numeric amounts in each row, date in col 0
-        let yearlyTotal = 0, monthlyTotal = 0;
-        const byMonth = {};
-        for (const r of dataRows) {
-          const dateStr = (r[0] || '').toString().replace(/\//g, '-');
-          const isThisYear = dateStr.startsWith(nowYear);
-          const isThisMonth = dateStr.startsWith(nowMonth) || dateStr.replace('-', '').startsWith(nowMonth.replace('-', ''));
-          // Find largest numeric value in row as amount
-          let maxVal = 0;
-          for (let ci = 1; ci < r.length; ci++) {
-            const v = Number((r[ci] || '').toString().replace(/[,$₩\s]/g, ''));
-            if (v > maxVal) maxVal = v;
-          }
-          if (maxVal > 0 && isThisYear) {
-            yearlyTotal += maxVal;
-            const mk = dateStr.slice(0, 7);
-            byMonth[mk] = (byMonth[mk] || 0) + maxVal;
-          }
-          if (maxVal > 0 && isThisMonth) monthlyTotal += maxVal;
+        // Try current and previous hours (amazon.js caches hourly)
+        let amazonCached = null;
+        for (let h = 0; h <= 12; h++) {
+          const key = `sales:amazon:${new Date(Date.now() - h * 3600000).toISOString().slice(0, 13)}`;
+          amazonCached = await redis.get(key);
+          if (amazonCached) break;
         }
-        exportRevenue = {
-          status: 'connected',
-          rows: dataRows.length,
-          yearlyTotal,
-          monthlyTotal,
-          byMonth,
-        };
+        // Also try monthly key format (used by chief-report)
+        if (!amazonCached) {
+          const mk = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+          amazonCached = await redis.get(`sales:amazon:${mk}`);
+        }
+
+        if (amazonCached) {
+          const monthly = amazonCached.monthly || {};
+          const nowMonthKey2 = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+          const nowYear2 = String(new Date().getFullYear());
+          const monthlyTotal = monthly[nowMonthKey2]?.revenue || 0;
+          const yearlyTotal = Object.entries(monthly)
+            .filter(([k]) => k.startsWith(nowYear2))
+            .reduce((s, [, v]) => s + (v.revenue || 0), 0);
+          exportRevenue = { status: 'connected', monthlyTotal, yearlyTotal, monthly, updatedAt: amazonCached.updatedAt };
+        } else {
+          // Cache miss — trigger a background refresh (fire and forget)
+          fetch(`https://${process.env.VERCEL_URL || 'mine-ai-team.vercel.app'}/api/sales/amazon`).catch(() => {});
+          exportRevenue = { status: 'pending', monthlyTotal: 0, yearlyTotal: 0 };
+        }
       } catch (e) {
-        exportRevenue = { status: 'error', error: e.message };
+        exportRevenue = { status: 'error', error: e.message, monthlyTotal: 0, yearlyTotal: 0 };
       }
     }
 
@@ -273,6 +268,7 @@ export default async function handler(req, res) {
       contentCount,
       engagement: { comments: Number(commentTotal) || 0, dm: Number(dmTotal) || 0 },
       oliveyoungRevenue,
+      amazonRevenue: exportRevenue,
       exportRevenue,
       ga4Revenue,
       totalRevenue,
