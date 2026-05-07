@@ -26,8 +26,8 @@ export default async function handler(req, res) {
   }
 
   const endpoints = [
-    `/api/v2/admin/orders?limit=1&start_date=2026-01-01&end_date=2026-05-07&shop_no=1`,
-    `/api/v2/admin/salesreports?shop_no=1&start_date=2026-01-01&end_date=2026-05-07&report_period=monthly`,
+    `/api/v2/admin/orders?limit=10&start_date=2026-04-01&end_date=2026-04-30&shop_no=1`,
+    `/api/v2/admin/orders?limit=10&start_date=2026-05-01&end_date=2026-05-07&shop_no=1`,
   ];
 
   const results = [];
