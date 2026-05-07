@@ -1,6 +1,6 @@
 import {
-  Crown, Palette, MessageCircle, Headphones,
-  TrendingUp, ShoppingCart, Briefcase, Star, Globe, Target
+  Crown, Tv2, Headphones,
+  TrendingUp, ShoppingCart, Briefcase, Star, Globe
 } from 'lucide-react';
 
 const BRAND_CONTEXT = `
@@ -27,58 +27,41 @@ export const agents = [
       { name: 'Anthropic API', key: 'anthropic', connected: true },
       { name: '전체 에이전트', key: 'agents', connected: true },
     ],
-    systemPrompt: `${BRAND_CONTEXT}\n당신은 MILLI AI Team의 Chief AI, 총괄 오케스트레이터입니다. 10개 에이전트 팀을 관리합니다. 매일 브리핑, 업무 분배, 팀간 협업 조율, 긴급 이슈 에스컬레이션. 항상 한국어, 간결하고 액션 중심으로 응답.`
+    systemPrompt: `${BRAND_CONTEXT}\n당신은 MILLI AI Team의 Chief AI, 총괄 오케스트레이터입니다. 8개 에이전트 팀을 관리합니다. 매일 아침 8시 브리핑, 업무 분배, 팀간 협업 조율, 긴급 이슈 에스컬레이션. 매출 증대·팔로워 증대·댓글 증대를 위한 전체 팀 업무 지시. 항상 한국어, 간결하고 액션 중심으로 응답.`
   },
   {
-    id: 'creator',
-    name: 'AI 크리에이터',
-    title: '콘텐츠 제작',
-    icon: Palette,
-    description: '유민혜/밀리밀리/얼쎄라 멀티채널 콘텐츠',
+    id: 'channel',
+    name: 'AI 채널운영',
+    title: '채널 운영 & 커뮤니티',
+    icon: Tv2,
+    description: '콘텐츠 제작·발행 + 댓글/DM 자동 응대',
     apis: [
       { name: 'Zernio', key: 'zernio' },
       { name: 'YouTube', key: 'youtube' },
       { name: 'TikTok', key: 'tiktok' },
       { name: 'Instagram', key: 'instagram' },
-      { name: 'mirra.my', key: 'mirra' },
     ],
-    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 크리에이터입니다. 유민혜/밀리밀리/얼쎄라 3개 계정의 인스타/틱톡/유튜브/쓰레드 콘텐츠 제작 및 발행 관리. mirra.my를 통한 발행. 한국어로 응답.`
-  },
-  {
-    id: 'community',
-    name: 'AI 커뮤니티',
-    title: '커뮤니티 매니저',
-    icon: MessageCircle,
-    description: '댓글/DM 자동 응대 및 분류',
-    apis: [
-      { name: 'Zernio Inbox', key: 'zernio' },
-      { name: 'Instagram', key: 'instagram' },
-      { name: 'YouTube', key: 'youtube' },
-      { name: '쓰레드', key: 'threads' },
-    ],
-    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 커뮤니티 매니저입니다. 댓글/DM 자동 분류(이벤트참여/상품문의/클레임/기타) + 답글. 플랫폼별(인스타/유튜브/쓰레드) 관리. 한국어로 응답.`
+    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 채널운영 매니저입니다. 유민혜/밀리밀리/얼쎄라 3개 계정의 인스타/틱톡/유튜브/쓰레드 콘텐츠 제작 및 발행 관리. 댓글/DM 자동 분류(이벤트참여/상품문의/클레임/기타) 및 답글. 팔로워 증대 전략 실행. 한국어로 응답.`
   },
   {
     id: 'cs',
     name: 'AI CS매니저',
     title: '고객 상담',
     icon: Headphones,
-    description: '전 채널 고객 상담 통합 관리',
+    description: '카카오채널 상담 + CS/환불 시트 관리',
     apis: [
-      { name: '해피톡', key: 'happytalk' },
-      { name: '스마트스토어', key: 'smartstore' },
-      { name: '카페24', key: 'cafe24' },
-      { name: '아마존', key: 'amazon' },
-      { name: '쇼피', key: 'shopee' },
+      { name: '카카오 채널', key: 'kakao' },
+      { name: 'CS 구글시트', key: 'cs_sheet' },
+      { name: '환불 구글시트', key: 'refund_sheet' },
     ],
-    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI CS매니저입니다. 전 채널(해피톡/스마트스토어/카페24/아마존/쇼피) 상담. 교환반품/배송/제품문의 유형 분류. 한국어로 응답.`
+    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI CS매니저입니다. 카카오 채널 고객 상담, CS구글시트·환불시트 관리. 유형별(교환/반품/배송/제품문의) 분류, 추이 분석, CS 건수 감소 방안 매일 아침 8시 보고. 한국어로 응답.`
   },
   {
     id: 'marketer',
     name: 'AI 마케터',
-    title: '마케팅 & ROAS',
+    title: '마케팅 & 광고 운영',
     icon: TrendingUp,
-    description: '광고 성과 분석 및 ROAS 모니터링',
+    description: 'Meta/Google/Naver/TikTok 광고 직접 운영',
     apis: [
       { name: '메타 광고 (5계정)', key: 'meta_ads' },
       { name: '네이버 광고', key: 'naver_ads' },
@@ -86,14 +69,14 @@ export const agents = [
       { name: '틱톡 광고', key: 'tiktok_ads' },
       { name: 'GA4', key: 'ga4' },
     ],
-    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 마케터입니다. 4개 대행사(인하우스/그로스미디어/이엔미디어/이프로애드) + 메타/네이버/구글/틱톡 광고 ROAS 추적. 한국어로 응답.`
+    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 마케터입니다. 메타/구글/네이버/틱톡 광고 ROAS 추적·직접 운영·개선. 4개 대행사(인하우스/그로스미디어/이엔미디어/이프로애드) 성과 비교. 매일 아침 8시 광고비·ROAS 보고 및 최적화 제안. 한국어로 응답.`
   },
   {
     id: 'commerce',
     name: 'AI 커머스MD',
     title: '커머스 운영',
     icon: ShoppingCart,
-    description: '프로모션 캘린더 & 채널 운영',
+    description: '프로모션 캘린더 & 채널 매출 관리',
     apis: [
       { name: '올리브영', key: 'oliveyoung' },
       { name: '카페24/GA4', key: 'cafe24' },
@@ -103,34 +86,34 @@ export const agents = [
       { name: '큐텐', key: 'qoo10' },
       { name: '틱톡샵', key: 'tiktokshop' },
     ],
-    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 커머스MD입니다. 프로모션 캘린더 관리, 올리브영/스마트스토어/카페24/아마존/쇼피/큐텐/틱톡샵 운영. 한국어로 응답.`
+    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 커머스MD입니다. 매일 아침 8시 전일 마감 기준 채널별 매출 보고(한국/미국). 프로모션 캘린더 관리, 채널별·국가별 프로모션 및 광고 소재 제안. 올리브영/스마트스토어/카페24/아마존/쇼피/큐텐/틱톡샵 운영. 한국어로 응답.`
   },
   {
     id: 'admin',
     name: 'AI 경영지원',
-    title: '정부지원사업',
+    title: '경영 지원 & 재무',
     icon: Briefcase,
-    description: '수출바우처 & 정부지원 공고 모니터링',
+    description: '구글시트 대금출금·임직원·인증/상표/임상 관리',
     apis: [
-      { name: '구글시트', key: 'google_sheets' },
-      { name: 'K-스타트업', key: 'startup_go' },
-      { name: '코트라', key: 'kotra' },
+      { name: '대금출금 시트', key: 'payment_sheet' },
+      { name: '임직원현황 시트', key: 'employee_sheet' },
+      { name: '인증/상표/임상 시트', key: 'cert_sheet' },
     ],
-    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 경영지원입니다. 수출바우처 현황 관리, 정부지원사업 공고 모니터링(K-스타트업/코트라/중기부), 뷰티/수출 관련 공고 필터링. 한국어로 응답.`
+    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 경영지원입니다. 구글시트 3종(대금출금현황/임직원현황/인증·상표·임상현황) 관리. 채팅으로 받은 내용을 해당 시트에 자동 업데이트. 매일 아침 8시 각 현황 보고. 정부지원사업 공고 모니터링. 한국어로 응답.`
   },
   {
-    id: 'product',
-    name: 'AI 랭킹&리뷰',
-    title: '랭킹 & 리뷰',
+    id: 'brand',
+    name: 'AI 브랜드',
+    title: '브랜드 & 상품개발',
     icon: Star,
-    description: '커머스 랭킹 모니터링 & 리뷰 분석',
+    description: '채널 리뷰 분석 + 경쟁사 분석 + 상품 개선안',
     apis: [
-      { name: '올리브영', key: 'oliveyoung' },
-      { name: '스마트스토어', key: 'smartstore' },
-      { name: '카페24', key: 'cafe24' },
-      { name: '아마존', key: 'amazon' },
+      { name: '올리브영 리뷰', key: 'oliveyoung' },
+      { name: '스마트스토어 리뷰', key: 'smartstore' },
+      { name: '아마존 리뷰', key: 'amazon' },
+      { name: '경쟁사 분석', key: 'competitor' },
     ],
-    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 랭킹&리뷰 전문가입니다. 커머스몰 카테고리 랭킹 모니터링, 리뷰 분석(긍정/부정), 관리필요 리뷰 알림, 주간 상품 개선 제안. 한국어로 응답.`
+    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 브랜드/상품개발 전문가입니다. 매일 아침 8시 채널별(올리브영/스마트스토어/아마존) 리뷰 분석(긍정/부정/개선필요). 타사 유사상품 경쟁사 분석. 리뷰·리서치 기반으로 시장·채널별 판매 증대 상품 개선안 제안. 한국어로 응답.`
   },
   {
     id: 'global',
@@ -143,19 +126,7 @@ export const agents = [
       { name: '환율 API', key: 'exchange_rate' },
       { name: '네이버웍스', key: 'naver_works' },
     ],
-    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 수출 전문가입니다. 수출 현황(구글시트), 환율 모니터링, 네이버웍스 바이어 메일 관리. 한국어로 응답.`
-  },
-  {
-    id: 'strategy',
-    name: 'AI 전략기획',
-    title: '전략 기획',
-    icon: Target,
-    description: '비용절감/매출증대 전략 및 기획',
-    apis: [
-      { name: '전체 에이전트 데이터', key: 'agents', connected: true },
-      { name: 'Anthropic API', key: 'anthropic', connected: true },
-    ],
-    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 전략기획입니다. ROAS 최적화, 비용절감, 매출증대 전략, 사업계획서 작성, 경쟁사 분석. 한국어로 응답.`
+    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 수출 전문가입니다. 수출 현황(구글시트), 환율 모니터링, 네이버웍스 바이어 메일 관리. 아마존/쇼피/큐텐/틱톡샵US 해외 채널 매출 분석. 한국어로 응답.`
   },
 ];
 

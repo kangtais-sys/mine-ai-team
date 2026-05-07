@@ -13,93 +13,59 @@ export default function Sidebar({ page, onNavigate }) {
         height: 32,
         display: 'flex',
         alignItems: 'center',
-        gap: 10,
+        gap: 9,
         padding: '0 8px',
         border: 'none',
         borderRadius: 6,
-        background: active ? '#1F1F1F' : 'transparent',
-        color: active ? '#FFFFFF' : '#808080',
+        background: active ? '#EBEBEF' : 'transparent',
+        color: active ? '#1D1D1F' : '#6E6E73',
         cursor: 'pointer',
-        fontSize: 14,
+        fontSize: 13.5,
         fontWeight: active ? 500 : 400,
         fontFamily: 'inherit',
         textAlign: 'left',
-        transition: 'background 0.15s, color 0.15s',
+        transition: 'background 0.12s, color 0.12s',
       }}
-      onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.background = '#1A1A1A';
-      }}
-      onMouseLeave={(e) => {
-        if (!active) e.currentTarget.style.background = 'transparent';
-      }}
+      onMouseEnter={(e) => { if (!active) { e.currentTarget.style.background = '#F2F2F5'; e.currentTarget.style.color = '#1D1D1F'; } }}
+      onMouseLeave={(e) => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#6E6E73'; } }}
     >
       {icon}
-      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {label}
-      </span>
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
     </button>
   );
 
   return (
-    <div style={{
-      width: 240,
-      height: '100vh',
-      background: '#0A0A0A',
-      borderRight: '1px solid #1A1A1A',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden',
-    }}>
-      {/* Workspace */}
-      <div style={{
-        height: 56,
-        padding: '0 12px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        borderBottom: '1px solid #1A1A1A',
-        flexShrink: 0,
-      }}>
-        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="28" height="28" rx="8" fill="white" fillOpacity="0.12"/>
-          <path d="M7 20V8L14 16L21 8V20" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
+    <div style={{ width: 240, height: '100vh', background: '#FFFFFF', borderRight: '1px solid #E5E5EA', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Logo */}
+      <div style={{ height: 56, padding: '0 14px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #E5E5EA', flexShrink: 0 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: '#1D1D1F', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width="16" height="16" viewBox="0 0 28 28" fill="none">
+            <path d="M7 20V8L14 16L21 8V20" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#F5F5F5', lineHeight: 1.2 }}>MILLI AI</div>
-          <div style={{ fontSize: 11, color: '#555', lineHeight: 1.2 }}>Millius Corp.</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#1D1D1F', lineHeight: 1.2 }}>MILLI AI</div>
+          <div style={{ fontSize: 11, color: '#AEAEB2', lineHeight: 1.2 }}>Millius Corp.</div>
         </div>
       </div>
 
-      {/* Navigation */}
+      {/* Dashboard nav */}
       <div style={{ padding: '8px 8px 0', flexShrink: 0 }}>
         {menuItem(
           page === 'dashboard',
-          <LayoutDashboard size={16} strokeWidth={1.8} />,
+          <LayoutDashboard size={15} strokeWidth={1.8} />,
           '대시보드',
           () => onNavigate('dashboard')
         )}
       </div>
 
       {/* Section Label */}
-      <div style={{
-        padding: '16px 16px 6px',
-        fontSize: 11,
-        fontWeight: 600,
-        color: '#4A4A4A',
-        textTransform: 'uppercase',
-        letterSpacing: '0.06em',
-        flexShrink: 0,
-      }}>
+      <div style={{ padding: '14px 14px 5px', fontSize: 10.5, fontWeight: 600, color: '#AEAEB2', textTransform: 'uppercase', letterSpacing: '0.07em', flexShrink: 0 }}>
         Agents
       </div>
 
       {/* Agent List */}
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        padding: '0 8px 8px',
-        minHeight: 0,
-      }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 8px', minHeight: 0 }}>
         {agents.map((agent) => {
           const Icon = agent.icon;
           const isActive = page === 'chat' && activeAgent === agent.id;
@@ -107,7 +73,7 @@ export default function Sidebar({ page, onNavigate }) {
             <div key={agent.id} style={{ marginBottom: 1 }}>
               {menuItem(
                 isActive,
-                <Icon size={16} strokeWidth={1.8} />,
+                <Icon size={15} strokeWidth={1.8} />,
                 agent.name,
                 () => { setActiveAgent(agent.id); onNavigate('chat'); }
               )}
@@ -117,32 +83,13 @@ export default function Sidebar({ page, onNavigate }) {
       </div>
 
       {/* User Profile */}
-      <div style={{
-        height: 52,
-        padding: '0 12px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        borderTop: '1px solid #1A1A1A',
-        flexShrink: 0,
-      }}>
-        <div style={{
-          width: 26,
-          height: 26,
-          borderRadius: '50%',
-          background: '#1F1F1F',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 11,
-          fontWeight: 600,
-          color: '#888',
-        }}>
+      <div style={{ height: 52, padding: '0 14px', display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid #E5E5EA', flexShrink: 0 }}>
+        <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#1D1D1F', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#FFF', flexShrink: 0 }}>
           M
         </div>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 500, color: '#CCC', lineHeight: 1.2 }}>MILLIMILLI</div>
-          <div style={{ fontSize: 11, color: '#555', lineHeight: 1.2 }}>대표</div>
+          <div style={{ fontSize: 13.5, fontWeight: 500, color: '#1D1D1F', lineHeight: 1.2 }}>유민혜</div>
+          <div style={{ fontSize: 11, color: '#AEAEB2', lineHeight: 1.2 }}>Millius Corp. 대표</div>
         </div>
       </div>
     </div>
