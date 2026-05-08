@@ -356,52 +356,26 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* ── 3b. 수출 B2B — 바이어 발송 기록 ── */}
+        {/* ── 3b. 수출 B2B — 바이어 요약 ── */}
         <div style={{ marginBottom: 14 }}>
-          <SectionTitle>수출 B2B — 바이어 발송 기록</SectionTitle>
-          <div style={{ ...CARD, padding: 0, overflow: 'hidden' }}>
+          <SectionTitle>수출 B2B — 바이어별 합계</SectionTitle>
+          <div style={{ ...CARD }}>
             {!b2bConnected ? (
-              <div style={{ fontSize: 12, color: '#AEAEB2', textAlign: 'center', padding: '20px' }}>수출시트 미연결</div>
+              <div style={{ fontSize: 12, color: '#AEAEB2', textAlign: 'center', padding: '8px 0' }}>수출시트 미연결</div>
             ) : (
-              <>
-                {/* 바이어별 요약 카드 */}
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid #F2F2F5', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                  <div style={{ background: '#F0F0FF', borderRadius: 8, padding: '6px 12px', marginRight: 4 }}>
-                    <div style={{ fontSize: 10, color: '#5E6AD2', fontWeight: 500 }}>2026 수출 합계</div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: '#5E6AD2' }}>{fmtKRW(b2bData.totalRevenue)}</div>
-                  </div>
-                  {Object.entries(b2bData.byBuyer || {}).sort(([,a],[,b]) => b.revenue - a.revenue).map(([buyer, v]) => (
-                    <div key={buyer} style={{ background: '#F5F5F7', borderRadius: 8, padding: '6px 10px' }}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: '#1D1D1F' }}>{buyer}</div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: '#5E6AD2', marginTop: 1 }}>{fmtKRW(v.revenue)}</div>
-                      <div style={{ fontSize: 9.5, color: '#AEAEB2' }}>{v.qty.toLocaleString()}개 · {v.products.length}종</div>
-                    </div>
-                  ))}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                <div style={{ background: '#F0F0FF', borderRadius: 8, padding: '6px 12px', marginRight: 4 }}>
+                  <div style={{ fontSize: 10, color: '#5E6AD2', fontWeight: 500 }}>2026 수출 합계</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#5E6AD2' }}>{fmtKRW(b2bData.totalRevenue)}</div>
                 </div>
-                {/* 전체 거래 기록 테이블 */}
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
-                  <thead>
-                    <tr style={{ background: '#FAFAFA' }}>
-                      {['날짜','바이어','품명','수량','금액'].map(h => (
-                        <th key={h} style={{ padding: '7px 12px', textAlign: ['수량','금액'].includes(h) ? 'right' : 'left', fontSize: 10, color: '#AEAEB2', fontWeight: 500, borderBottom: '1px solid #F2F2F5' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(b2bData.shipments || []).map((s, i, arr) => (
-                      <tr key={i}>
-                        <td style={{ padding: '6px 12px', borderBottom: i < arr.length-1 ? '1px solid #F5F5F7' : 'none', color: '#AEAEB2', whiteSpace: 'nowrap', fontSize: 11 }}>
-                          {s.date?.replace(/\. /g,'.').replace(/\.$/,'') || '-'}
-                        </td>
-                        <td style={{ padding: '6px 12px', borderBottom: i < arr.length-1 ? '1px solid #F5F5F7' : 'none', color: '#1D1D1F', fontWeight: 500 }}>{s.buyer}</td>
-                        <td style={{ padding: '6px 12px', borderBottom: i < arr.length-1 ? '1px solid #F5F5F7' : 'none', color: '#6E6E73', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.product}</td>
-                        <td style={{ padding: '6px 12px', borderBottom: i < arr.length-1 ? '1px solid #F5F5F7' : 'none', textAlign: 'right', color: '#6E6E73' }}>{s.qty.toLocaleString()}</td>
-                        <td style={{ padding: '6px 12px', borderBottom: i < arr.length-1 ? '1px solid #F5F5F7' : 'none', textAlign: 'right', fontWeight: 600, color: '#1D1D1F' }}>{fmtKRW(s.amount)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </>
+                {Object.entries(b2bData.byBuyer || {}).sort(([,a],[,b]) => b.revenue - a.revenue).map(([buyer, v]) => (
+                  <div key={buyer} style={{ background: '#F5F5F7', borderRadius: 8, padding: '6px 10px' }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#1D1D1F' }}>{buyer}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#5E6AD2', marginTop: 1 }}>{fmtKRW(v.revenue)}</div>
+                    <div style={{ fontSize: 9.5, color: '#AEAEB2' }}>{v.qty.toLocaleString()}개 · {v.products.length}종</div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
