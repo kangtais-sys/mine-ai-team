@@ -61,9 +61,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    // instagram_basic + instagram_manage_insights 권한으로 like_count/comments_count 포함
-    const fields = 'id,caption,timestamp,like_count,comments_count,media_type,permalink,media_url,thumbnail_url';
-    const url = `https://graph.instagram.com/me/media?fields=${fields}&limit=10&access_token=${token}`;
+    // instagram_basic + instagram_manage_insights 권한 — Business API 엔드포인트
+    const fields = 'id,caption,timestamp,like_count,comments_count,media_type,permalink';
+    // userId가 있으면 /{userId}/media, 없으면 /me/media fallback
+    const baseUrl = userId
+      ? `https://graph.facebook.com/v21.0/${userId}/media`
+      : `https://graph.instagram.com/me/media`;
+    const url = `${baseUrl}?fields=${fields}&limit=10&access_token=${token}`;
     const igRes = await fetch(url);
     const data = await igRes.json();
 
