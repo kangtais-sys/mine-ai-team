@@ -5,58 +5,54 @@ export default async function handler(req, res) {
   const results = {};
 
   const milliId = '17841437734938544'; // millimilli IG Business ID (확인됨)
-  const bmId = '6230686894709601';
   const sysUserId = '61589081296104';
+  const bmId = '6230686894709601';
 
-  // 1. IG 토큰으로 millimilli의 Business Discovery → lala_lounge_
+  // 1. token debug: IG 토큰이 어떤 계정에 접근할 수 있는지 확인
+  if (igToken && metaToken) {
+    const dbg = await fetch(
+      `https://graph.facebook.com/v21.0/debug_token?input_token=${igToken}&access_token=${metaToken}`
+    ).then(r => r.json()).catch(e => ({ error: e.message }));
+    results.token_debug = dbg;
+  }
+
+  // 2. IG 토큰으로 /me 계정 정보 + connected_instagram_accounts
   if (igToken) {
-    const d1 = await fetch(
-      `https://graph.facebook.com/v21.0/${milliId}?fields=business_discovery.fields(id,username,followers_count)&username=lala_lounge_&access_token=${igToken}`
+    const me = await fetch(
+      `https://graph.facebook.com/v21.0/me?fields=id,name,instagram_accounts&access_token=${igToken}`
     ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.lala_discovery_ig_token = d1;
+    results.ig_token_me_fb = me;
   }
 
-  // 2. META 시스템 사용자 토큰으로 BM owned IG 계정 조회
+  // 3. META 토큰으로 시스템 사용자 연결된 IG 계정들
   if (metaToken) {
-    const d2 = await fetch(
-      `https://graph.facebook.com/v21.0/${bmId}/owned_instagram_accounts?fields=id,username,followers_count&access_token=${metaToken}`
+    const sysMe = await fetch(
+      `https://graph.facebook.com/v21.0/${sysUserId}?fields=id,name,instagram_accounts&access_token=${metaToken}`
     ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.bm_owned_ig_meta = d2;
+    results.sys_user_ig_accounts_meta = sysMe;
   }
 
-  // 3. META 토큰으로 시스템 사용자 할당 IG 계정
+  // 4. BM owned pages + 각 페이지의 연결된 IG 계정
   if (metaToken) {
-    const d3 = await fetch(
-      `https://graph.facebook.com/v21.0/${sysUserId}/assigned_instagram_accounts?fields=id,username&access_token=${metaToken}`
+    const pages = await fetch(
+      `https://graph.facebook.com/v21.0/${bmId}/owned_pages?fields=id,name,instagram_business_account&limit=20&access_token=${metaToken}`
     ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.sys_assigned_ig_meta = d3;
+    results.bm_owned_pages = pages;
   }
 
-  // 4. IG 토큰으로 시스템 사용자 할당 IG 계정
+  // 5. millimilli IG 계정의 connected_page 확인 (IG token)
   if (igToken) {
-    const d4 = await fetch(
-      `https://graph.facebook.com/v21.0/${sysUserId}/assigned_instagram_accounts?fields=id,username&access_token=${igToken}`
+    const milliInfo = await fetch(
+      `https://graph.facebook.com/v21.0/${milliId}?fields=id,username,followers_count,connected_instagram_account&access_token=${igToken}`
     ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.sys_assigned_ig_token = d4;
+    results.millimilli_info = milliInfo;
   }
 
-  // 5. META 토큰으로 BM client IG 계정
-  if (metaToken) {
-    const d5 = await fetch(
-      `https://graph.facebook.com/v21.0/${bmId}/client_instagram_accounts?fields=id,username&access_token=${metaToken}`
-    ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.bm_client_ig_meta = d5;
-  }
-
-  // 6. IG 토큰으로 lala_lounge_ 미디어 직접 접근 테스트 (ID 추정)
-  // lala_lounge_ 알려진 후보 ID 시도
-  const candidates = ['17841467434938544', '17841413734938544'];
-  for (const cid of candidates) {
-    const d6 = await fetch(
-      `https://graph.facebook.com/v21.0/${cid}?fields=id,username&access_token=${igToken}`
-    ).then(r => r.json()).catch(e => ({ error: e.message }));
-    if (!d6.error) { results[`candidate_${cid}`] = d6; }
-  }
+  // 6. Instagram oEmbed (인증 없이 공개 계정 정보 조회)
+  const oembed = await fetch(
+    `https://graph.facebook.com/v21.0/instagram_oembed?url=https://www.instagram.com/lala_lounge_/&access_token=${igToken || metaToken}`
+  ).then(r => r.json()).catch(e => ({ error: e.message }));
+  results.lala_oembed = oembed;
 
   return res.status(200).json(results);
 }
