@@ -165,7 +165,15 @@ export default function Dashboard() {
   const b2bConnected = b2bData?.status === 'connected';
 
   const conn = stats?.connections || {};
-  const agentKeyList = ['creator','community','cs','marketer','commerce','management','brand','export','chief'];
+  const agentKeyList = ['channel','marketer','commerce','admin','global'];
+
+  const AGENT_META = {
+    channel: { name: 'AI 채널운영', source: 'Zernio · Instagram', description: '콘텐츠 · 댓글 · DM' },
+    marketer: { name: 'AI 마케터', source: 'Meta Ads · Naver', description: 'ROAS · 광고 최적화' },
+    commerce: { name: 'AI 커머스MD', source: '올리브영 · 스마트스토어', description: '매출 · 프로모션 · 리뷰' },
+    admin: { name: 'AI 경영지원', source: 'Google Sheets', description: '대금출금 · 임직원 · 인증' },
+    global: { name: 'AI 수출', source: '수출시트 · 환율 API', description: '바이어 파이프라인 · 해외매출' },
+  };
 
   // 차트 데이터
   const chartData = stats?.monthlyRevenue?.length
@@ -460,10 +468,10 @@ export default function Dashboard() {
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                       <ConnDot ok={ag.connected} />
-                      <span style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>{ag.name || id}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>{ag.name || AGENT_META[id]?.name || id}</span>
                     </div>
-                    <div style={{ fontSize: 10, color: '#AEAEB2', marginBottom: 2 }}>{ag.source || '-'}</div>
-                    <div style={{ fontSize: 10, color: '#6E6E73', marginBottom: 3 }}>{ag.description || ''}</div>
+                    <div style={{ fontSize: 10, color: '#AEAEB2', marginBottom: 2 }}>{ag.source || AGENT_META[id]?.source || '-'}</div>
+                    <div style={{ fontSize: 10, color: '#6E6E73', marginBottom: 3 }}>{ag.description || AGENT_META[id]?.description || ''}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                       <span style={{
                         fontSize: 9.5, fontWeight: 600, padding: '1px 6px', borderRadius: 4,

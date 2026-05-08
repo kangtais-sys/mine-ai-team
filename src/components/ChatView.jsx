@@ -697,75 +697,6 @@ const AGENT_DASHBOARDS = {
     );
   },
 
-  // ── CS ────────────────────────────────────────────────────
-  cs: () => {
-    const [d, setD] = useState(null);
-    useEffect(() => {
-      fetch('/api/agents/cs').then(r => r.json()).then(setD).catch(() => {});
-    }, []);
-
-    const ts = d?.typeStats || {};
-    const typeTotal = (ts.exchange || 0) + (ts.delivery || 0) + (ts.product || 0) + (ts.other || 0) || 1;
-    const kakaoConnected = d?.channels?.kakao?.status === 'connected';
-    const hasData = d !== null;
-
-    if (hasData && !d?.today && !d?.monthly) {
-      return (
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 24, textAlign: 'center' }}>
-          <XCircle size={28} color="#D1D1D6" style={{ marginBottom: 10 }} />
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F', marginBottom: 6 }}>카카오채널 미연결</div>
-          <div style={{ fontSize: 11, color: '#AEAEB2', lineHeight: 1.6 }}>
-            카카오 비즈니스 채널 API를 연결하면<br />CS 현황을 자동으로 수집합니다.
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <>
-        <DailyReportCard agentId="cs" />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <KpiCard label="오늘 문의" value={`${d?.today?.total || 0}건`} sub="오늘 누적" icon={Headphones} />
-          <KpiCard label="당월 문의" value={`${d?.monthly?.total || 0}건`} sub="당월 누적" icon={Headphones} />
-          <KpiCard label="완료" value={`${d?.today?.done || 0}건`} sub="오늘 처리" icon={CheckCircle2} accent="#34C759" />
-          <KpiCard label="미완료" value={`${d?.today?.pending || 0}건`} sub="처리 대기" icon={Clock} accent={d?.today?.pending > 0 ? '#FF3B30' : undefined} />
-        </div>
-
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>CS 유형 분류 (오늘)</div>
-          {[
-            { label: '교환/반품', key: 'exchange', color: '#FF3B30' },
-            { label: '배송문의', key: 'delivery', color: '#F59E0B' },
-            { label: '제품문의', key: 'product', color: '#5E6AD2' },
-            { label: '기타', key: 'other', color: '#AEAEB2' },
-          ].map((t, i) => (
-            <div key={i} style={{ marginBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                <span style={{ fontSize: 11, color: '#1D1D1F' }}>{t.label}</span>
-                <span style={{ fontSize: 11, color: '#6E6E73' }}>{ts[t.key] || 0}건</span>
-              </div>
-              <div style={{ height: 3, background: '#F5F5F7', borderRadius: 2, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${((ts[t.key] || 0) / typeTotal) * 100}%`, background: t.color, borderRadius: 2 }} />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>카카오 채널 CS</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <ConnBadge connected={kakaoConnected} label="카카오 비즈니스 채널" />
-          </div>
-          {!kakaoConnected && (
-            <div style={{ fontSize: 10, color: '#AEAEB2', marginTop: 8, lineHeight: 1.5 }}>
-              KAKAO_CHANNEL_ID, KAKAO_ADMIN_KEY 환경변수 설정 후 연결됩니다.
-            </div>
-          )}
-        </div>
-      </>
-    );
-  },
-
   // ── Marketer ───────────────────────────────────────────────
   marketer: () => {
     const [d, setD] = useState(null);
@@ -832,7 +763,7 @@ const AGENT_DASHBOARDS = {
           </div>
           {d && [d.meta, d.naver, d.google, d.tiktok, d.ga].every(ch => !ch || ch.status !== 'connected') && (
             <div style={{ fontSize: 10, color: '#AEAEB2', marginTop: 8, lineHeight: 1.5 }}>
-              광고 API 미연결 상태입니다. 환경변수를 확인해주세요.
+              광고 API 미연결 상태입니다. META_ACCESS_TOKEN 환경변수를 확인해주세요.
             </div>
           )}
         </div>
@@ -857,10 +788,12 @@ const AGENT_DASHBOARDS = {
   commerce: () => {
     const [stats, setStats] = useState(null);
     const [commerceData, setCommerceData] = useState(null);
+    const [brandData, setBrandData] = useState(null);
 
     useEffect(() => {
       fetch('/api/stats').then(r => r.json()).then(setStats).catch(() => {});
       fetch('/api/agents/commerce').then(r => r.json()).then(setCommerceData).catch(() => {});
+      fetch('/api/agents/brand').then(r => r.json()).then(setBrandData).catch(() => {});
     }, []);
 
     const now = new Date();
@@ -974,6 +907,62 @@ const AGENT_DASHBOARDS = {
             })}
           </div>
         )}
+
+        {/* 채널별 랭킹 (brand 통합) */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>채널별 랭킹</div>
+          {brandData?.rankings?.status === 'connected' && brandData.rankings.items?.length > 0 ? (
+            brandData.rankings.items.map((item, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < brandData.rankings.items.length - 1 ? '1px solid #F5F5F7' : 'none' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: item.ours ? '#5E6AD2' : '#AEAEB2', width: 22 }}>{item.rank}</span>
+                <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{item.name}</span>
+                <span style={{ fontSize: 9, color: '#AEAEB2' }}>{item.category}</span>
+              </div>
+            ))
+          ) : (
+            <div style={{ fontSize: 11, color: '#AEAEB2', padding: '8px 0' }}>
+              랭킹 데이터 수집 대기 중 — 주간 자동 업데이트
+            </div>
+          )}
+          <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 8 }}>마지막: {brandData?.rankings?.updatedAt || '대기 중'}</div>
+        </div>
+
+        {/* 상품 리뷰 (brand 통합) */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>상품 리뷰</div>
+          {brandData?.reviews?.status === 'connected' && brandData.reviews.products?.length > 0 ? (
+            brandData.reviews.products.map((p, i) => (
+              <div key={i} style={{ padding: '8px 0', borderBottom: i < brandData.reviews.products.length - 1 ? '1px solid #F5F5F7' : 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, color: '#1D1D1F' }}>{p.name}</span>
+                  {p.attention > 0 && <span style={{ fontSize: 8, background: '#EF4444', color: '#FFF', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>관리 {p.attention}건</span>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 13, color: '#F59E0B' }}>{'★'.repeat(Math.floor(p.rating || 0))}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#1D1D1F' }}>{p.rating}</span>
+                  <span style={{ fontSize: 10, color: '#AEAEB2' }}>({p.count}건)</span>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div style={{ fontSize: 11, color: '#AEAEB2', padding: '8px 0' }}>
+              리뷰 모니터링 데이터 대기 중
+            </div>
+          )}
+        </div>
+
+        {/* 주간 AI 제안 (brand 통합) */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 8 }}>주간 AI 제안</div>
+          {brandData?.suggestions?.status === 'connected' ? (
+            <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+              {brandData.suggestions.content || brandData.suggestions.text || '제안 내용 로딩 중...'}
+              <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 6 }}>{brandData.suggestions.updatedAt?.slice(0, 10)}</div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: '#AEAEB2' }}>매주 월요일 리뷰 분석 후 AI 제안 자동 생성</div>
+          )}
+        </div>
       </>
     );
   },
@@ -1046,86 +1035,6 @@ const AGENT_DASHBOARDS = {
           <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 8 }}>
             K-스타트업 · 코트라 · 중기부 공고 자동 수집{d?.govAnnouncements?.updatedAt ? ` · ${d.govAnnouncements.updatedAt.slice(0, 10)}` : ''}
           </div>
-        </div>
-      </>
-    );
-  },
-
-  // ── Brand ─────────────────────────────────────────────────
-  brand: () => {
-    const [d, setD] = useState(null);
-    const [stats, setStats] = useState(null);
-    useEffect(() => {
-      fetch('/api/agents/brand').then(r => r.json()).then(setD).catch(() => {});
-      fetch('/api/stats').then(r => r.json()).then(setStats).catch(() => {});
-    }, []);
-
-    const rankings = d?.rankings;
-    const reviews = d?.reviews;
-    const proposal = d?.suggestions;
-
-    return (
-      <>
-        <DailyReportCard agentId="brand" />
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>카테고리 랭킹</div>
-          {rankings?.status === 'connected' && rankings.items?.length > 0 ? (
-            rankings.items.map((item, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < rankings.items.length - 1 ? '1px solid #F5F5F7' : 'none' }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: item.ours ? '#5E6AD2' : '#AEAEB2', width: 22 }}>{item.rank}</span>
-                <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{item.name}</span>
-                <span style={{ fontSize: 9, color: '#AEAEB2' }}>{item.category}</span>
-              </div>
-            ))
-          ) : (
-            <div style={{ fontSize: 11, color: '#AEAEB2', padding: '8px 0' }}>
-              랭킹 데이터 수집 대기 중 — 주간 자동 업데이트
-            </div>
-          )}
-          <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 8 }}>마지막: {rankings?.updatedAt || '대기 중'}</div>
-        </div>
-
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 4 }}>올리브영 당월 매출</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: '#1D1D1F', letterSpacing: '-0.02em' }}>
-            {stats?.oliveyoung?.monthly ? fmtKRW(stats.oliveyoung.monthly) : '-'}
-          </div>
-          <div style={{ fontSize: 10, color: '#AEAEB2', marginTop: 4 }}>이번 달 누적</div>
-        </div>
-
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>상품별 리뷰</div>
-          {reviews?.status === 'connected' && reviews.products?.length > 0 ? (
-            reviews.products.map((p, i) => (
-              <div key={i} style={{ padding: '8px 0', borderBottom: i < reviews.products.length - 1 ? '1px solid #F5F5F7' : 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ fontSize: 11, color: '#1D1D1F' }}>{p.name}</span>
-                  {p.attention > 0 && <span style={{ fontSize: 8, background: '#EF4444', color: '#FFF', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>관리 {p.attention}건</span>}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 13, color: '#F59E0B' }}>{'★'.repeat(Math.floor(p.rating || 0))}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#1D1D1F' }}>{p.rating}</span>
-                  <span style={{ fontSize: 10, color: '#AEAEB2' }}>({p.count}건)</span>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div style={{ fontSize: 11, color: '#AEAEB2', padding: '8px 0' }}>
-              리뷰 모니터링 데이터 대기 중
-            </div>
-          )}
-        </div>
-
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 8 }}>주간 상품 제안</div>
-          {proposal?.status === 'connected' ? (
-            <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-              {proposal.content || proposal.text || '제안 내용 로딩 중...'}
-              <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 6 }}>{proposal.updatedAt?.slice(0, 10)}</div>
-            </div>
-          ) : (
-            <div style={{ fontSize: 11, color: '#AEAEB2' }}>매주 월요일 리뷰 분석 후 AI 제안 자동 생성</div>
-          )}
         </div>
       </>
     );
@@ -1229,11 +1138,9 @@ const AGENT_DASHBOARDS = {
 const quickActions = {
   chief: ['오늘 전체 브리핑해줘', '각 에이전트 업무 지시해줘', '이번 주 우선순위 정리해줘'],
   channel: ['유민혜 이번 주 콘텐츠 기획해줘', '밀리밀리 인스타 캡션 작성해줘', '팔로워 증대 전략 제안해줘'],
-  cs: ['오늘 CS 현황 요약해줘', 'CS 유형별 분류 리포트', 'CS 감소 방안 제안해줘'],
   marketer: ['오늘 광고 ROAS 분석해줘', '채널별 광고비 현황', '광고 최적화 제안해줘'],
-  commerce: ['채널별 매출 현황 보고해줘', '이번 달 프로모션 제안해줘', '올리브영 운영 전략'],
+  commerce: ['채널별 매출 현황 보고해줘', '이번 달 프로모션 제안해줘', '올리브영 랭킹 및 리뷰 분석해줘'],
   admin: ['대금출금 현황 보고해줘', '정부지원사업 공고 알려줘', '임직원 현황 정리해줘'],
-  brand: ['이번 주 리뷰 분석해줘', '경쟁사 분석해줘', '상품 개선안 제안해줘'],
   global: ['수출 현황 보고해줘', '아마존 판매 분석해줘', '바이어 컨택 메일 작성해줘'],
 };
 

@@ -27,7 +27,7 @@ export default async function handler(req, res) {
   const result = { meta: null, agencies: {}, naver: null, google: null, tiktok: null, ga: null, totalSpend: 0, suggestions: null };
 
   // === Meta Ads ===
-  const token = process.env.INSTAGRAM_ACCESS_TOKEN;
+  const token = process.env.META_ACCESS_TOKEN || process.env.INSTAGRAM_ACCESS_TOKEN;
   if (token) {
     try {
       const accounts = await Promise.all(AD_ACCOUNTS.map(async (acc) => {
@@ -42,11 +42,12 @@ export default async function handler(req, res) {
         } catch { return { name: acc.name, error: 'API error' }; }
       }));
       const totalSpend = accounts.reduce((s, a) => s + (a.spend || 0), 0);
-      result.meta = { status: 'connected', totalSpend, accounts };
+      const hasData = accounts.some(a => !a.error); // 하나라도 성공한 계정이 있으면 connected
+      result.meta = { status: hasData ? 'connected' : 'disconnected', totalSpend, accounts };
       result.totalSpend += totalSpend;
     } catch (e) { result.meta = { status: 'error', error: e.message }; }
   } else {
-    result.meta = { status: 'disconnected', message: 'Meta token required' };
+    result.meta = { status: 'disconnected', message: 'META_ACCESS_TOKEN 또는 INSTAGRAM_ACCESS_TOKEN 필요' };
   }
 
   // === Agency sheets ===

@@ -1,6 +1,6 @@
 import {
-  Crown, Tv2, Headphones,
-  TrendingUp, ShoppingCart, Briefcase, Star, Globe
+  Tv2,
+  TrendingUp, ShoppingCart, Briefcase, Globe
 } from 'lucide-react';
 
 const BRAND_CONTEXT = `
@@ -18,18 +18,6 @@ const BRAND_CONTEXT = `
 
 export const agents = [
   {
-    id: 'chief',
-    name: 'Chief AI',
-    title: '총괄 오케스트레이터',
-    icon: Crown,
-    description: '전체 팀 총괄 및 업무 분배',
-    apis: [
-      { name: 'Anthropic API', key: 'anthropic', connected: true },
-      { name: '전체 에이전트', key: 'agents', connected: true },
-    ],
-    systemPrompt: `${BRAND_CONTEXT}\n당신은 MILLI AI Team의 Chief AI, 총괄 오케스트레이터입니다. 8개 에이전트 팀을 관리합니다. 매일 아침 8시 브리핑, 업무 분배, 팀간 협업 조율, 긴급 이슈 에스컬레이션. 매출 증대·팔로워 증대·댓글 증대를 위한 전체 팀 업무 지시. 항상 한국어, 간결하고 액션 중심으로 응답.`
-  },
-  {
     id: 'channel',
     name: 'AI 채널운영',
     title: '채널 운영 & 커뮤니티',
@@ -42,19 +30,6 @@ export const agents = [
       { name: 'Instagram', key: 'instagram' },
     ],
     systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 채널운영 매니저입니다. 유민혜/밀리밀리/얼쎄라 3개 계정의 인스타/틱톡/유튜브/쓰레드 콘텐츠 제작 및 발행 관리. 댓글/DM 자동 분류(이벤트참여/상품문의/클레임/기타) 및 답글. 팔로워 증대 전략 실행. 한국어로 응답.`
-  },
-  {
-    id: 'cs',
-    name: 'AI CS매니저',
-    title: '고객 상담',
-    icon: Headphones,
-    description: '카카오채널 상담 + CS/환불 시트 관리',
-    apis: [
-      { name: '카카오 채널', key: 'kakao' },
-      { name: 'CS 구글시트', key: 'cs_sheet' },
-      { name: '환불 구글시트', key: 'refund_sheet' },
-    ],
-    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI CS매니저입니다. 카카오 채널 고객 상담, CS구글시트·환불시트 관리. 유형별(교환/반품/배송/제품문의) 분류, 추이 분석, CS 건수 감소 방안 매일 아침 8시 보고. 한국어로 응답.`
   },
   {
     id: 'marketer',
@@ -76,7 +51,7 @@ export const agents = [
     name: 'AI 커머스MD',
     title: '커머스 운영',
     icon: ShoppingCart,
-    description: '프로모션 캘린더 & 채널 매출 관리',
+    description: '채널 매출 + 프로모션 캘린더 + 채널별 랭킹 + 리뷰 관리',
     apis: [
       { name: '올리브영', key: 'oliveyoung' },
       { name: '카페24/GA4', key: 'cafe24' },
@@ -86,7 +61,7 @@ export const agents = [
       { name: '큐텐', key: 'qoo10' },
       { name: '틱톡샵', key: 'tiktokshop' },
     ],
-    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 커머스MD입니다. 매일 아침 8시 전일 마감 기준 채널별 매출 보고(한국/미국). 프로모션 캘린더 관리, 채널별·국가별 프로모션 및 광고 소재 제안. 올리브영/스마트스토어/카페24/아마존/쇼피/큐텐/틱톡샵 운영. 한국어로 응답.`
+    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 커머스MD입니다. 매일 아침 8시 전일 마감 기준 채널별 매출 보고(한국/미국). 프로모션 캘린더 관리, 채널별·국가별 프로모션 및 광고 소재 제안. 올리브영/스마트스토어/카페24/아마존/쇼피/큐텐/틱톡샵 운영. 채널별 카테고리 랭킹 및 상품 리뷰 분석·관리. 한국어로 응답.`
   },
   {
     id: 'admin',
@@ -100,20 +75,6 @@ export const agents = [
       { name: '인증/상표/임상 시트', key: 'cert_sheet' },
     ],
     systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 경영지원입니다. 구글시트 3종(대금출금현황/임직원현황/인증·상표·임상현황) 관리. 채팅으로 받은 내용을 해당 시트에 자동 업데이트. 매일 아침 8시 각 현황 보고. 정부지원사업 공고 모니터링. 한국어로 응답.`
-  },
-  {
-    id: 'brand',
-    name: 'AI 브랜드',
-    title: '브랜드 & 상품개발',
-    icon: Star,
-    description: '채널 리뷰 분석 + 경쟁사 분석 + 상품 개선안',
-    apis: [
-      { name: '올리브영 리뷰', key: 'oliveyoung' },
-      { name: '스마트스토어 리뷰', key: 'smartstore' },
-      { name: '아마존 리뷰', key: 'amazon' },
-      { name: '경쟁사 분석', key: 'competitor' },
-    ],
-    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 브랜드/상품개발 전문가입니다. 매일 아침 8시 채널별(올리브영/스마트스토어/아마존) 리뷰 분석(긍정/부정/개선필요). 타사 유사상품 경쟁사 분석. 리뷰·리서치 기반으로 시장·채널별 판매 증대 상품 개선안 제안. 한국어로 응답.`
   },
   {
     id: 'global',
