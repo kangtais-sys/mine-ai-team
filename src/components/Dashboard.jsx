@@ -167,6 +167,9 @@ export default function Dashboard() {
   const conn = stats?.connections || {};
   const agentKeyList = ['channel','marketer','commerce','admin','global'];
 
+  // stats API 구 키 → 신 에이전트 ID 매핑
+  const AGENT_STATS_KEY = { channel: 'creator', marketer: 'marketer', commerce: 'commerce', admin: 'management', global: 'export' };
+
   const AGENT_META = {
     channel: { name: 'AI 채널운영', source: 'Zernio · Instagram', description: '콘텐츠 · 댓글 · DM' },
     marketer: { name: 'AI 마케터', source: 'Meta Ads · Naver', description: 'ROAS · 광고 최적화' },
@@ -457,8 +460,9 @@ export default function Dashboard() {
           <div style={{ ...CARD, padding: '14px 20px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
               {agentKeyList.map((id, i) => {
-                const ag = agentConns[id] || {};
-                const rep = agentReps[id];
+                const statsKey = AGENT_STATS_KEY[id] || id;
+                const ag = agentConns[statsKey] || agentConns[id] || {};
+                const rep = agentReps[statsKey] || agentReps[id];
                 const isLast = i >= agentKeyList.length - 3;
                 return (
                   <div key={id} style={{
