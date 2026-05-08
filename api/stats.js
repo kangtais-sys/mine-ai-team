@@ -147,36 +147,43 @@ export default async function handler(req, res) {
         const dataStartIdx = exportRows.findIndex(r => r[0] === 'NO.' || r[5] === 'NO.');
         const dataRows = exportRows.slice(dataStartIdx >= 0 ? dataStartIdx + 1 : 6).filter(r => r[11]?.trim());
 
-        // 국가별 집계
-        const byCountry = {};
+        // 바이어별 집계 (수취인명 col[4])
+        const byBuyer = {};
         // 제품별 집계
         const byProduct = {};
+        // 전체 발송 기록
+        const shipments = [];
+
         for (const r of dataRows) {
-          const country = (r[1] || '').trim() || '미기재';
+          const buyer = (r[4] || '').trim() || '미기재';
           const product = (r[11] || '').trim();
           const qty = parseInt((r[13] || '0').replace(/[^\d]/g, '')) || 0;
-          const status = (r[18] || '').trim();
+          const status = (r[18] || '').trim() || '미확인';
           const date = (r[2] || '').trim();
 
-          if (!byCountry[country]) byCountry[country] = { qty: 0, items: [] };
-          byCountry[country].qty += qty;
-          byCountry[country].items.push({ product, qty, status, date });
+          shipments.push({ buyer, product, qty, status, date });
 
-          if (!byProduct[product]) byProduct[product] = { qty: 0, countries: [] };
+          if (!byBuyer[buyer]) byBuyer[buyer] = { qty: 0, products: [], latestDate: date };
+          byBuyer[buyer].qty += qty;
+          if (!byBuyer[buyer].products.includes(product)) byBuyer[buyer].products.push(product);
+          if (date > byBuyer[buyer].latestDate) byBuyer[buyer].latestDate = date;
+
+          if (!byProduct[product]) byProduct[product] = { qty: 0, buyers: [] };
           byProduct[product].qty += qty;
-          if (!byProduct[product].countries.includes(country)) byProduct[product].countries.push(country);
+          if (!byProduct[product].buyers.includes(buyer)) byProduct[product].buyers.push(buyer);
         }
 
         // 제품별 정렬 (수량 내림차순)
         const productRanking = Object.entries(byProduct)
           .sort(([, a], [, b]) => b.qty - a.qty)
-          .map(([product, v]) => ({ product, qty: v.qty, countries: v.countries }));
+          .map(([product, v]) => ({ product, qty: v.qty, buyers: v.buyers }));
 
         b2bExportRevenue = {
           status: 'connected',
           totalRows: dataRows.length,
-          byCountry,
+          byBuyer,
           byProduct: productRanking,
+          shipments,
           updatedAt: new Date().toISOString(),
         };
       } catch (e) {

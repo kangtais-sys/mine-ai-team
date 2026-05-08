@@ -329,38 +329,52 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* ── 3b. 수출 B2B — 국가별·제품별 ── */}
+        {/* ── 3b. 수출 B2B — 바이어 발송 기록 ── */}
         <div style={{ marginBottom: 14 }}>
-          <SectionTitle>수출 B2B — 샘플 발송 현황</SectionTitle>
-          <div style={{ ...CARD }}>
+          <SectionTitle>수출 B2B — 바이어 발송 기록</SectionTitle>
+          <div style={{ ...CARD, padding: 0, overflow: 'hidden' }}>
             {!b2bConnected ? (
-              <div style={{ fontSize: 12, color: '#AEAEB2', textAlign: 'center', padding: '12px 0' }}>수출시트 미연결</div>
+              <div style={{ fontSize: 12, color: '#AEAEB2', textAlign: 'center', padding: '20px' }}>수출시트 미연결</div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                {/* 국가별 */}
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#AEAEB2', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>국가별</div>
-                  {Object.entries(b2bData.byCountry || {}).sort(([,a],[,b]) => b.qty - a.qty).map(([country, v]) => (
-                    <div key={country} style={{ display: 'flex', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #F5F5F7' }}>
-                      <span style={{ fontSize: 12, color: '#1D1D1F', flex: 1 }}>{country}</span>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: '#5E6AD2' }}>{v.qty.toLocaleString()}개</span>
+              <>
+                {/* 바이어별 요약 */}
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid #F2F2F5', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {Object.entries(b2bData.byBuyer || {}).sort(([,a],[,b]) => b.qty - a.qty).map(([buyer, v]) => (
+                    <div key={buyer} style={{ background: '#F5F5F7', borderRadius: 8, padding: '6px 10px' }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: '#1D1D1F' }}>{buyer}</div>
+                      <div style={{ fontSize: 10, color: '#5E6AD2', marginTop: 1 }}>{v.qty.toLocaleString()}개 · {v.products.length}종</div>
                     </div>
                   ))}
                 </div>
-                {/* 제품별 */}
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#AEAEB2', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>제품별 (수량순)</div>
-                  {(b2bData.byProduct || []).map((p, i) => (
-                    <div key={i} style={{ padding: '5px 0', borderBottom: '1px solid #F5F5F7' }}>
-                      <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <span style={{ fontSize: 11.5, color: '#1D1D1F', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.product}</span>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: '#5E6AD2', flexShrink: 0, marginLeft: 8 }}>{p.qty.toLocaleString()}개</span>
-                      </div>
-                      <div style={{ fontSize: 9.5, color: '#AEAEB2', marginTop: 1 }}>{p.countries.join(', ')}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                {/* 전체 발송 기록 테이블 */}
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+                  <thead>
+                    <tr style={{ background: '#FAFAFA' }}>
+                      {['날짜','바이어','제품명','수량','상태'].map(h => (
+                        <th key={h} style={{ padding: '7px 12px', textAlign: h === '수량' ? 'right' : 'left', fontSize: 10, color: '#AEAEB2', fontWeight: 500, borderBottom: '1px solid #F2F2F5' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(b2bData.shipments || []).map((s, i, arr) => {
+                      const statusColor = s.status === '발송완료' ? '#34C759' : s.status?.startsWith('반송') ? '#FF3B30' : '#AEAEB2';
+                      return (
+                        <tr key={i}>
+                          <td style={{ padding: '6px 12px', borderBottom: i < arr.length-1 ? '1px solid #F5F5F7' : 'none', color: '#AEAEB2', whiteSpace: 'nowrap' }}>
+                            {s.date?.replace(/\. /g,'.').replace(/\.$/,'') || '-'}
+                          </td>
+                          <td style={{ padding: '6px 12px', borderBottom: i < arr.length-1 ? '1px solid #F5F5F7' : 'none', color: '#1D1D1F', fontWeight: 500 }}>{s.buyer}</td>
+                          <td style={{ padding: '6px 12px', borderBottom: i < arr.length-1 ? '1px solid #F5F5F7' : 'none', color: '#6E6E73', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.product}</td>
+                          <td style={{ padding: '6px 12px', borderBottom: i < arr.length-1 ? '1px solid #F5F5F7' : 'none', textAlign: 'right', fontWeight: 600, color: '#5E6AD2' }}>{s.qty.toLocaleString()}</td>
+                          <td style={{ padding: '6px 12px', borderBottom: i < arr.length-1 ? '1px solid #F5F5F7' : 'none' }}>
+                            <span style={{ fontSize: 10.5, fontWeight: 600, color: statusColor }}>{s.status}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </>
             )}
           </div>
         </div>
