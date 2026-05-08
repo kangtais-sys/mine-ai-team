@@ -16,6 +16,26 @@ function getIgUserId(account) {
   return process.env.IG_USER_ID;
 }
 
+// 토큰으로 IG 비즈니스 계정 ID 자동 탐색
+async function discoverIgUserId(token, targetUsername) {
+  try {
+    // 1. Instagram Basic Display API: /me로 직접 ID 조회
+    const meRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${token}`);
+    const me = await meRes.json();
+    if (me.id && !me.error) return me.id;
+
+    // 2. Facebook Graph API: /me/accounts → 페이지 → IG 비즈니스 계정
+    const pagesRes = await fetch(`https://graph.facebook.com/v19.0/me/accounts?fields=instagram_business_account,name,username&access_token=${token}`);
+    const pages = await pagesRes.json();
+    if (pages.data) {
+      for (const page of pages.data) {
+        if (page.instagram_business_account?.id) return page.instagram_business_account.id;
+      }
+    }
+  } catch {}
+  return null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
