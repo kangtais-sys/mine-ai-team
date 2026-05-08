@@ -77,6 +77,7 @@
     { "source": "/api/channel/history", "destination": "/api/channel/history" },
     { "source": "/api/channel/posts", "destination": "/api/channel/posts" },
     { "source": "/api/channel/learn", "destination": "/api/channel/learn" },
+    { "source": "/api/channel/discover-ig", "destination": "/api/channel/discover-ig" },
     { "source": "/api/cron/channel-report", "destination": "/api/cron/channel-report" },
     { "source": "/api/sales/cafe24", "destination": "/api/sales/cafe24" },
     { "source": "/api/sales/cafe24-debug", "destination": "/api/sales/cafe24-debug" },
