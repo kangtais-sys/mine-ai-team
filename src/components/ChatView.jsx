@@ -232,6 +232,9 @@ const AGENT_DASHBOARDS = {
     const [learning, setLearning] = useState(false);
     const [learnResult, setLearnResult] = useState(null);
     const [togglingSettings, setTogglingSettings] = useState({});
+    const [editingPersona, setEditingPersona] = useState(false);
+    const [editedPersona, setEditedPersona] = useState({});
+    const [savingPersona, setSavingPersona] = useState(false);
 
     // accent per account
     const ACCENT = { yuminhye: '#FF6B6B', millimilli: '#5E6AD2' };
@@ -247,23 +250,28 @@ const AGENT_DASHBOARDS = {
       fetch('/api/channel/settings').then(r => r.json()).then(d => {
         if (d && !d.error) setSettings(d);
       }).catch(() => {});
-      // Load history for both accounts
+      // Load follower counts from stats (Zernio/Redis 캐시 기반)
+      fetch('/api/stats').then(r => r.json()).then(d => {
+        ['yuminhye', 'millimilli'].forEach(acct => {
+          const acctData = d?.[acct];
+          const followers = acctData?.instagram?.count || acctData?.total || null;
+          setIgStats(prev => ({ ...prev, [acct]: { ...prev[acct], followers } }));
+        });
+      }).catch(() => {});
+      // Load history + avg comments per account
       ['yuminhye', 'millimilli'].forEach(acct => {
         fetch(`/api/channel/history?account=${acct}`).then(r => r.json()).then(d => {
-          if (d && !d.error) {
-            setHistory(prev => ({ ...prev, [acct]: d }));
-          }
+          if (d && !d.error) setHistory(prev => ({ ...prev, [acct]: d }));
         }).catch(() => {});
-        // Load IG stats (posts for avg comments + followers)
+        // posts → avg comments only (followers from /api/stats)
         fetch(`/api/channel/posts?account=${acct}`).then(r => r.json()).then(d => {
-          if (d && !d.error) {
+          if (d) {
             const posts = d.posts || [];
-            const followers = d.followers || null;
             const sevenDayPosts = posts.slice(0, 7);
             const avgComments = sevenDayPosts.length > 0
               ? Math.round(sevenDayPosts.reduce((s, p) => s + (p.comments_count || 0), 0) / sevenDayPosts.length)
               : null;
-            setIgStats(prev => ({ ...prev, [acct]: { followers, avgComments } }));
+            setIgStats(prev => ({ ...prev, [acct]: { ...prev[acct], avgComments } }));
           }
         }).catch(() => {});
       });
@@ -442,20 +450,63 @@ const AGENT_DASHBOARDS = {
         <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>{tabAccountLabel[tab]} 페르소나</div>
-            <button
-              onClick={handleLearn}
-              disabled={learning}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 6,
-                border: 'none', cursor: learning ? 'default' : 'pointer', fontFamily: 'inherit',
-                background: learning ? '#F5F5F7' : `${accent}15`,
-                color: learning ? '#AEAEB2' : accent,
-                fontSize: 11, fontWeight: 600,
-              }}
-            >
-              <RefreshCw size={11} style={{ animation: learning ? 'spin 1s linear infinite' : 'none' }} />
-              {learning ? '학습 중...' : '재학습'}
-            </button>
+            <div style={{ display: 'flex', gap: 5 }}>
+              {!editingPersona ? (
+                <>
+                  <button
+                    onClick={() => {
+                      setEditedPersona({
+                        character: persona?.character || '',
+                        tone: persona?.tone || '',
+                        topics: Array.isArray(persona?.topics) ? persona.topics.join(', ') : (persona?.topics || ''),
+                        commentStyle: persona?.commentStyle || '',
+                        dmStyle: persona?.dmStyle || '',
+                      });
+                      setEditingPersona(true);
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: '#F5F5F7', color: '#6E6E73', fontSize: 11, fontWeight: 600 }}
+                  >수정</button>
+                  <button
+                    onClick={handleLearn}
+                    disabled={learning}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 6, border: 'none', cursor: learning ? 'default' : 'pointer', fontFamily: 'inherit', background: learning ? '#F5F5F7' : `${accent}15`, color: learning ? '#AEAEB2' : accent, fontSize: 11, fontWeight: 600 }}
+                  >
+                    <RefreshCw size={11} style={{ animation: learning ? 'spin 1s linear infinite' : 'none' }} />
+                    {learning ? '학습 중...' : '재학습'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={async () => {
+                      setSavingPersona(true);
+                      try {
+                        const payload = {
+                          ...editedPersona,
+                          topics: editedPersona.topics ? editedPersona.topics.split(',').map(t => t.trim()).filter(Boolean) : [],
+                        };
+                        await fetch('/api/channel/persona', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ type: 'persona', account: tab, data: payload }),
+                        });
+                        const pd = await fetch('/api/channel/persona').then(r => r.json());
+                        setPersonaData(pd);
+                        setRules(pd?.rules || []);
+                        setEditingPersona(false);
+                      } catch { /* silent */ }
+                      setSavingPersona(false);
+                    }}
+                    disabled={savingPersona}
+                    style={{ padding: '4px 12px', borderRadius: 6, border: 'none', cursor: savingPersona ? 'default' : 'pointer', fontFamily: 'inherit', background: savingPersona ? '#F5F5F7' : accent, color: savingPersona ? '#AEAEB2' : '#FFF', fontSize: 11, fontWeight: 600 }}
+                  >{savingPersona ? '저장 중...' : '저장'}</button>
+                  <button
+                    onClick={() => setEditingPersona(false)}
+                    style={{ padding: '4px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: '#F5F5F7', color: '#6E6E73', fontSize: 11, fontWeight: 600 }}
+                  >취소</button>
+                </>
+              )}
+            </div>
           </div>
 
           {learnResult && !learnResult.error && (
@@ -471,7 +522,27 @@ const AGENT_DASHBOARDS = {
             </div>
           )}
 
-          {persona ? (
+          {editingPersona ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {[
+                { key: 'character', label: '캐릭터' },
+                { key: 'tone', label: '톤 & 매너' },
+                { key: 'topics', label: '주요 주제 (쉼표 구분)' },
+                { key: 'commentStyle', label: '댓글 스타일' },
+                { key: 'dmStyle', label: 'DM 스타일' },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, marginBottom: 4 }}>{label}</div>
+                  <textarea
+                    value={editedPersona[key] || ''}
+                    onChange={e => setEditedPersona(prev => ({ ...prev, [key]: e.target.value }))}
+                    rows={key === 'character' || key === 'tone' ? 2 : 2}
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: `1px solid ${accent}66`, background: `${accent}08`, fontSize: 11, fontFamily: 'inherit', color: '#1D1D1F', outline: 'none', resize: 'vertical', lineHeight: 1.5, boxSizing: 'border-box' }}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : persona ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[
                 ['캐릭터', persona.character],
@@ -497,7 +568,7 @@ const AGENT_DASHBOARDS = {
 
         {/* Context rules */}
         <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>컨텍스트 규칙</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>컨텍스트 규칙 (상황/이슈 추가)</div>
 
           {rules.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
