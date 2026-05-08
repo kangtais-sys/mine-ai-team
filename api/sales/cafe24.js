@@ -65,7 +65,9 @@ async function fetchAllOrders(accessToken, startDate, endDate) {
 
 async function fetchMonthlySales(accessToken, months = 5) {
   const monthly = {};
+  const daily = {}; // YYYYMMDD → { revenue, orders }
   const now = new Date();
+  const kstNow = new Date(Date.now() + 9 * 3600000);
 
   for (let i = 0; i < months; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -80,13 +82,23 @@ async function fetchMonthlySales(accessToken, months = 5) {
         return sum + parseFloat(o.payment_amount || o.total_price || o.actual_payment_amount || 0);
       }, 0);
       monthly[monthStr] = { revenue: Math.round(total), orders: orders.length };
+
+      // 일별 집계: order_date 또는 payment_date 기준
+      for (const o of orders) {
+        const rawDate = o.order_date || o.payment_date || '';
+        const dateKey = rawDate.slice(0, 10).replace(/-/g, ''); // YYYYMMDD
+        if (!dateKey || dateKey.length !== 8) continue;
+        if (!daily[dateKey]) daily[dateKey] = { revenue: 0, orders: 0 };
+        daily[dateKey].revenue += Math.round(parseFloat(o.payment_amount || o.total_price || o.actual_payment_amount || 0));
+        daily[dateKey].orders += 1;
+      }
     } catch (e) {
       console.error(`[Cafe24] ${monthStr}:`, e.message);
       monthly[monthStr] = { revenue: 0, orders: 0 };
     }
   }
 
-  return monthly;
+  return { monthly, daily };
 }
 
 export default async function handler(req, res) {
@@ -98,10 +110,11 @@ export default async function handler(req, res) {
     if (cached) return res.status(200).json(cached);
 
     const accessToken = await getAccessToken();
-    const monthly = await fetchMonthlySales(accessToken);
+    const { monthly, daily } = await fetchMonthlySales(accessToken);
 
     const result = {
       monthly,
+      daily,
       months: Object.keys(monthly).sort().map(m => ({
         month: m,
         revenue: monthly[m].revenue,

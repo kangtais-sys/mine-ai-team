@@ -384,8 +384,8 @@ export default async function handler(req, res) {
     const yesterdaySales = {
       oliveyoung: oyDailySales,
       oliveyoungDate: oyYesterdaySales != null ? yesterdayDate : (oyLatestDate || null),
-      smartstore: naverDaily?.daily?.[yesterdayDate]?.revenue ?? null,
-      cafe24: cafe24Daily?.daily?.[yesterdayDate]?.revenue ?? null,
+      smartstore: naverDaily?.daily?.[yesterdayDate]?.revenue ?? null, // naver-sync.mjs daily 필드
+      cafe24: cafe24Daily?.daily?.[yesterdayDate]?.revenue ?? null,   // cafe24.js daily 필드
       amazon: null, // SP-API daily 미구현
       total: oyDailySales,
     };
