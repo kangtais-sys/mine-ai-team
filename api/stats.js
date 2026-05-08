@@ -137,52 +137,67 @@ export default async function handler(req, res) {
       }
     }
 
-    // === D2. 수출 B2B 시트 (EXPORT_SHEET_ID — 샘플발송 추적 시트) ===
-    // 컬럼: [1]국가 [2]접수일자 [4]수취인 [11]제품명 [13]수량 [18]발송상태
+    // === D2. 수출 B2B 시트 (2026 수출현황 — gid=1151464885) ===
+    // 컬럼: [1]NO [2]접수일 [3]바이어 [6]품명 [7]단가 [8]수량 [9]금액 [10]부가세
     let b2bExportRevenue = null;
     if (process.env.EXPORT_SHEET_ID) {
       try {
-        const exportRows = await readPublicSheet(process.env.EXPORT_SHEET_ID);
-        // 헤더행(5번째 row, index 5) 이후 실데이터
-        const dataStartIdx = exportRows.findIndex(r => r[0] === 'NO.' || r[5] === 'NO.');
-        const dataRows = exportRows.slice(dataStartIdx >= 0 ? dataStartIdx + 1 : 6).filter(r => r[11]?.trim());
+        const exportRows = await readPublicSheet(process.env.EXPORT_SHEET_ID, 1151464885);
+        const parseNum = (v) => Number((v || '0').replace(/[,\s₩\t]/g, '')) || 0;
+        // 헤더행 찾기 (NO. 있는 row)
+        const dataStartIdx = exportRows.findIndex(r => (r[1] || '').trim() === 'NO.');
+        const dataRows = exportRows.slice(dataStartIdx >= 0 ? dataStartIdx + 1 : 2)
+          .filter(r => r[3]?.trim()); // 바이어명 있는 row만
 
-        // 바이어별 집계 (수취인명 col[4])
         const byBuyer = {};
-        // 제품별 집계
         const byProduct = {};
-        // 전체 발송 기록
         const shipments = [];
+        let totalRevenue = 0;
 
         for (const r of dataRows) {
-          const buyer = (r[4] || '').trim() || '미기재';
-          const product = (r[11] || '').trim();
-          const qty = parseInt((r[13] || '0').replace(/[^\d]/g, '')) || 0;
-          const status = (r[18] || '').trim() || '미확인';
           const date = (r[2] || '').trim();
+          const buyer = (r[3] || '').trim();
+          const product = (r[6] || '').trim();
+          const unitPrice = parseNum(r[7]);
+          const qty = parseNum(r[8]);
+          const amount = parseNum(r[9]);
 
-          shipments.push({ buyer, product, qty, status, date });
+          shipments.push({ date, buyer, product, unitPrice, qty, amount });
+          totalRevenue += amount;
 
-          if (!byBuyer[buyer]) byBuyer[buyer] = { qty: 0, products: [], latestDate: date };
+          if (!byBuyer[buyer]) byBuyer[buyer] = { revenue: 0, qty: 0, products: [], latestDate: date };
+          byBuyer[buyer].revenue += amount;
           byBuyer[buyer].qty += qty;
           if (!byBuyer[buyer].products.includes(product)) byBuyer[buyer].products.push(product);
           if (date > byBuyer[buyer].latestDate) byBuyer[buyer].latestDate = date;
 
-          if (!byProduct[product]) byProduct[product] = { qty: 0, buyers: [] };
+          if (!byProduct[product]) byProduct[product] = { revenue: 0, qty: 0, buyers: [] };
+          byProduct[product].revenue += amount;
           byProduct[product].qty += qty;
           if (!byProduct[product].buyers.includes(buyer)) byProduct[product].buyers.push(buyer);
         }
 
-        // 제품별 정렬 (수량 내림차순)
         const productRanking = Object.entries(byProduct)
-          .sort(([, a], [, b]) => b.qty - a.qty)
-          .map(([product, v]) => ({ product, qty: v.qty, buyers: v.buyers }));
+          .sort(([, a], [, b]) => b.revenue - a.revenue)
+          .map(([product, v]) => ({ product, revenue: v.revenue, qty: v.qty, buyers: v.buyers }));
+
+        // 월별 집계
+        const byMonth = {};
+        for (const s of shipments) {
+          const m = s.date?.replace(/\. /g, '-').replace(/\.$/, '').slice(0, 7);
+          if (m) { byMonth[m] = (byMonth[m] || 0) + s.amount; }
+        }
+        const nowMonthKey2 = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+        const monthRevenue = byMonth[nowMonthKey2] || 0;
 
         b2bExportRevenue = {
           status: 'connected',
           totalRows: dataRows.length,
+          totalRevenue,
+          monthRevenue,
           byBuyer,
           byProduct: productRanking,
+          byMonth,
           shipments,
           updatedAt: new Date().toISOString(),
         };
