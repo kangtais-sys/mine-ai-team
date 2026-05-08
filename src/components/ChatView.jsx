@@ -101,6 +101,45 @@ function ZernioStatusPanel({ creatorData }) {
   );
 }
 
+// ─── Daily Report Card (공통) ───────────────────────────────
+
+function DailyReportCard({ agentId }) {
+  const [report, setReport] = useState(undefined);
+  useEffect(() => {
+    fetch('/api/stats').then(r => r.json()).then(data => {
+      const rep = data?.agentReports?.[agentId];
+      setReport(rep || null);
+    }).catch(() => setReport(null));
+  }, [agentId]);
+
+  return (
+    <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>📋 오늘 8시 자동 보고</div>
+        <span style={{
+          fontSize: 9.5, fontWeight: 500,
+          color: report?.generatedAt ? '#34C759' : '#AEAEB2',
+          background: report?.generatedAt ? '#F0FFF4' : '#F5F5F7',
+          padding: '2px 8px', borderRadius: 4,
+        }}>
+          {report === undefined ? '로딩 중' : report?.generatedAt ? '✓ 보고 완료' : '대기 중'}
+        </span>
+      </div>
+      {report?.report ? (
+        <>
+          <div style={{ fontSize: 12, color: '#1D1D1F', lineHeight: 1.75, whiteSpace: 'pre-wrap' }}>{report.report}</div>
+          <div style={{ fontSize: 9, color: '#AEAEB2', marginTop: 6 }}>{report.date} · 매일 오전 8시 자동 생성</div>
+        </>
+      ) : (
+        <div style={{ fontSize: 12, color: '#AEAEB2', lineHeight: 1.6 }}>
+          아직 보고가 없습니다.{' '}
+          <span style={{ fontSize: 10 }}>매일 오전 8시에 자동 생성됩니다.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Agent KPI Dashboards ───────────────────────────────────
 
 const AGENT_DASHBOARDS = {
@@ -345,6 +384,7 @@ const AGENT_DASHBOARDS = {
 
     return (
       <>
+        <DailyReportCard agentId="creator" />
         {/* Account tabs */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
           {[['yuminhye', '유민혜', '#FF6B6B'], ['millimilli', '밀리밀리', '#5E6AD2']].map(([id, label, color]) => (
@@ -612,6 +652,7 @@ const AGENT_DASHBOARDS = {
 
     return (
       <>
+        <DailyReportCard agentId="cs" />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <KpiCard label="오늘 문의" value={`${d?.today?.total || 0}건`} sub="오늘 누적" icon={Headphones} />
           <KpiCard label="당월 문의" value={`${d?.monthly?.total || 0}건`} sub="당월 누적" icon={Headphones} />
@@ -683,6 +724,7 @@ const AGENT_DASHBOARDS = {
 
     return (
       <>
+        <DailyReportCard agentId="marketer" />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <KpiCard label="Meta 광고비" value={m.totalSpend ? fmtKRW(m.totalSpend) : m.status === 'disconnected' ? '미연결' : '-'} sub="주간 누적" icon={DollarSign} />
           <KpiCard label="총 광고비" value={d?.totalSpend ? fmtKRW(d.totalSpend) : '-'} sub="당월 누적" icon={DollarSign} />
@@ -774,6 +816,7 @@ const AGENT_DASHBOARDS = {
 
     return (
       <>
+        <DailyReportCard agentId="commerce" />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <KpiCard label="당월 합계 (한국)" value={krTotal > 0 ? fmtKRW(krTotal) : '-'} sub="올리브영+스마트+카페24" icon={ShoppingCart} />
           <KpiCard label="올리브영" value={stats?.oliveyoung?.monthly ? fmtKRW(stats.oliveyoung.monthly) : '-'} sub="이번 달" icon={ShoppingCart} />
@@ -885,6 +928,7 @@ const AGENT_DASHBOARDS = {
 
     return (
       <>
+        <DailyReportCard agentId="management" />
         <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 12 }}>수출바우처 현황</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexWrap: 'wrap', marginBottom: 14, rowGap: 6 }}>
@@ -951,6 +995,7 @@ const AGENT_DASHBOARDS = {
 
     return (
       <>
+        <DailyReportCard agentId="brand" />
         <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>카테고리 랭킹</div>
           {rankings?.status === 'connected' && rankings.items?.length > 0 ? (
@@ -1031,6 +1076,7 @@ const AGENT_DASHBOARDS = {
 
     return (
       <>
+        <DailyReportCard agentId="export" />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <KpiCard label="Amazon YTD" value={stats?.amazonYTD ? fmtUSD(stats.amazonYTD) : d?.exports?.totalAmount ? fmtKRW(d.exports.totalAmount) : '-'} sub="2026년 누적" icon={Globe} />
           <KpiCard label="당월 아마존" value={stats?.amazon?.monthly ? fmtUSD(stats.amazon.monthly) : '-'} sub="이번 달" icon={Globe} />
