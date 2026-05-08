@@ -1,5 +1,5 @@
 import { agents } from '../lib/agents';
-import { LayoutDashboard, Tv2 } from 'lucide-react';
+import { LayoutDashboard } from 'lucide-react';
 
 export default function Sidebar({ route, onNavigate }) {
   const { page, agentId } = route || {};
@@ -48,19 +48,13 @@ export default function Sidebar({ route, onNavigate }) {
         </div>
       </div>
 
-      {/* Top nav: Dashboard + 채널운영 */}
+      {/* Top nav: Dashboard */}
       <div style={{ padding: '8px 8px 0', flexShrink: 0 }}>
         {menuItem(
           page === 'dashboard',
           <LayoutDashboard size={15} strokeWidth={1.8} />,
           '대시보드',
           () => onNavigate('dashboard')
-        )}
-        {menuItem(
-          page === 'channel',
-          <Tv2 size={15} strokeWidth={1.8} />,
-          '채널 운영',
-          () => onNavigate('channel')
         )}
       </div>
 
