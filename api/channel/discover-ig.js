@@ -1,32 +1,31 @@
-// 임시: INSTAGRAM_ACCESS_TOKEN으로 IG 비즈니스 계정 ID 탐색
+// 임시: Instagram Business 계정 ID 탐색
 export default async function handler(req, res) {
   const token = process.env.INSTAGRAM_ACCESS_TOKEN;
   if (!token) return res.status(400).json({ error: 'INSTAGRAM_ACCESS_TOKEN not set' });
 
   const results = {};
 
-  // 1. Instagram Basic Display API (/me)
-  const me = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${token}`).then(r => r.json()).catch(e => ({ error: e.message }));
-  results.instagram_me = me;
+  // 1. System user /me
+  const me = await fetch(`https://graph.facebook.com/v19.0/me?fields=id,name&access_token=${token}`).then(r => r.json()).catch(e => ({ error: e.message }));
+  results.fb_me = me;
 
-  // 2. Facebook Graph API (/me)
-  const fbMe = await fetch(`https://graph.facebook.com/v19.0/me?fields=id,name&access_token=${token}`).then(r => r.json()).catch(e => ({ error: e.message }));
-  results.fb_me = fbMe;
+  // 2. Basic Display /me
+  const igMe = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${token}`).then(r => r.json()).catch(e => ({ error: e.message }));
+  results.ig_me = igMe;
 
-  // 3. Facebook Pages → Instagram 비즈니스 계정
-  const pages = await fetch(`https://graph.facebook.com/v19.0/me/accounts?fields=name,instagram_business_account{id,name,username}&access_token=${token}`).then(r => r.json()).catch(e => ({ error: e.message }));
-  results.fb_pages = pages;
+  // 3. BM의 owned IG 계정
+  const bmId = '6230686894709601';
+  const bizIg = await fetch(`https://graph.facebook.com/v19.0/${bmId}/owned_instagram_accounts?fields=id,username,followers_count&access_token=${token}`).then(r => r.json()).catch(e => ({ error: e.message }));
+  results.biz_ig_accounts = bizIg;
 
-  // 4. /me/media 테스트
-  const media = await fetch(`https://graph.instagram.com/me/media?fields=id,timestamp,like_count,comments_count,media_type&limit=3&access_token=${token}`).then(r => r.json()).catch(e => ({ error: e.message }));
-  results.media_test = media;
+  // 4. BM 연결 IG 계정
+  const clientIg = await fetch(`https://graph.facebook.com/v19.0/${bmId}/client_instagram_accounts?fields=id,username,followers_count&access_token=${token}`).then(r => r.json()).catch(e => ({ error: e.message }));
+  results.client_ig_accounts = clientIg;
 
-  // 5. /{user_id}/media 테스트
-  const userId = results.instagram_me?.id;
-  if (userId) {
-    const media2 = await fetch(`https://graph.instagram.com/v21.0/${userId}/media?fields=id,timestamp,like_count,comments_count,media_type&limit=3&access_token=${token}`).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.media_by_id_test = media2;
-  }
+  // 5. mine-ai 시스템 사용자 할당 IG 계정
+  const sysUserId = '61589081296104';
+  const sysIg = await fetch(`https://graph.facebook.com/v19.0/${sysUserId}/assigned_instagram_accounts?fields=id,username&access_token=${token}`).then(r => r.json()).catch(e => ({ error: e.message }));
+  results.sys_user_ig = sysIg;
 
   return res.status(200).json(results);
 }
