@@ -6,14 +6,46 @@ const redis = new Redis({
 });
 
 const SPAM = ['팔로우', '맞팔', 'follow', 'http://', 'https://', '홍보', 'dm주세요', '선팔', '광고'];
-
 const OY_SALE_KEYWORDS = ['올영세일', '올리브영세일', '올영 세일', '올리브영 할인'];
 
-function getMilliPrompt(commentText) {
+// Map IG Business Account ID → our account key
+function detectAccount(entryId) {
+  const ymId = process.env.IG_USER_ID_YUMINHYE;
+  const mmId = process.env.IG_USER_ID_MILLIMILLI || process.env.IG_USER_ID;
+  if (ymId && entryId === ymId) return 'yuminhye';
+  if (mmId && entryId === mmId) return 'millimilli';
+  // Fallback: assume millimilli if only one ID configured
+  return mmId ? 'millimilli' : 'millimilli';
+}
+
+async function getToken() {
+  return (await redis.get('instagram_access_token').catch(() => null)) || process.env.INSTAGRAM_ACCESS_TOKEN;
+}
+
+async function isAutoCommentEnabled(account) {
+  const settings = await redis.get(`channel:settings:${account}`).catch(() => null);
+  return settings?.autoComment === true;
+}
+
+async function getEnabledRules(account) {
+  try {
+    const raw = await redis.get('channel:rules');
+    const rules = Array.isArray(raw) ? raw : (typeof raw === 'string' ? JSON.parse(raw) : []);
+    return rules
+      .filter(r => r.enabled && (r.account === account || r.account === 'all'))
+      .map(r => r.text);
+  } catch { return []; }
+}
+
+function getMilliPrompt(commentText, extraRules = []) {
   const isOYSale = OY_SALE_KEYWORDS.some(k => (commentText || '').includes(k));
   const purchaseGuide = isOYSale
     ? '현재 올영세일 기간! 올리브영에서 구매 적극 추천.'
-    : '구매 추천: 1) 자사몰 https://millimilli.official (혜택 최고) 2) 스마트스토어 3) 올리브영. 자사몰 먼저 추천.';
+    : '구매 추천: 1) 자사몰 https://millimilli.official (혜택 최고) 2) 스마트스토어 3) 올리브영.';
+
+  const rulesText = extraRules.length > 0
+    ? `\n\n[추가 컨텍스트 규칙]\n${extraRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}`
+    : '';
 
   return `당신은 밀리밀리(MILLIMILLI) 500달톤 K뷰티 브랜드 SNS 담당자입니다.
 이모지 1-2개, 2문장 이내. 가격 직접 언급 금지. 악성/스팸이면 SKIP만 반환.
@@ -21,24 +53,39 @@ function getMilliPrompt(commentText) {
 제품/성분 문의 → 간단 답변 + "카카오채널 @밀리밀리에서 자세히 안내드릴게요 🫶"
 칭찬 → 진심 어린 감사.
 ${purchaseGuide}
-${isOYSale ? '올영세일 언급 시 → "지금 올영세일 기간이면 올리브영에서 득템하세요! 🍀"' : '구매 문의 시 → "프로필 링크에서 자사몰 바로 가실 수 있어요! 혜택이 쏠쏠해서 자사몰 추천드려요 🛍️"'}
-스마트스토어 물어보면 → "네이버 스마트스토어에서 밀리밀리 검색하시면 됩니다 😊"`;
+${isOYSale ? '올영세일 언급 시 → "지금 올영세일 기간이면 올리브영에서 득템하세요! 🍀"' : '구매 문의 시 → "프로필 링크에서 자사몰 바로 가실 수 있어요! 혜택이 쏠쏠해요 🛍️"'}
+스마트스토어 물어보면 → "네이버 스마트스토어에서 밀리밀리 검색하시면 됩니다 😊"${rulesText}`;
 }
 
-async function getToken() {
-  // KV에 갱신된 토큰이 있으면 우선 사용
-  const kvToken = await redis.get('instagram_access_token').catch(() => null);
-  return kvToken || process.env.INSTAGRAM_ACCESS_TOKEN;
+function getYumiPrompt(commentText, extraRules = []) {
+  const rulesText = extraRules.length > 0
+    ? `\n\n[추가 컨텍스트 규칙]\n${extraRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}`
+    : '';
+
+  return `당신은 인플루언서 유민혜(@lala_lounge_)입니다. 팔로워에게 친근한 언니처럼 댓글을 답니다.
+이모지 1-2개, 1-2문장. 악성/스팸이면 SKIP만 반환.
+말투: 반말 또는 가벼운 존댓말, 친근하고 따뜻하게.
+칭찬/공감 → 진심 어린 리액션.
+뷰티/스킨케어 질문 → 개인적인 경험 공유하듯 답변.
+개인 연락 요청/광고 → SKIP.${rulesText}`;
+}
+
+async function logAutoComment(account, data) {
+  const logKey = `channel:auto:comment:logs:${account}`;
+  const countKey = `channel:auto:count:comment:${account}`;
+  await Promise.all([
+    redis.lpush(logKey, JSON.stringify({ ...data, timestamp: new Date().toISOString() })),
+    redis.ltrim(logKey, 0, 199),
+    redis.incr(countKey),
+  ]);
 }
 
 export default async function handler(req, res) {
   // GET: Meta webhook verification
   if (req.method === 'GET') {
-    const qs = (req.url || '').includes('?') ? (req.url.split('?')[1]) : '';
+    const qs = (req.url || '').includes('?') ? req.url.split('?')[1] : '';
     const params = Object.fromEntries(new URLSearchParams(qs));
-    const mode = params['hub.mode'];
-    const token = params['hub.verify_token'];
-    const challenge = params['hub.challenge'];
+    const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = params;
     const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN || 'millimilli2024secret';
 
     if (mode === 'subscribe' && token === verifyToken) {
@@ -52,10 +99,7 @@ export default async function handler(req, res) {
   // POST: Receive webhook events
   if (req.method === 'POST') {
     const body = req.body;
-    console.log('[Meta] Webhook event:', JSON.stringify(body, null, 2));
-
-    // Immediately return 200 (Meta requires fast response)
-    res.status(200).json({ received: true });
+    res.status(200).json({ received: true }); // Respond immediately
 
     if (body.object !== 'instagram') return;
 
@@ -63,10 +107,19 @@ export default async function handler(req, res) {
     if (!igToken) { console.error('[Meta] No Instagram token'); return; }
 
     for (const entry of (body.entry || [])) {
+      const account = detectAccount(entry.id);
+
       for (const change of (entry.changes || [])) {
         if (change.field === 'comments' && change.value) {
           const { id: commentId, text, from } = change.value;
           if (!commentId || !text) continue;
+
+          // Check auto-comment toggle
+          const enabled = await isAutoCommentEnabled(account);
+          if (!enabled) {
+            console.log(`[Meta] Auto-comment OFF for ${account}, skipping`);
+            continue;
+          }
 
           // Skip duplicates (24h TTL)
           const dupeKey = `ig:replied:${commentId}`;
@@ -81,9 +134,20 @@ export default async function handler(req, res) {
           }
 
           // Skip own comments
-          if (from?.username === 'millimilli.official') continue;
+          const ownHandles = account === 'millimilli'
+            ? ['millimilli.official', 'millimilli_official']
+            : ['lala_lounge_', 'yuminhye'];
+          if (ownHandles.includes(from?.username)) continue;
 
           try {
+            // Get enabled context rules for this account
+            const extraRules = await getEnabledRules(account);
+
+            // Build prompt based on account
+            const systemPrompt = account === 'yuminhye'
+              ? getYumiPrompt(text, extraRules)
+              : getMilliPrompt(text, extraRules);
+
             // Generate reply with Claude
             const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
               method: 'POST',
@@ -93,9 +157,9 @@ export default async function handler(req, res) {
                 'anthropic-version': '2023-06-01',
               },
               body: JSON.stringify({
-                model: 'claude-sonnet-4-20250514',
-                max_tokens: 200,
-                system: getMilliPrompt(text),
+                model: 'claude-haiku-4-20250514',
+                max_tokens: 150,
+                system: systemPrompt,
                 messages: [{ role: 'user', content: `댓글: "${text}"` }],
               }),
             });
@@ -118,21 +182,25 @@ export default async function handler(req, res) {
               }
             );
             const replyData = await replyRes.json();
+            const success = replyRes.ok;
 
-            if (replyRes.ok) {
-              console.log(`[Meta] Reply sent: "${reply.substring(0, 40)}" → ${replyData.id}`);
+            if (success) {
+              console.log(`[Meta][${account}] Reply sent: "${reply.substring(0, 40)}"`);
             } else {
-              console.error(`[Meta] Reply failed:`, replyData.error?.message);
+              console.error(`[Meta][${account}] Reply failed:`, replyData.error?.message);
             }
 
-            // Log to KV
-            await redis.lpush('ig-comment-logs', JSON.stringify({
-              commentId, author: from?.username, text: text.substring(0, 50),
-              reply, success: replyRes.ok, timestamp: new Date().toISOString(),
-            })).catch(() => {});
+            // Log to account-specific history
+            await logAutoComment(account, {
+              commentId,
+              author: from?.username,
+              text: text.substring(0, 100),
+              reply,
+              success,
+            });
 
           } catch (err) {
-            console.error(`[Meta] Comment processing error:`, err.message);
+            console.error(`[Meta][${account}] Comment processing error:`, err.message);
           }
         }
       }

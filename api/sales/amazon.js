@@ -117,9 +117,12 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   const forceRefresh = req.query?.refresh === '1';
+  // 시간별 키 (TTL 9600s = ~2.7시간) — cron 2h 간격보다 넉넉하게
   const cacheKey = `sales:amazon:${new Date().toISOString().slice(0, 13)}`;
+  // 영구 집계 키 (stats.js fallback용, TTL 48h)
+  const stableKey = 'sales:amazon:latest';
   try {
-    const cached = !forceRefresh && await redis.get(cacheKey);
+    const cached = !forceRefresh && (await redis.get(cacheKey) || await redis.get(stableKey));
     if (cached) return res.status(200).json(cached);
 
     const lwaToken = await getLwaToken();
@@ -134,7 +137,10 @@ export default async function handler(req, res) {
       updatedAt: new Date().toISOString(),
     };
 
-    await redis.set(cacheKey, result, { ex: 3600 });
+    // 시간별 키: 9600s (2.67h) — cron 2h 사이에 만료 없음
+    await redis.set(cacheKey, result, { ex: 9600 });
+    // 안정 키: 48h — stats.js가 시간별 키 없을 때 fallback
+    await redis.set(stableKey, result, { ex: 172800 });
     res.status(200).json(result);
   } catch (e) {
     console.error('[Amazon Sales]', e.message);

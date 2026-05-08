@@ -217,7 +217,11 @@ export default async function handler(req, res) {
           amazonCached = await redis.get(key);
           if (amazonCached) break;
         }
-        // Also try monthly key format (used by chief-report)
+        // Also try stable key (amazon.js always writes this, 48h TTL)
+        if (!amazonCached) {
+          amazonCached = await redis.get('sales:amazon:latest');
+        }
+        // Legacy monthly key format (used by chief-report)
         if (!amazonCached) {
           const mk = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
           amazonCached = await redis.get(`sales:amazon:${mk}`);

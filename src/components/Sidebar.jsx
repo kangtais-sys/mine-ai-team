@@ -1,9 +1,8 @@
 import { agents } from '../lib/agents';
-import useChatStore from '../store/chatStore';
-import { LayoutDashboard } from 'lucide-react';
+import { LayoutDashboard, Tv2 } from 'lucide-react';
 
-export default function Sidebar({ page, onNavigate }) {
-  const { activeAgent, setActiveAgent } = useChatStore();
+export default function Sidebar({ route, onNavigate }) {
+  const { page, agentId } = route || {};
 
   const menuItem = (active, icon, label, onClick) => (
     <button
@@ -49,9 +48,20 @@ export default function Sidebar({ page, onNavigate }) {
         </div>
       </div>
 
-      {/* Nav items */}
+      {/* Top nav: Dashboard + 채널운영 */}
       <div style={{ padding: '8px 8px 0', flexShrink: 0 }}>
-        {menuItem(page === 'dashboard', <LayoutDashboard size={15} strokeWidth={1.8} />, '대시보드', () => onNavigate('dashboard'))}
+        {menuItem(
+          page === 'dashboard',
+          <LayoutDashboard size={15} strokeWidth={1.8} />,
+          '대시보드',
+          () => onNavigate('dashboard')
+        )}
+        {menuItem(
+          page === 'channel',
+          <Tv2 size={15} strokeWidth={1.8} />,
+          '채널 운영',
+          () => onNavigate('channel')
+        )}
       </div>
 
       {/* Section Label */}
@@ -63,14 +73,14 @@ export default function Sidebar({ page, onNavigate }) {
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 8px 8px', minHeight: 0 }}>
         {agents.map((agent) => {
           const Icon = agent.icon;
-          const isActive = page === 'chat' && activeAgent === agent.id;
+          const isActive = page === 'chat' && agentId === agent.id;
           return (
             <div key={agent.id} style={{ marginBottom: 1 }}>
               {menuItem(
                 isActive,
                 <Icon size={15} strokeWidth={1.8} />,
                 agent.name,
-                () => { setActiveAgent(agent.id); onNavigate('chat'); }
+                () => onNavigate('chat', agent.id)
               )}
             </div>
           );

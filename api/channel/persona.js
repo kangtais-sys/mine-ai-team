@@ -30,21 +30,34 @@ const DEFAULT_PERSONAS = {
   },
 };
 
+// Rules stored as JSON array at channel:rules key
+async function getRules() {
+  const raw = await redis.get('channel:rules');
+  if (!raw) return [];
+  try { return Array.isArray(raw) ? raw : JSON.parse(raw); }
+  catch { return []; }
+}
+
+async function saveRules(rules) {
+  await redis.set('channel:rules', JSON.stringify(rules));
+}
+
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
 export default async function handler(req, res) {
+  // GET: return persona + rules
   if (req.method === 'GET') {
-    const [ymRaw, mmRaw, rulesRaw] = await Promise.all([
+    const [ymRaw, mmRaw, rules] = await Promise.all([
       redis.get('channel:persona:yuminhye'),
       redis.get('channel:persona:millimilli'),
-      redis.lrange('channel:context:rules', 0, 29),
+      getRules(),
     ]);
 
-    const rules = (rulesRaw || []).map(r => {
-      try { return typeof r === 'string' ? JSON.parse(r) : r; } catch { return { text: r, addedAt: '', account: 'all' }; }
-    });
-
     return res.status(200).json({
-      yuminhye: ymRaw || DEFAULT_PERSONAS.yuminhye,
-      millimilli: mmRaw || DEFAULT_PERSONAS.millimilli,
+      yuminhye: { ...DEFAULT_PERSONAS.yuminhye, ...(ymRaw || {}) },
+      millimilli: { ...DEFAULT_PERSONAS.millimilli, ...(mmRaw || {}) },
       rules,
     });
   }
@@ -52,28 +65,50 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     const { type, account, data } = req.body || {};
 
+    // Add a new rule
     if (type === 'rule') {
-      const rule = {
-        text: data?.text || data,
+      const rules = await getRules();
+      const newRule = {
+        id: genId(),
+        text: typeof data === 'string' ? data : data?.text,
         account: account || 'all',
+        enabled: true,
         addedAt: new Date().toISOString(),
       };
-      await redis.lpush('channel:context:rules', JSON.stringify(rule));
-      await redis.ltrim('channel:context:rules', 0, 29);
-      return res.status(200).json({ success: true });
+      rules.unshift(newRule);
+      if (rules.length > 30) rules.splice(30);
+      await saveRules(rules);
+      return res.status(200).json({ success: true, rule: newRule });
     }
 
+    // Toggle rule enabled/disabled
+    if (type === 'toggle_rule') {
+      const { id } = data || {};
+      const rules = await getRules();
+      const idx = rules.findIndex(r => r.id === id);
+      if (idx !== -1) rules[idx].enabled = !rules[idx].enabled;
+      await saveRules(rules);
+      return res.status(200).json({ success: true, rules });
+    }
+
+    // Delete a rule by ID
     if (type === 'delete_rule') {
-      // Delete by index or clear all
-      if (data?.clearAll) {
-        await redis.del('channel:context:rules');
+      const { id, clearAll } = data || {};
+      if (clearAll) {
+        await saveRules([]);
+      } else {
+        const rules = await getRules();
+        const filtered = rules.filter(r => r.id !== id);
+        await saveRules(filtered);
       }
       return res.status(200).json({ success: true });
     }
 
+    // Update persona base data
     if (type === 'persona') {
       const key = `channel:persona:${account}`;
-      await redis.set(key, data);
+      const existing = (await redis.get(key)) || {};
+      await redis.set(key, { ...existing, ...data });
       return res.status(200).json({ success: true });
     }
 
