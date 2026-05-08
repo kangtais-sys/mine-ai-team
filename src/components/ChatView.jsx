@@ -700,59 +700,77 @@ const AGENT_DASHBOARDS = {
   // ── Marketer ───────────────────────────────────────────────
   marketer: () => {
     const [d, setD] = useState(null);
+    const [periodTab, setPeriodTab] = useState('thisMonth');
     useEffect(() => {
       fetch('/api/agents/marketer').then(r => r.json()).then(setD).catch(() => {});
     }, []);
 
     const m = d?.meta || {};
-    const allDisconnected = d && !m.totalSpend && !d.totalSpend;
     const roasColor = (v) => { const n = Number(v); return n >= 3 ? '#22C55E' : n >= 2 ? '#F59E0B' : '#EF4444'; };
 
-    if (allDisconnected && Object.keys(d || {}).every(k => !d[k]?.spend && d[k]?.status !== 'connected')) {
-      return (
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 24, textAlign: 'center' }}>
-          <XCircle size={28} color="#D1D1D6" style={{ marginBottom: 10 }} />
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F', marginBottom: 6 }}>광고 API 연결 필요</div>
-          <div style={{ fontSize: 11, color: '#AEAEB2', lineHeight: 1.8, textAlign: 'left' }}>
-            연결에 필요한 환경변수:<br />
-            <code style={{ fontSize: 10, color: '#5E6AD2' }}>META_AD_ACCOUNTS</code> — Meta 광고 계정 JSON<br />
-            <code style={{ fontSize: 10, color: '#5E6AD2' }}>META_ACCESS_TOKEN</code> — Meta 액세스 토큰<br />
-            <code style={{ fontSize: 10, color: '#5E6AD2' }}>NAVER_API_KEY</code> — 네이버 광고 키<br />
-            <code style={{ fontSize: 10, color: '#5E6AD2' }}>GOOGLE_ADS_CUSTOMER_ID</code> — 구글 광고
-          </div>
-        </div>
-      );
-    }
+    const PERIOD_LABELS = { yesterday: '전일', thisMonth: '월간', thisYear: '연간' };
+    const periodKeys = ['yesterday', 'thisMonth', 'thisYear'];
+
+    const totalSpendByPeriod = { yesterday: m.totalSpendYesterday, thisMonth: m.totalSpendMonth, thisYear: m.totalSpendYear };
+    const totalRevByPeriod = { yesterday: m.totalRevenueYesterday, thisMonth: m.totalRevenueMonth, thisYear: m.totalRevenueYear };
+    const curSpend = totalSpendByPeriod[periodTab] || 0;
+    const curRev = totalRevByPeriod[periodTab] || 0;
+    const curRoas = curSpend > 0 ? (curRev / curSpend).toFixed(2) : '-';
 
     return (
       <>
         <DailyReportCard agentId="marketer" />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <KpiCard label="Meta 광고비" value={m.totalSpend ? fmtKRW(m.totalSpend) : m.status === 'disconnected' ? '미연결' : '-'} sub="주간 누적" icon={DollarSign} />
-          <KpiCard label="총 광고비" value={d?.totalSpend ? fmtKRW(d.totalSpend) : '-'} sub="당월 누적" icon={DollarSign} />
+
+        {/* 기간 탭 */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          {periodKeys.map(key => (
+            <button key={key} onClick={() => setPeriodTab(key)} style={{ fontSize: 12, padding: '5px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: periodTab === key ? 600 : 400, background: periodTab === key ? '#5E6AD2' : '#F5F5F7', color: periodTab === key ? '#FFF' : '#6E6E73', transition: 'all 0.15s' }}>
+              {PERIOD_LABELS[key]}
+            </button>
+          ))}
         </div>
 
+        {/* KPI 카드: 선택 기간 총합 */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+          <KpiCard label="Meta 총 광고비" value={curSpend ? fmtKRW(curSpend) : m.status === 'disconnected' ? '미연결' : '-'} sub={PERIOD_LABELS[periodTab] + ' 누적'} icon={DollarSign} />
+          <KpiCard label="Meta 총 매출" value={curRev ? fmtKRW(curRev) : '-'} sub="구매 전환 합산" icon={TrendingUp} />
+          <KpiCard label="전체 ROAS" value={curRoas !== '-' ? `${curRoas}x` : '-'} sub="매출 ÷ 광고비" accent={curRoas !== '-' ? roasColor(curRoas) : undefined} icon={Percent} />
+        </div>
+
+        {/* 계정별 상세 테이블 */}
         {m.accounts?.length > 0 && (
-          <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>Meta 계정별 ROAS</div>
-            {m.accounts.map((acc, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < m.accounts.length - 1 ? '1px solid #F5F5F7' : 'none' }}>
-                <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{acc.name}</span>
-                <span style={{ fontSize: 10, color: '#6E6E73' }}>{acc.spend ? fmtKRW(acc.spend) : '-'}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: acc.roas && acc.roas !== '-' ? roasColor(acc.roas) : '#AEAEB2', width: 44, textAlign: 'right' }}>
-                  {acc.roas && acc.roas !== '-' ? `${acc.roas}x` : '-'}
-                </span>
-              </div>
-            ))}
+          <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>Meta 계정별 ({PERIOD_LABELS[periodTab]})</div>
+            {/* 헤더 */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 52px', gap: 4, padding: '0 0 6px', borderBottom: '1px solid #F0F0F0', marginBottom: 6 }}>
+              <span style={{ fontSize: 9, color: '#AEAEB2', fontWeight: 600 }}>계정</span>
+              <span style={{ fontSize: 9, color: '#AEAEB2', fontWeight: 600, textAlign: 'right' }}>광고비</span>
+              <span style={{ fontSize: 9, color: '#AEAEB2', fontWeight: 600, textAlign: 'right' }}>매출</span>
+              <span style={{ fontSize: 9, color: '#AEAEB2', fontWeight: 600, textAlign: 'right' }}>ROAS</span>
+            </div>
+            {m.accounts.map((acc, i) => {
+              const p = acc[periodTab] || {};
+              return (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 52px', gap: 4, padding: '6px 0', borderBottom: i < m.accounts.length - 1 ? '1px solid #F5F5F7' : 'none', alignItems: 'center' }}>
+                  <span style={{ fontSize: 10, color: '#1D1D1F', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.name}</span>
+                  <span style={{ fontSize: 10, color: '#6E6E73', textAlign: 'right' }}>{p.spend ? fmtKRW(p.spend) : '-'}</span>
+                  <span style={{ fontSize: 10, color: '#1D1D1F', fontWeight: p.revenue > 0 ? 600 : 400, textAlign: 'right' }}>{p.revenue ? fmtKRW(p.revenue) : '-'}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: p.roas && p.roas !== '-' ? roasColor(p.roas) : '#D1D1D6', textAlign: 'right' }}>
+                    {p.roas && p.roas !== '-' ? `${p.roas}x` : '-'}
+                  </span>
+                </div>
+              );
+            })}
             <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 6 }}>목표 ROAS 3.0x · 초록 3.0+ 노랑 2.0~3.0 빨강 2.0 미만</div>
           </div>
         )}
 
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
+        {/* 광고 채널 연결 현황 */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>광고 채널 연결 현황</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {[
-              { key: 'meta', label: 'Meta Ads (5계정)' },
+              { key: 'meta', label: 'Meta Ads (밀리밀리 3계정)' },
               { key: 'naver', label: '네이버 광고' },
               { key: 'google', label: '구글 광고' },
               { key: 'tiktok', label: '틱톡 광고' },
@@ -761,15 +779,10 @@ const AGENT_DASHBOARDS = {
               <ConnBadge key={key} connected={d?.[key]?.status === 'connected'} label={label} />
             ))}
           </div>
-          {d && [d.meta, d.naver, d.google, d.tiktok, d.ga].every(ch => !ch || ch.status !== 'connected') && (
-            <div style={{ fontSize: 10, color: '#AEAEB2', marginTop: 8, lineHeight: 1.5 }}>
-              광고 API 미연결 상태입니다. META_ACCESS_TOKEN 환경변수를 확인해주세요.
-            </div>
-          )}
         </div>
 
         {d?.suggestions && (
-          <div style={{ background: '#FFFFFF', border: '1px solid #F59E0B33', borderRadius: 10, padding: 14, marginTop: 12 }}>
+          <div style={{ background: '#FFFFFF', border: '1px solid #F59E0B33', borderRadius: 10, padding: 14 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#F59E0B', marginBottom: 8 }}>광고 최적화 제안</div>
             {d.suggestions.lowRoas?.length > 0 && (
               <div style={{ fontSize: 11, color: '#FF3B30', marginBottom: 6 }}>ROAS 2.0 미만 캠페인: {d.suggestions.lowRoas.length}개</div>
