@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowUp, Loader2, TrendingUp, TrendingDown, Users, MessageCircle, DollarSign, Star, Globe, Package, Headphones, ShoppingCart, FileText, BarChart3, CheckCircle2, XCircle, Circle, Target, Percent, Clock, Plus, Trash2, RefreshCw } from 'lucide-react';
+import { ArrowUp, Loader2, TrendingUp, TrendingDown, Users, MessageCircle, DollarSign, Star, Globe, Package, Headphones, ShoppingCart, FileText, BarChart3, CheckCircle2, XCircle, Circle, Target, Percent, Clock, Plus, Trash2, RefreshCw, Send, BookOpen, Zap } from 'lucide-react';
 import useChatStore from '../store/chatStore';
 import { getAgent } from '../lib/agents';
 
@@ -179,39 +179,96 @@ const AGENT_DASHBOARDS = {
   // ── Channel ────────────────────────────────────────────────
   channel: () => {
     const [tab, setTab] = useState('yuminhye');
-    const [creatorData, setCreatorData] = useState(null);
+    const [historyTab, setHistoryTab] = useState('comment');
     const [personaData, setPersonaData] = useState(null);
+    const [settings, setSettings] = useState({ yuminhye: { autoComment: false, autoDm: false }, millimilli: { autoComment: false, autoDm: false } });
+    const [history, setHistory] = useState({ yuminhye: { comments: [], dms: [], commentCount: 0, dmCount: 0 }, millimilli: { comments: [], dms: [], commentCount: 0, dmCount: 0 } });
+    const [igStats, setIgStats] = useState({ yuminhye: { followers: null, avgComments: null }, millimilli: { followers: null, avgComments: null } });
     const [rules, setRules] = useState([]);
     const [newRule, setNewRule] = useState('');
     const [ruleAccount, setRuleAccount] = useState('전체');
     const [addingRule, setAddingRule] = useState(false);
     const [deletingId, setDeletingId] = useState(null);
+    const [togglingRule, setTogglingRule] = useState(null);
+    const [learning, setLearning] = useState(false);
+    const [learnResult, setLearnResult] = useState(null);
+    const [togglingSettings, setTogglingSettings] = useState({});
+
+    // accent per account
+    const ACCENT = { yuminhye: '#FF6B6B', millimilli: '#5E6AD2' };
+    const accent = ACCENT[tab];
 
     useEffect(() => {
-      fetch('/api/agents/creator').then(r => r.json()).then(setCreatorData).catch(() => {});
+      // Load persona + rules
       fetch('/api/channel/persona').then(r => r.json()).then(d => {
         setPersonaData(d);
         setRules(d?.rules || []);
       }).catch(() => {});
+      // Load settings
+      fetch('/api/channel/settings').then(r => r.json()).then(d => {
+        if (d && !d.error) setSettings(d);
+      }).catch(() => {});
+      // Load history for both accounts
+      ['yuminhye', 'millimilli'].forEach(acct => {
+        fetch(`/api/channel/history?account=${acct}`).then(r => r.json()).then(d => {
+          if (d && !d.error) {
+            setHistory(prev => ({ ...prev, [acct]: d }));
+          }
+        }).catch(() => {});
+        // Load IG stats (posts for avg comments + followers)
+        fetch(`/api/channel/posts?account=${acct}`).then(r => r.json()).then(d => {
+          if (d && !d.error) {
+            const posts = d.posts || [];
+            const followers = d.followers || null;
+            const sevenDayPosts = posts.slice(0, 7);
+            const avgComments = sevenDayPosts.length > 0
+              ? Math.round(sevenDayPosts.reduce((s, p) => s + (p.comments_count || 0), 0) / sevenDayPosts.length)
+              : null;
+            setIgStats(prev => ({ ...prev, [acct]: { followers, avgComments } }));
+          }
+        }).catch(() => {});
+      });
     }, []);
 
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const firstDay = new Date(year, month, 1).getDay();
-    const byDate = creatorData?.byDate || {};
-    const followers = creatorData?.followers || {};
-    const counts = creatorData?.counts || {};
-
-    const tabAccounts = { yuminhye: '유민혜', millimilli: '밀리밀리' };
-    const platforms = [
-      { key: 'instagram', label: 'Instagram', abbr: 'IG', color: '#E1306C' },
-      { key: 'tiktok', label: 'TikTok', abbr: 'TT', color: '#69C9D0' },
-      { key: 'youtube', label: 'YouTube', abbr: 'YT', color: '#FF0000' },
-    ];
-
     const persona = personaData?.personas?.[tab] || personaData?.[tab] || null;
+    const acctSettings = settings[tab] || { autoComment: false, autoDm: false };
+    const acctHistory = history[tab] || { comments: [], dms: [], commentCount: 0, dmCount: 0 };
+    const acctStats = igStats[tab] || { followers: null, avgComments: null };
+
+    // Toggle autoComment / autoDm
+    const handleToggleSetting = async (field) => {
+      const key = `${tab}_${field}`;
+      setTogglingSettings(prev => ({ ...prev, [key]: true }));
+      const newVal = !acctSettings[field];
+      setSettings(prev => ({ ...prev, [tab]: { ...prev[tab], [field]: newVal } }));
+      try {
+        await fetch('/api/channel/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account: tab, [field]: newVal }),
+        });
+      } catch { /* revert on fail */ }
+      setTogglingSettings(prev => ({ ...prev, [key]: false }));
+    };
+
+    // Toggle rule enabled/disabled
+    const handleToggleRule = async (id) => {
+      setTogglingRule(id);
+      const rule = rules.find(r => r.id === id);
+      if (!rule) { setTogglingRule(null); return; }
+      const newEnabled = !rule.enabled;
+      setRules(prev => prev.map(r => r.id === id ? { ...r, enabled: newEnabled } : r));
+      try {
+        const res = await fetch('/api/channel/persona', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'toggle_rule', data: { id } }),
+        });
+        const d = await res.json();
+        if (d.rules) setRules(d.rules);
+      } catch { /* keep optimistic state */ }
+      setTogglingRule(null);
+    };
 
     const handleAddRule = async () => {
       const text = newRule.trim();
@@ -225,16 +282,9 @@ const AGENT_DASHBOARDS = {
         });
         const d = await res.json();
         if (d.rules) setRules(d.rules);
-        else setRules(prev => [...prev, { id: Date.now(), text, account: ruleAccount, createdAt: new Date().toISOString() }]);
-        useChatStore.getState().addMessage('channel', {
-          role: 'assistant',
-          content: `컨텍스트 규칙 추가됨 [${ruleAccount}]: "${text}"`,
-          timestamp: Date.now(),
-        });
+        else setRules(prev => [...prev, { id: Date.now(), text, account: ruleAccount, enabled: true, addedAt: new Date().toISOString() }]);
         setNewRule('');
-      } catch {
-        // silent fail
-      }
+      } catch { /* silent */ }
       setAddingRule(false);
     };
 
@@ -249,154 +299,202 @@ const AGENT_DASHBOARDS = {
         const d = await res.json();
         if (d.rules) setRules(d.rules);
         else setRules(prev => prev.filter(r => r.id !== id));
-      } catch {
-        setRules(prev => prev.filter(r => r.id !== id));
-      }
+      } catch { setRules(prev => prev.filter(r => r.id !== id)); }
       setDeletingId(null);
     };
 
-    const tabBtn = (id, label) => (
-      <button
-        key={id}
-        onClick={() => setTab(id)}
-        style={{ fontSize: 12, padding: '5px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: tab === id ? '#5E6AD2' : '#F5F5F7', color: tab === id ? '#FFF' : '#6E6E73', fontWeight: tab === id ? 600 : 400 }}
+    const handleLearn = async () => {
+      setLearning(true);
+      setLearnResult(null);
+      try {
+        const res = await fetch('/api/channel/learn', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account: tab }),
+        });
+        const d = await res.json();
+        setLearnResult(d);
+        // Refresh persona
+        fetch('/api/channel/persona').then(r => r.json()).then(pd => {
+          setPersonaData(pd);
+          setRules(pd?.rules || []);
+        }).catch(() => {});
+      } catch (e) { setLearnResult({ error: e.message }); }
+      setLearning(false);
+    };
+
+    // Toggle switch component
+    const Toggle = ({ value, onToggle, loading, accentColor }) => (
+      <div
+        onClick={!loading ? onToggle : undefined}
+        style={{
+          width: 36, height: 20, borderRadius: 10, cursor: loading ? 'default' : 'pointer',
+          background: value ? (accentColor || '#34C759') : '#D1D1D6',
+          position: 'relative', transition: 'background 0.2s', opacity: loading ? 0.6 : 1, flexShrink: 0,
+        }}
       >
-        {label}
-      </button>
+        <div style={{
+          position: 'absolute', top: 2, left: value ? 18 : 2, width: 16, height: 16,
+          borderRadius: '50%', background: '#FFF', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+          transition: 'left 0.2s',
+        }} />
+      </div>
     );
+
+    const tabAccountLabel = { yuminhye: '유민혜', millimilli: '밀리밀리' };
 
     return (
       <>
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-          {tabBtn('yuminhye', '유민혜')}
-          {tabBtn('millimilli', '밀리밀리')}
+        {/* Account tabs */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+          {[['yuminhye', '유민혜', '#FF6B6B'], ['millimilli', '밀리밀리', '#5E6AD2']].map(([id, label, color]) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              style={{
+                fontSize: 13, padding: '6px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                fontFamily: 'inherit', fontWeight: tab === id ? 600 : 400,
+                background: tab === id ? color : '#F5F5F7',
+                color: tab === id ? '#FFF' : '#6E6E73',
+                boxShadow: tab === id ? `0 2px 8px ${color}44` : 'none',
+                transition: 'all 0.15s',
+              }}
+            >{label}</button>
+          ))}
         </div>
 
-        {/* Follower stats from Zernio */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>
-            {tabAccounts[tab]} 채널별 팔로워
-            {creatorData?.status === 'connected' && (
-              <span style={{ fontSize: 9, color: '#34C759', fontWeight: 500, marginLeft: 8 }}>Zernio 연동됨</span>
-            )}
-          </div>
-          {platforms.map((p, i, arr) => {
-            const count = followers[tab]?.[p.key];
-            return (
-              <div key={p.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < arr.length - 1 ? '1px solid #F5F5F7' : 'none' }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: p.color, width: 20 }}>{p.abbr}</span>
-                <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{p.label}</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#1D1D1F' }}>
-                  {count ? fmt(count) : creatorData?.status === 'connected' ? 'Zernio 연동됨' : '-'}
+        {/* KPI row */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 14 }}>
+          <KpiCard label="팔로워" value={acctStats.followers !== null ? fmt(acctStats.followers) : '-'} sub="Instagram" icon={Users} accent={accent} />
+          <KpiCard label="7일 평균 댓글" value={acctStats.avgComments !== null ? `${acctStats.avgComments}개` : '-'} sub="최근 게시물" icon={MessageCircle} />
+          <KpiCard label="자동댓글 누적" value={`${acctHistory.commentCount || 0}건`} sub="전체 기간" icon={Send} />
+          <KpiCard label="자동DM 누적" value={`${acctHistory.dmCount || 0}건`} sub="전체 기간" icon={Zap} />
+        </div>
+
+        {/* Auto toggles */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>자동응대 설정</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {[
+              { field: 'autoComment', label: '자동 댓글', desc: '게시물 댓글에 AI가 자동 응답' },
+              { field: 'autoDm', label: '자동 DM', desc: 'DM 수신 시 AI가 자동 응답' },
+            ].map(({ field, label, desc }) => (
+              <div key={field} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Toggle
+                  value={acctSettings[field]}
+                  onToggle={() => handleToggleSetting(field)}
+                  loading={togglingSettings[`${tab}_${field}`]}
+                  accentColor={accent}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: '#1D1D1F' }}>{label}</div>
+                  <div style={{ fontSize: 10, color: '#AEAEB2' }}>{desc}</div>
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 600, color: acctSettings[field] ? accent : '#AEAEB2' }}>
+                  {acctSettings[field] ? 'ON' : 'OFF'}
                 </span>
               </div>
-            );
-          })}
-        </div>
-
-        {/* Content counts */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
-          <KpiCard label="오늘 발행" value={`${counts.today || 0}건`} sub="오늘 누적" icon={FileText} />
-          <KpiCard label="당월 발행" value={`${counts.thisMonth || 0}건`} sub="이번 달 누적" icon={FileText} />
-        </div>
-
-        {/* Content calendar */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>
-            {year}년 {month + 1}월 발행 캘린더
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, textAlign: 'center' }}>
-            {['일', '월', '화', '수', '목', '금', '토'].map(d => (
-              <div key={d} style={{ fontSize: 9, color: '#AEAEB2', padding: '2px 0' }}>{d}</div>
             ))}
-            {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} />)}
-            {Array.from({ length: daysInMonth }).map((_, i) => {
-              const day = i + 1;
-              const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-              const cnt = byDate[dateStr] || 0;
-              const isToday = day === now.getDate();
-              return (
-                <div key={day} style={{ padding: '3px 0', borderRadius: 4, fontSize: 10, background: isToday ? '#5E6AD222' : 'transparent', color: isToday ? '#5E6AD2' : cnt > 0 ? '#1D1D1F' : '#AEAEB2', fontWeight: isToday ? 600 : 400 }}>
-                  {day}
-                  {cnt > 0 && <div style={{ width: 4, height: 4, borderRadius: 2, background: '#22C55E', margin: '1px auto 0' }} />}
-                </div>
-              );
-            })}
           </div>
         </div>
 
         {/* Persona card */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>
-            {tabAccounts[tab]} 페르소나
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>{tabAccountLabel[tab]} 페르소나</div>
+            <button
+              onClick={handleLearn}
+              disabled={learning}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 6,
+                border: 'none', cursor: learning ? 'default' : 'pointer', fontFamily: 'inherit',
+                background: learning ? '#F5F5F7' : `${accent}15`,
+                color: learning ? '#AEAEB2' : accent,
+                fontSize: 11, fontWeight: 600,
+              }}
+            >
+              <RefreshCw size={11} style={{ animation: learning ? 'spin 1s linear infinite' : 'none' }} />
+              {learning ? '학습 중...' : '재학습'}
+            </button>
           </div>
+
+          {learnResult && !learnResult.error && (
+            <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 7, background: `${accent}0D`, border: `1px solid ${accent}33` }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: accent, marginBottom: 4 }}>AI 학습 완료 — 최근 게시물 분석 결과</div>
+              {learnResult.mainTopics && <div style={{ fontSize: 10, color: '#1D1D1F' }}>주요 주제: {Array.isArray(learnResult.mainTopics) ? learnResult.mainTopics.join(', ') : learnResult.mainTopics}</div>}
+              {learnResult.toneInsights && <div style={{ fontSize: 10, color: '#1D1D1F', marginTop: 2 }}>톤: {learnResult.toneInsights}</div>}
+            </div>
+          )}
+          {learnResult?.error && (
+            <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 7, background: '#FFF0F0', border: '1px solid #FFD0D0', fontSize: 10, color: '#FF6B6B' }}>
+              학습 실패: {learnResult.error}
+            </div>
+          )}
+
           {persona ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {persona.character && (
-                <div>
-                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, marginBottom: 3 }}>캐릭터</div>
-                  <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6 }}>{persona.character}</div>
+              {[
+                ['캐릭터', persona.character],
+                ['톤 & 매너', persona.tone],
+                ['주요 주제', Array.isArray(persona.topics) ? persona.topics.join(', ') : persona.topics],
+                ['댓글 스타일', persona.commentStyle],
+                ['DM 스타일', persona.dmStyle],
+                ['고참여 유형', persona.highEngagementType],
+                ['추천사항', Array.isArray(persona.recommendations) ? persona.recommendations.join(' / ') : persona.recommendations],
+              ].filter(([, v]) => v).map(([k, v]) => (
+                <div key={k}>
+                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, marginBottom: 2 }}>{k}</div>
+                  <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6 }}>{v}</div>
                 </div>
-              )}
-              {persona.tone && (
-                <div>
-                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, marginBottom: 3 }}>톤 & 매너</div>
-                  <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6 }}>{persona.tone}</div>
-                </div>
-              )}
-              {persona.topics && (
-                <div>
-                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, marginBottom: 3 }}>주요 주제</div>
-                  <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6 }}>
-                    {Array.isArray(persona.topics) ? persona.topics.join(', ') : persona.topics}
-                  </div>
-                </div>
-              )}
-              {persona.commentStyle && (
-                <div>
-                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, marginBottom: 3 }}>댓글 스타일</div>
-                  <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6 }}>{persona.commentStyle}</div>
-                </div>
-              )}
-              {persona.dmStyle && (
-                <div>
-                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, marginBottom: 3 }}>DM 스타일</div>
-                  <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6 }}>{persona.dmStyle}</div>
-                </div>
-              )}
+              ))}
             </div>
           ) : (
             <div style={{ fontSize: 11, color: '#AEAEB2' }}>
-              {personaData === null ? '페르소나 데이터 로딩 중...' : '/api/channel/persona에서 페르소나 데이터를 불러올 수 없습니다.'}
+              {personaData === null ? '로딩 중...' : '페르소나 없음. 재학습 버튼으로 AI 분석을 시작하세요.'}
             </div>
           )}
         </div>
 
-        {/* Active context rules */}
-        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>활성 컨텍스트 규칙</div>
+        {/* Context rules */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>컨텍스트 규칙</div>
 
-          {/* Rules list */}
           {rules.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
               {rules.map((rule) => (
-                <div key={rule.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '7px 10px', borderRadius: 7, background: '#F5F5F7', border: '1px solid #E5E5EA' }}>
+                <div key={rule.id} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px',
+                  borderRadius: 7, background: rule.enabled !== false ? '#F5F5F7' : '#FAFAFA',
+                  border: `1px solid ${rule.enabled !== false ? '#E5E5EA' : '#F0F0F0'}`,
+                  opacity: rule.enabled !== false ? 1 : 0.6,
+                }}>
+                  {/* enable/disable toggle */}
+                  <div style={{ paddingTop: 1, flexShrink: 0 }}>
+                    <Toggle
+                      value={rule.enabled !== false}
+                      onToggle={() => handleToggleRule(rule.id)}
+                      loading={togglingRule === rule.id}
+                      accentColor={accent}
+                    />
+                  </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.5 }}>{rule.text}</div>
-                    <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
-                      <span style={{ fontSize: 9, color: '#5E6AD2', fontWeight: 600, background: '#5E6AD211', padding: '1px 5px', borderRadius: 3 }}>
+                    <div style={{ display: 'flex', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 9, color: accent, fontWeight: 600, background: `${accent}15`, padding: '1px 5px', borderRadius: 3 }}>
                         {rule.account || '전체'}
                       </span>
-                      {rule.createdAt && (
-                        <span style={{ fontSize: 9, color: '#AEAEB2' }}>{timeAgo(rule.createdAt)}</span>
+                      <span style={{ fontSize: 9, color: '#AEAEB2' }}>
+                        {rule.enabled !== false ? '반영 중' : '미반영'}
+                      </span>
+                      {(rule.addedAt || rule.createdAt) && (
+                        <span style={{ fontSize: 9, color: '#AEAEB2' }}>{timeAgo(rule.addedAt || rule.createdAt)}</span>
                       )}
                     </div>
                   </div>
                   <button
                     onClick={() => handleDeleteRule(rule.id)}
                     disabled={deletingId === rule.id}
-                    style={{ padding: '2px 4px', borderRadius: 4, border: 'none', background: 'transparent', cursor: deletingId === rule.id ? 'default' : 'pointer', opacity: deletingId === rule.id ? 0.4 : 1, flexShrink: 0 }}
+                    style={{ padding: '2px 4px', borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', opacity: deletingId === rule.id ? 0.3 : 1, flexShrink: 0 }}
                   >
                     <Trash2 size={12} color="#AEAEB2" />
                   </button>
@@ -404,22 +502,18 @@ const AGENT_DASHBOARDS = {
               ))}
             </div>
           ) : (
-            <div style={{ fontSize: 11, color: '#AEAEB2', marginBottom: 12 }}>
-              활성 규칙 없음. 아래에서 새 규칙을 추가하세요.
-            </div>
+            <div style={{ fontSize: 11, color: '#AEAEB2', marginBottom: 10 }}>규칙 없음. 아래에서 추가하세요.</div>
           )}
 
-          {/* Add rule input */}
+          {/* Add rule */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ display: 'flex', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 5 }}>
               {['전체', '유민혜', '밀리밀리'].map(acct => (
                 <button
                   key={acct}
                   onClick={() => setRuleAccount(acct)}
-                  style={{ fontSize: 10, padding: '3px 9px', borderRadius: 5, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: ruleAccount === acct ? '#5E6AD2' : '#F5F5F7', color: ruleAccount === acct ? '#FFF' : '#6E6E73', fontWeight: ruleAccount === acct ? 600 : 400 }}
-                >
-                  {acct}
-                </button>
+                  style={{ fontSize: 10, padding: '3px 9px', borderRadius: 5, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: ruleAccount === acct ? accent : '#F5F5F7', color: ruleAccount === acct ? '#FFF' : '#6E6E73', fontWeight: ruleAccount === acct ? 600 : 400 }}
+                >{acct}</button>
               ))}
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -434,7 +528,7 @@ const AGENT_DASHBOARDS = {
               <button
                 onClick={handleAddRule}
                 disabled={addingRule || !newRule.trim()}
-                style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: newRule.trim() && !addingRule ? '#5E6AD2' : '#E5E5EA', color: newRule.trim() && !addingRule ? '#FFF' : '#AEAEB2', cursor: newRule.trim() && !addingRule ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontFamily: 'inherit', flexShrink: 0 }}
+                style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: newRule.trim() && !addingRule ? accent : '#E5E5EA', color: newRule.trim() && !addingRule ? '#FFF' : '#AEAEB2', cursor: newRule.trim() && !addingRule ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontFamily: 'inherit', flexShrink: 0 }}
               >
                 <Plus size={13} />
                 {addingRule ? '추가 중...' : '추가'}
@@ -443,7 +537,51 @@ const AGENT_DASHBOARDS = {
           </div>
         </div>
 
-        <ZernioStatusPanel creatorData={creatorData} />
+        {/* Auto-response history */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: '12px 14px' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>응대 히스토리</div>
+
+          {/* Sub-tabs */}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+            {[['comment', '댓글'], ['dm', 'DM']].map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setHistoryTab(id)}
+                style={{ fontSize: 11, padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: historyTab === id ? accent : '#F5F5F7', color: historyTab === id ? '#FFF' : '#6E6E73', fontWeight: historyTab === id ? 600 : 400 }}
+              >{label}</button>
+            ))}
+            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#AEAEB2', alignSelf: 'center' }}>
+              총 {historyTab === 'comment' ? (acctHistory.commentCount || 0) : (acctHistory.dmCount || 0)}건
+            </span>
+          </div>
+
+          {/* History list */}
+          {(() => {
+            const logs = historyTab === 'comment' ? (acctHistory.comments || []) : (acctHistory.dms || []);
+            if (logs.length === 0) {
+              return <div style={{ fontSize: 11, color: '#AEAEB2', textAlign: 'center', padding: '16px 0' }}>기록 없음</div>;
+            }
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {logs.slice(0, 10).map((log, i) => (
+                  <div key={i} style={{ padding: '8px 10px', borderRadius: 7, background: '#F5F5F7', border: '1px solid #F0F0F0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: '#1D1D1F' }}>{log.author || log.from || '익명'}</span>
+                      <span style={{ fontSize: 9, color: '#AEAEB2' }}>{timeAgo(log.timestamp || log.createdAt)}</span>
+                    </div>
+                    {log.text && <div style={{ fontSize: 10, color: '#6E6E73', marginBottom: 3, lineHeight: 1.4 }}>↳ {log.text}</div>}
+                    {log.reply && <div style={{ fontSize: 10, color: '#1D1D1F', lineHeight: 1.4 }}>AI: {log.reply}</div>}
+                    <div style={{ marginTop: 3 }}>
+                      <span style={{ fontSize: 9, color: log.success !== false ? '#34C759' : '#FF6B6B', fontWeight: 500 }}>
+                        {log.success !== false ? '✓ 발송 완료' : '✗ 실패'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
       </>
     );
   },
