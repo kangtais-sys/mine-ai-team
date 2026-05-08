@@ -61,8 +61,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const fields = 'id,caption,timestamp,like_count,comments_count,media_type,permalink';
-    const url = `https://graph.instagram.com/v21.0/${userId}/media?fields=${fields}&limit=10&access_token=${token}`;
+    // Basic Display API 지원 필드 (like_count/comments_count는 Business API 전용)
+    const fields = 'id,caption,timestamp,media_type,permalink,media_url,thumbnail_url';
+    // /me/media는 Basic Display 토큰에서도 동작
+    const url = `https://graph.instagram.com/me/media?fields=${fields}&limit=10&access_token=${token}`;
     const igRes = await fetch(url);
     const data = await igRes.json();
 
