@@ -35,15 +35,18 @@ export default async function handler(req, res) {
           const url = `https://graph.facebook.com/v19.0/act_${acc.id}/insights?fields=spend,impressions,clicks,cpc,ctr,actions&date_preset=last_7d&access_token=${token}`;
           const r = await fetch(url);
           const d = await r.json();
+          if (d.error) return { name: acc.name, error: d.error.message || 'API error', errorCode: d.error.code };
           const insight = d.data?.[0] || {};
           const spend = Number(insight.spend) || 0;
           const purchases = (insight.actions || []).filter(a => a.action_type === 'purchase').reduce((s, a) => s + Number(a.value), 0);
           return { name: acc.name, spend, impressions: Number(insight.impressions) || 0, clicks: Number(insight.clicks) || 0, ctr: Number(insight.ctr) || 0, roas: spend > 0 ? (purchases / spend).toFixed(2) : '-' };
-        } catch { return { name: acc.name, error: 'API error' }; }
+        } catch (e) { return { name: acc.name, error: e.message || 'API error' }; }
       }));
       const totalSpend = accounts.reduce((s, a) => s + (a.spend || 0), 0);
-      const hasData = accounts.some(a => !a.error); // 하나라도 성공한 계정이 있으면 connected
-      result.meta = { status: hasData ? 'connected' : 'disconnected', totalSpend, accounts };
+      const successAccounts = accounts.filter(a => !a.error);
+      const status = successAccounts.length > 0 ? 'connected' : 'disconnected';
+      const errorMsg = successAccounts.length === 0 ? accounts[0]?.error : null;
+      result.meta = { status, totalSpend, accounts, ...(errorMsg ? { message: errorMsg } : {}) };
       result.totalSpend += totalSpend;
     } catch (e) { result.meta = { status: 'error', error: e.message }; }
   } else {
