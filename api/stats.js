@@ -331,7 +331,7 @@ export default async function handler(req, res) {
       },
       marketer: {
         name: 'AI 마케터',
-        connected: !!(process.env.NAVER_AD_API_KEY || process.env.META_AD_ACCOUNT_IDS),
+        connected: !!(process.env.NAVER_AD_API_KEY || process.env.META_AD_ACCOUNT_IDS || process.env.META_ACCESS_TOKEN),
         source: '네이버/Meta 광고 API',
         description: 'ROAS 최적화·광고 모니터링',
       },
