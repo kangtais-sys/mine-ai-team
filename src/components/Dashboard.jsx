@@ -148,7 +148,7 @@ export default function Dashboard() {
   // 한국 B2C
   const krMonth = stats?.krMonthTotal || (chMonth.oliveyoung || 0) + (chMonth.smartstore || 0) + (chMonth.cafe24 || 0);
   const krYear = stats?.krYearTotal || (chYear.oliveyoung || 0) + (chYear.smartstore || 0) + (chYear.cafe24 || 0);
-  const krDaily = yday.total || yday.oliveyoung || 0;
+  const krDaily = (yday.oliveyoung || 0) + (yday.smartstore || 0) + (yday.cafe24 || 0) || yday.total || 0;
 
   // 미국 B2C (Amazon US + TikTok Shop US)
   const usB2c = stats?.usB2cSales || {};
@@ -288,7 +288,7 @@ export default function Dashboard() {
               {
                 label: '네이버 스마트스토어',
                 dot: CH_COLORS.smartstore,
-                daily: null,
+                daily: yday.smartstore,
                 monthly: chMonth.smartstore,
                 yearly: chYear.smartstore,
                 connected: conn.smartstore?.connected,
@@ -297,7 +297,7 @@ export default function Dashboard() {
               {
                 label: '카페24 자사몰',
                 dot: CH_COLORS.cafe24,
-                daily: null,
+                daily: yday.cafe24,
                 monthly: chMonth.cafe24,
                 yearly: chYear.cafe24,
                 connected: conn.cafe24?.connected,
