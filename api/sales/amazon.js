@@ -80,19 +80,30 @@ async function fetchMonthlySales(lwaToken, months = 5) {
     const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59).toISOString();
 
     try {
-      const params = new URLSearchParams({
-        MarketplaceIds: marketplaceId,
-        CreatedAfter: start,
-        CreatedBefore: end,
-        OrderStatuses: 'Unshipped,PartiallyShipped,Shipped,InvoiceUnconfirmed,Canceled,Unfulfillable,PendingAvailability,Pending',
-        MaxResultsPerPage: '100',
-      });
-      const data = await spFetch(`/orders/v0/orders?${params}`, lwaToken);
-      const orders = data?.payload?.Orders || [];
-      const total = orders.reduce((sum, o) => {
-        return sum + parseFloat(o.OrderTotal?.Amount || 0);
-      }, 0);
-      monthly[monthStr] = { revenue: parseFloat(total.toFixed(2)), orders: orders.length, currency: 'USD' };
+      // Canceled/Unfulfillable 제외, 실 결제 주문만
+      const PAID_STATUSES = 'Unshipped,PartiallyShipped,Shipped,InvoiceUnconfirmed,Pending,PendingAvailability';
+      let allOrders = [];
+      let nextToken = null;
+      do {
+        const params = nextToken
+          ? new URLSearchParams({ NextToken: nextToken })
+          : new URLSearchParams({
+              MarketplaceIds: marketplaceId,
+              CreatedAfter: start,
+              CreatedBefore: end,
+              OrderStatuses: PAID_STATUSES,
+              MaxResultsPerPage: '100',
+            });
+        const data = await spFetch(`/orders/v0/orders?${params}`, lwaToken);
+        const orders = data?.payload?.Orders || [];
+        allOrders = allOrders.concat(orders);
+        nextToken = data?.payload?.NextToken || null;
+        if (nextToken) await new Promise(r => setTimeout(r, 1000)); // rate limit
+      } while (nextToken);
+
+      const total = allOrders.reduce((sum, o) => sum + parseFloat(o.OrderTotal?.Amount || 0), 0);
+      monthly[monthStr] = { revenue: parseFloat(total.toFixed(2)), orders: allOrders.length, currency: 'USD' };
+      console.log(`[Amazon] ${monthStr}: ${allOrders.length}건 $${total.toFixed(2)}`);
     } catch (e) {
       console.error(`[Amazon] ${monthStr}:`, e.message);
       monthly[monthStr] = { revenue: 0, orders: 0, currency: 'USD' };
@@ -105,9 +116,10 @@ async function fetchMonthlySales(lwaToken, months = 5) {
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
+  const forceRefresh = req.query?.refresh === '1';
   const cacheKey = `sales:amazon:${new Date().toISOString().slice(0, 13)}`;
   try {
-    const cached = await redis.get(cacheKey);
+    const cached = !forceRefresh && await redis.get(cacheKey);
     if (cached) return res.status(200).json(cached);
 
     const lwaToken = await getLwaToken();
