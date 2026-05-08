@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { RefreshCw, CheckCircle2, Link2, AlertCircle, TrendingUp } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { RefreshCw, CheckCircle2, Link2, Crown, Send } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import useDashboardStore from '../store/dashboardStore';
 import { agents } from '../lib/agents';
@@ -91,6 +91,38 @@ export default function Dashboard() {
   const [googleStatus, setGoogleStatus] = useState(null);
   const [igRefreshing, setIgRefreshing] = useState(false);
 
+  // Chief AI 채팅
+  const [chiefMessages, setChiefMessages] = useState([
+    { role: 'assistant', content: '안녕하세요! Chief AI입니다. 대시보드를 보면서 업무 지시해 주세요 📊' }
+  ]);
+  const [chiefInput, setChiefInput] = useState('');
+  const [chiefLoading, setChiefLoading] = useState(false);
+  const chiefEndRef = useRef(null);
+
+  const sendChief = async () => {
+    const msg = chiefInput.trim();
+    if (!msg || chiefLoading) return;
+    setChiefInput('');
+    const newMsgs = [...chiefMessages, { role: 'user', content: msg }];
+    setChiefMessages(newMsgs);
+    setChiefLoading(true);
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: 'chief', messages: newMsgs }),
+      });
+      const data = await res.json();
+      setChiefMessages([...newMsgs, { role: 'assistant', content: data.content || data.message || '응답 없음' }]);
+    } catch {
+      setChiefMessages([...newMsgs, { role: 'assistant', content: '오류가 발생했습니다.' }]);
+    } finally {
+      setChiefLoading(false);
+    }
+  };
+
+  useEffect(() => { chiefEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chiefMessages]);
+
   useEffect(() => {
     fetchStats();
     fetch('/api/auth/google-status').then(r => r.json()).then(data => {
@@ -178,26 +210,31 @@ export default function Dashboard() {
             {/* 한국 B2C */}
             <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr 1fr', gap: 0, alignItems: 'center', padding: '7px 0', borderBottom: '1px solid #F5F5F7' }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>🇰🇷 한국</div>
-              <div style={{ textAlign: 'right', fontSize: 13, color: '#6E6E73' }}>{krDaily > 0 ? fmtKRW(krDaily) : '-'}</div>
-              <div style={{ textAlign: 'right', fontSize: 17, fontWeight: 700, color: '#1D1D1F', letterSpacing: '-0.02em' }}>{fmtM(krMonth)}</div>
-              <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, color: '#5E6AD2' }}>{fmtM(krYear)}</div>
+              <div style={{ textAlign: 'right', fontSize: 12, color: '#6E6E73' }}>
+                {krDaily > 0 ? fmtKRW(krDaily) : '-'}
+                {yday.oliveyoungDate && yday.oliveyoungDate !== new Date(Date.now() + 9*3600000 - 86400000).toISOString().slice(0,10).replace(/-/g,'') && (
+                  <div style={{ fontSize: 9, color: '#AEAEB2' }}>({yday.oliveyoungDate?.slice(4,6)}/{yday.oliveyoungDate?.slice(6,8)})</div>
+                )}
+              </div>
+              <div style={{ textAlign: 'right', fontSize: 15, fontWeight: 700, color: '#1D1D1F', letterSpacing: '-0.02em' }}>{fmtKRW(krMonth)}</div>
+              <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 600, color: '#5E6AD2' }}>{fmtKRW(krYear)}</div>
             </div>
             {/* 미국 B2C */}
             <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr 1fr', gap: 0, alignItems: 'center', padding: '7px 0', borderBottom: '1px solid #F5F5F7' }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>🇺🇸 미국 B2C</div>
-              <div style={{ textAlign: 'right', fontSize: 13, color: '#6E6E73' }}>-</div>
-              <div style={{ textAlign: 'right', fontSize: 17, fontWeight: 700, color: '#1D1D1F', letterSpacing: '-0.02em' }}>{usMonth > 0 ? fmtUSD(usMonth) : '-'}</div>
-              <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, color: '#5E6AD2' }}>{usYear > 0 ? fmtUSD(usYear) : '-'}</div>
+              <div style={{ textAlign: 'right', fontSize: 12, color: '#6E6E73' }}>-</div>
+              <div style={{ textAlign: 'right', fontSize: 15, fontWeight: 700, color: '#1D1D1F', letterSpacing: '-0.02em' }}>{usMonth > 0 ? fmtUSD(usMonth) : '-'}</div>
+              <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 600, color: '#5E6AD2' }}>{usYear > 0 ? fmtUSD(usYear) : '-'}</div>
             </div>
             {/* 수출 B2B */}
             <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr 1fr', gap: 0, alignItems: 'center', padding: '7px 0' }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>📦 수출 B2B</div>
-              <div style={{ textAlign: 'right', fontSize: 13, color: '#6E6E73' }}>-</div>
-              <div style={{ textAlign: 'right', fontSize: 13, color: b2bConnected ? '#6E6E73' : '#AEAEB2' }}>
-                {b2bConnected ? `${b2bData.totalRows || 0}건` : '미연결'}
+              <div style={{ textAlign: 'right', fontSize: 12, color: '#6E6E73' }}>-</div>
+              <div style={{ textAlign: 'right', fontSize: 12, color: b2bConnected ? '#6E6E73' : '#AEAEB2' }}>
+                {b2bConnected ? `샘플발송 ${b2bData.totalRows || 0}건` : '미연결'}
               </div>
-              <div style={{ textAlign: 'right', fontSize: 13, color: b2bConnected ? '#6E6E73' : '#AEAEB2' }}>
-                {b2bConnected ? '시트 연결됨' : '수출시트 미연결'}
+              <div style={{ textAlign: 'right', fontSize: 12, color: b2bConnected ? '#34C759' : '#AEAEB2' }}>
+                {b2bConnected ? '시트연결' : '수출시트 미연결'}
               </div>
             </div>
           </div>
@@ -292,26 +329,37 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* ── 3b. 수출 B2B ── */}
+        {/* ── 3b. 수출 B2B — 국가별·제품별 ── */}
         <div style={{ marginBottom: 14 }}>
-          <SectionTitle>수출 B2B</SectionTitle>
+          <SectionTitle>수출 B2B — 샘플 발송 현황</SectionTitle>
           <div style={{ ...CARD }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>📦 수출 현황</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #F5F5F7' }}>
-              <ConnDot ok={b2bConnected} />
-              <span style={{ fontSize: 12, color: '#1D1D1F', flex: 1 }}>수출 시트 (EXPORT_SHEET_ID)</span>
-              <span style={{ fontSize: 11, color: b2bConnected ? '#34C759' : '#AEAEB2' }}>
-                {b2bConnected ? `${b2bData.totalRows}건 · Google Sheets` : '미연결'}
-              </span>
-            </div>
-            {b2bConnected && b2bData.headers?.length > 0 && (
-              <div style={{ marginTop: 8, fontSize: 10, color: '#AEAEB2' }}>
-                컬럼: {b2bData.headers.slice(0, 6).join(' · ')}
-              </div>
-            )}
-            {!b2bConnected && (
-              <div style={{ marginTop: 8, fontSize: 11, color: '#AEAEB2' }}>
-                EXPORT_SHEET_ID 환경변수를 설정하면 수출 B2B 데이터가 연결됩니다.
+            {!b2bConnected ? (
+              <div style={{ fontSize: 12, color: '#AEAEB2', textAlign: 'center', padding: '12px 0' }}>수출시트 미연결</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                {/* 국가별 */}
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#AEAEB2', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>국가별</div>
+                  {Object.entries(b2bData.byCountry || {}).sort(([,a],[,b]) => b.qty - a.qty).map(([country, v]) => (
+                    <div key={country} style={{ display: 'flex', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #F5F5F7' }}>
+                      <span style={{ fontSize: 12, color: '#1D1D1F', flex: 1 }}>{country}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#5E6AD2' }}>{v.qty.toLocaleString()}개</span>
+                    </div>
+                  ))}
+                </div>
+                {/* 제품별 */}
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#AEAEB2', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>제품별 (수량순)</div>
+                  {(b2bData.byProduct || []).map((p, i) => (
+                    <div key={i} style={{ padding: '5px 0', borderBottom: '1px solid #F5F5F7' }}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <span style={{ fontSize: 11.5, color: '#1D1D1F', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.product}</span>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: '#5E6AD2', flexShrink: 0, marginLeft: 8 }}>{p.qty.toLocaleString()}개</span>
+                      </div>
+                      <div style={{ fontSize: 9.5, color: '#AEAEB2', marginTop: 1 }}>{p.countries.join(', ')}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -491,6 +539,58 @@ export default function Dashboard() {
               <div style={{ fontSize: 12.5, color: '#AEAEB2' }}>아직 활동 내역이 없습니다.</div>
             </div>
           )}
+        </div>
+
+        {/* ── Chief AI 채팅 ── */}
+        <div style={{ marginBottom: 14 }}>
+          <SectionTitle>Chief AI — 바로 지시하기</SectionTitle>
+          <div style={{ ...CARD, padding: 0, overflow: 'hidden' }}>
+            {/* 헤더 */}
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #F2F2F5', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: '#5E6AD2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Crown size={14} color="#fff" />
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F' }}>Chief AI</div>
+                <div style={{ fontSize: 10, color: '#AEAEB2' }}>총괄 오케스트레이터 · 대시보드 데이터 기반 응답</div>
+              </div>
+            </div>
+            {/* 메시지 */}
+            <div style={{ height: 220, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {chiefMessages.map((m, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                  <div style={{
+                    maxWidth: '80%', padding: '8px 12px', borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                    background: m.role === 'user' ? '#5E6AD2' : '#F5F5F7',
+                    color: m.role === 'user' ? '#fff' : '#1D1D1F',
+                    fontSize: 12.5, lineHeight: 1.5, whiteSpace: 'pre-wrap',
+                  }}>
+                    {m.content}
+                  </div>
+                </div>
+              ))}
+              {chiefLoading && (
+                <div style={{ display: 'flex', gap: 4, padding: '8px 12px' }}>
+                  {[0,1,2].map(i => <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: '#AEAEB2', animation: `bounce 1s ${i*0.2}s infinite` }} />)}
+                </div>
+              )}
+              <div ref={chiefEndRef} />
+            </div>
+            {/* 입력 */}
+            <div style={{ padding: '10px 12px', borderTop: '1px solid #F2F2F5', display: 'flex', gap: 8 }}>
+              <input
+                value={chiefInput}
+                onChange={e => setChiefInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChief()}
+                placeholder="Chief AI에게 지시하세요... (Enter로 전송)"
+                style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid #E5E5EA', fontSize: 12.5, outline: 'none', fontFamily: 'inherit', color: '#1D1D1F' }}
+              />
+              <button onClick={sendChief} disabled={chiefLoading || !chiefInput.trim()}
+                style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: chiefInput.trim() ? '#5E6AD2' : '#E5E5EA', color: chiefInput.trim() ? '#fff' : '#AEAEB2', cursor: chiefInput.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Send size={13} />
+              </button>
+            </div>
+          </div>
         </div>
 
       </div>

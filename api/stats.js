@@ -137,20 +137,46 @@ export default async function handler(req, res) {
       }
     }
 
-    // === D2. 수출 B2B 시트 (EXPORT_SHEET_ID — 공개 구글시트) ===
+    // === D2. 수출 B2B 시트 (EXPORT_SHEET_ID — 샘플발송 추적 시트) ===
+    // 컬럼: [1]국가 [2]접수일자 [4]수취인 [11]제품명 [13]수량 [18]발송상태
     let b2bExportRevenue = null;
     if (process.env.EXPORT_SHEET_ID) {
       try {
         const exportRows = await readPublicSheet(process.env.EXPORT_SHEET_ID);
-        const exportData = exportRows.slice(1).filter(r => r.some(c => c?.trim()));
-        // 컬럼 구조 파악: 첫 row 헤더 기준으로 최대한 파싱
-        const header = (exportRows[0] || []).map(h => (h || '').trim().toLowerCase());
-        const nowYear = String(new Date().getFullYear());
-        const nowMonthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+        // 헤더행(5번째 row, index 5) 이후 실데이터
+        const dataStartIdx = exportRows.findIndex(r => r[0] === 'NO.' || r[5] === 'NO.');
+        const dataRows = exportRows.slice(dataStartIdx >= 0 ? dataStartIdx + 1 : 6).filter(r => r[11]?.trim());
+
+        // 국가별 집계
+        const byCountry = {};
+        // 제품별 집계
+        const byProduct = {};
+        for (const r of dataRows) {
+          const country = (r[1] || '').trim() || '미기재';
+          const product = (r[11] || '').trim();
+          const qty = parseInt((r[13] || '0').replace(/[^\d]/g, '')) || 0;
+          const status = (r[18] || '').trim();
+          const date = (r[2] || '').trim();
+
+          if (!byCountry[country]) byCountry[country] = { qty: 0, items: [] };
+          byCountry[country].qty += qty;
+          byCountry[country].items.push({ product, qty, status, date });
+
+          if (!byProduct[product]) byProduct[product] = { qty: 0, countries: [] };
+          byProduct[product].qty += qty;
+          if (!byProduct[product].countries.includes(country)) byProduct[product].countries.push(country);
+        }
+
+        // 제품별 정렬 (수량 내림차순)
+        const productRanking = Object.entries(byProduct)
+          .sort(([, a], [, b]) => b.qty - a.qty)
+          .map(([product, v]) => ({ product, qty: v.qty, countries: v.countries }));
+
         b2bExportRevenue = {
           status: 'connected',
-          totalRows: exportData.length,
-          headers: exportRows[0] || [],
+          totalRows: dataRows.length,
+          byCountry,
+          byProduct: productRanking,
           updatedAt: new Date().toISOString(),
         };
       } catch (e) {
@@ -327,12 +353,19 @@ export default async function handler(req, res) {
     // === Yesterday's sales per channel ===
     const kstNow = new Date(Date.now() + 9 * 3600000);
     const yesterdayDate = new Date(kstNow - 86400000).toISOString().slice(0, 10).replace(/-/g, '');
+    // 올리브영: 어제 데이터 없으면 가장 최근 날짜 데이터 사용
+    const oyByDate = oliveyoungRevenue?.byDate || {};
+    const oyYesterdaySales = oyByDate[yesterdayDate]?.sales;
+    const oyLatestDate = Object.keys(oyByDate).sort().reverse()[0];
+    const oyLatestSales = oyLatestDate ? oyByDate[oyLatestDate]?.sales : 0;
+    const oyDailySales = oyYesterdaySales ?? oyLatestSales ?? 0;
     const yesterdaySales = {
-      oliveyoung: oliveyoungRevenue?.byDate?.[yesterdayDate]?.sales || 0,
-      smartstore: null, // Mac cron 월별 집계만 제공
-      cafe24: null,
-      amazon: null,
-      total: oliveyoungRevenue?.byDate?.[yesterdayDate]?.sales || 0, // 확보된 전일 합계
+      oliveyoung: oyDailySales,
+      oliveyoungDate: oyYesterdaySales != null ? yesterdayDate : (oyLatestDate || null),
+      smartstore: naverDaily?.daily?.[yesterdayDate]?.revenue ?? null,
+      cafe24: cafe24Daily?.daily?.[yesterdayDate]?.revenue ?? null,
+      amazon: null, // SP-API daily 미구현
+      total: oyDailySales,
     };
 
     // === 한국 B2C 채널 매출 ===
