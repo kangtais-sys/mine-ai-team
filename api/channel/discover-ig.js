@@ -5,54 +5,56 @@ export default async function handler(req, res) {
   const results = {};
 
   const milliId = '17841437734938544'; // millimilli IG Business ID (확인됨)
-  const sysUserId = '61589081296104';
+  const sysUserId = '122101078449302709'; // mine-ai system user FB ID (debug_token 에서 확인)
   const bmId = '6230686894709601';
 
-  // 1. token debug: IG 토큰이 어떤 계정에 접근할 수 있는지 확인
-  if (igToken && metaToken) {
-    const dbg = await fetch(
-      `https://graph.facebook.com/v21.0/debug_token?input_token=${igToken}&access_token=${metaToken}`
-    ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.token_debug = dbg;
-  }
-
-  // 2. IG 토큰으로 /me 계정 정보 + connected_instagram_accounts
+  // 1. 시스템 사용자의 instagram_accounts edge (IG token)
   if (igToken) {
-    const me = await fetch(
-      `https://graph.facebook.com/v21.0/me?fields=id,name,instagram_accounts&access_token=${igToken}`
+    const r1 = await fetch(
+      `https://graph.facebook.com/v21.0/${sysUserId}/instagram_accounts?fields=id,username,followers_count&access_token=${igToken}`
     ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.ig_token_me_fb = me;
+    results.sys_ig_accounts_ig_token = r1;
   }
 
-  // 3. META 토큰으로 시스템 사용자 연결된 IG 계정들
+  // 2. 시스템 사용자의 instagram_accounts edge (META token)
   if (metaToken) {
-    const sysMe = await fetch(
-      `https://graph.facebook.com/v21.0/${sysUserId}?fields=id,name,instagram_accounts&access_token=${metaToken}`
+    const r2 = await fetch(
+      `https://graph.facebook.com/v21.0/${sysUserId}/instagram_accounts?fields=id,username,followers_count&access_token=${metaToken}`
     ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.sys_user_ig_accounts_meta = sysMe;
+    results.sys_ig_accounts_meta_token = r2;
   }
 
-  // 4. BM owned pages + 각 페이지의 연결된 IG 계정
-  if (metaToken) {
-    const pages = await fetch(
-      `https://graph.facebook.com/v21.0/${bmId}/owned_pages?fields=id,name,instagram_business_account&limit=20&access_token=${metaToken}`
-    ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.bm_owned_pages = pages;
-  }
-
-  // 5. millimilli IG 계정의 connected_page 확인 (IG token)
+  // 3. milliId 계정 기본 정보 확인
   if (igToken) {
-    const milliInfo = await fetch(
-      `https://graph.facebook.com/v21.0/${milliId}?fields=id,username,followers_count,connected_instagram_account&access_token=${igToken}`
+    const r3 = await fetch(
+      `https://graph.facebook.com/v21.0/${milliId}?fields=id,username,followers_count&access_token=${igToken}`
     ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.millimilli_info = milliInfo;
+    results.millimilli_profile = r3;
   }
 
-  // 6. Instagram oEmbed (인증 없이 공개 계정 정보 조회)
-  const oembed = await fetch(
-    `https://graph.facebook.com/v21.0/instagram_oembed?url=https://www.instagram.com/lala_lounge_/&access_token=${igToken || metaToken}`
-  ).then(r => r.json()).catch(e => ({ error: e.message }));
-  results.lala_oembed = oembed;
+  // 4. BM의 FB page 기반 IG 계정 연결 확인 (IG token으로 me/accounts)
+  if (igToken) {
+    const r4 = await fetch(
+      `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account{id,username}&access_token=${igToken}`
+    ).then(r => r.json()).catch(e => ({ error: e.message }));
+    results.me_fb_pages_ig_token = r4;
+  }
+
+  // 5. META token으로 BM 연결 FB pages
+  if (metaToken) {
+    const r5 = await fetch(
+      `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account{id,username}&access_token=${metaToken}`
+    ).then(r => r.json()).catch(e => ({ error: e.message }));
+    results.me_fb_pages_meta_token = r5;
+  }
+
+  // 6. millimilli IG ID로 팔로워 + 사용 가능한 필드 확인
+  if (igToken) {
+    const r6 = await fetch(
+      `https://graph.facebook.com/v21.0/${milliId}?fields=id,username,biography,followers_count,media_count&access_token=${igToken}`
+    ).then(r => r.json()).catch(e => ({ error: e.message }));
+    results.millimilli_fields_test = r6;
+  }
 
   return res.status(200).json(results);
 }
