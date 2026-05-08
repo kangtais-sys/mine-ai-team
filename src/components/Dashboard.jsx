@@ -121,7 +121,11 @@ export default function Dashboard() {
     }
   };
 
-  useEffect(() => { chiefEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chiefMessages]);
+  const chiefMounted = useRef(false);
+  useEffect(() => {
+    if (!chiefMounted.current) { chiefMounted.current = true; return; }
+    chiefEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chiefMessages]);
 
   useEffect(() => {
     fetchStats();
@@ -175,7 +179,7 @@ export default function Dashboard() {
       }));
 
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {/* Header */}
       <div style={{ height: 50, padding: '0 24px', display: 'flex', alignItems: 'center', borderBottom: '1px solid #E5E5EA', background: '#FFFFFF', flexShrink: 0, gap: 10 }}>
         <span style={{ fontSize: 15, fontWeight: 600, color: '#1D1D1F' }}>MILLI AI 대시보드</span>
@@ -194,7 +198,8 @@ export default function Dashboard() {
         )}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px 40px' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden', minHeight: 0 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px 40px', minWidth: 0 }}>
 
         {/* ── 1. 전체 매출 합계 (일/월/연) ── */}
         <div style={{ marginBottom: 14 }}>
@@ -227,7 +232,7 @@ export default function Dashboard() {
               <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 600, color: '#5E6AD2' }}>{usYear > 0 ? fmtUSD(usYear) : '-'}</div>
             </div>
             {/* 수출 B2B */}
-            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr 1fr', gap: 0, alignItems: 'center', padding: '7px 0' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr 1fr', gap: 0, alignItems: 'center', padding: '7px 0', borderBottom: '1px solid #F5F5F7' }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>📦 수출 B2B</div>
               <div style={{ textAlign: 'right', fontSize: 12, color: '#6E6E73' }}>-</div>
               <div style={{ textAlign: 'right', fontSize: 15, fontWeight: 700, color: '#1D1D1F', letterSpacing: '-0.02em' }}>
@@ -235,6 +240,28 @@ export default function Dashboard() {
               </div>
               <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 600, color: '#5E6AD2' }}>
                 {b2bConnected ? fmtKRW(b2bData.totalRevenue) : '-'}
+              </div>
+            </div>
+            {/* 합계 행 */}
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr 1fr', gap: 0, alignItems: 'center', padding: '9px 0 4px', background: '#FAFAFA', borderRadius: '0 0 8px 8px', marginLeft: -20, marginRight: -20, paddingLeft: 20, paddingRight: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#1D1D1F' }}>합계</div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1D1D1F' }}>{krDaily > 0 ? fmtKRW(krDaily) : '-'}</div>
+                <div style={{ fontSize: 9, color: '#AEAEB2' }}>KRW</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#1D1D1F', letterSpacing: '-0.02em' }}>
+                  {fmtKRW(krMonth + (b2bConnected ? b2bData.monthRevenue : 0))}
+                </div>
+                {usMonth > 0 && <div style={{ fontSize: 11, fontWeight: 600, color: '#FF9900' }}>{fmtUSD(usMonth)}</div>}
+                <div style={{ fontSize: 9, color: '#AEAEB2' }}>KRW{usMonth > 0 ? ' + USD' : ''}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#5E6AD2', letterSpacing: '-0.02em' }}>
+                  {fmtKRW(krYear + (b2bConnected ? b2bData.totalRevenue : 0))}
+                </div>
+                {usYear > 0 && <div style={{ fontSize: 11, fontWeight: 600, color: '#FF9900' }}>{fmtUSD(usYear)}</div>}
+                <div style={{ fontSize: 9, color: '#AEAEB2' }}>KRW{usYear > 0 ? ' + USD' : ''}</div>
               </div>
             </div>
           </div>
@@ -555,59 +582,62 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* ── Chief AI 채팅 ── */}
-        <div style={{ marginBottom: 14 }}>
-          <SectionTitle>Chief AI — 바로 지시하기</SectionTitle>
-          <div style={{ ...CARD, padding: 0, overflow: 'hidden' }}>
-            {/* 헤더 */}
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid #F2F2F5', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: '#5E6AD2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Crown size={14} color="#fff" />
-              </div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F' }}>Chief AI</div>
-                <div style={{ fontSize: 10, color: '#AEAEB2' }}>총괄 오케스트레이터 · 대시보드 데이터 기반 응답</div>
-              </div>
-            </div>
-            {/* 메시지 */}
-            <div style={{ height: 220, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {chiefMessages.map((m, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                  <div style={{
-                    maxWidth: '80%', padding: '8px 12px', borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                    background: m.role === 'user' ? '#5E6AD2' : '#F5F5F7',
-                    color: m.role === 'user' ? '#fff' : '#1D1D1F',
-                    fontSize: 12.5, lineHeight: 1.5, whiteSpace: 'pre-wrap',
-                  }}>
-                    {m.content}
-                  </div>
-                </div>
-              ))}
-              {chiefLoading && (
-                <div style={{ display: 'flex', gap: 4, padding: '8px 12px' }}>
-                  {[0,1,2].map(i => <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: '#AEAEB2', animation: `bounce 1s ${i*0.2}s infinite` }} />)}
-                </div>
-              )}
-              <div ref={chiefEndRef} />
-            </div>
-            {/* 입력 */}
-            <div style={{ padding: '10px 12px', borderTop: '1px solid #F2F2F5', display: 'flex', gap: 8 }}>
-              <input
-                value={chiefInput}
-                onChange={e => setChiefInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChief()}
-                placeholder="Chief AI에게 지시하세요... (Enter로 전송)"
-                style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid #E5E5EA', fontSize: 12.5, outline: 'none', fontFamily: 'inherit', color: '#1D1D1F' }}
-              />
-              <button onClick={sendChief} disabled={chiefLoading || !chiefInput.trim()}
-                style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: chiefInput.trim() ? '#5E6AD2' : '#E5E5EA', color: chiefInput.trim() ? '#fff' : '#AEAEB2', cursor: chiefInput.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Send size={13} />
-              </button>
-            </div>
-          </div>
-        </div>
 
       </div>
-    </>
+
+      {/* ── Right column: Chief AI 채팅 ── */}
+      <div style={{ width: 360, flexShrink: 0, borderLeft: '1px solid #E5E5EA', display: 'flex', flexDirection: 'column', background: '#FAFAFA' }}>
+        {/* 헤더 */}
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid #E5E5EA', display: 'flex', alignItems: 'center', gap: 8, background: '#FFFFFF', flexShrink: 0 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: '#5E6AD2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Crown size={14} color="#fff" />
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F' }}>Chief AI</div>
+            <div style={{ fontSize: 10, color: '#AEAEB2' }}>총괄 오케스트레이터 · 대시보드 데이터 기반</div>
+          </div>
+        </div>
+        {/* 메시지 영역 */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {chiefMessages.map((m, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+              <div style={{
+                maxWidth: '85%', padding: '8px 12px',
+                borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                background: m.role === 'user' ? '#5E6AD2' : '#FFFFFF',
+                color: m.role === 'user' ? '#fff' : '#1D1D1F',
+                fontSize: 12.5, lineHeight: 1.5, whiteSpace: 'pre-wrap',
+                border: m.role === 'user' ? 'none' : '1px solid #E5E5EA',
+                boxShadow: m.role === 'user' ? 'none' : '0 1px 4px rgba(0,0,0,0.04)',
+              }}>
+                {m.content}
+              </div>
+            </div>
+          ))}
+          {chiefLoading && (
+            <div style={{ display: 'flex', gap: 4, padding: '8px 12px' }}>
+              {[0,1,2].map(i => <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: '#AEAEB2', animation: `bounce 1s ${i*0.2}s infinite` }} />)}
+            </div>
+          )}
+          <div ref={chiefEndRef} />
+        </div>
+        {/* 입력 */}
+        <div style={{ padding: '10px 12px', borderTop: '1px solid #E5E5EA', display: 'flex', gap: 8, background: '#FFFFFF', flexShrink: 0 }}>
+          <input
+            value={chiefInput}
+            onChange={e => setChiefInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChief()}
+            placeholder="지시하세요... (Enter)"
+            style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid #E5E5EA', fontSize: 12.5, outline: 'none', fontFamily: 'inherit', color: '#1D1D1F', background: '#FAFAFA' }}
+          />
+          <button onClick={sendChief} disabled={chiefLoading || !chiefInput.trim()}
+            style={{ padding: '8px 12px', borderRadius: 8, border: 'none', background: chiefInput.trim() ? '#5E6AD2' : '#E5E5EA', color: chiefInput.trim() ? '#fff' : '#AEAEB2', cursor: chiefInput.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center' }}>
+            <Send size={13} />
+          </button>
+        </div>
+      </div>
+
+      </div>
+    </div>
   );
 }
