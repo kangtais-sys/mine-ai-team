@@ -203,7 +203,35 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── 2. 한국 채널별 매출 ── */}
+        {/* ── 2. 월별 매출 추이 차트 ── */}
+        <div style={{ marginBottom: 14 }}>
+          <SectionTitle>2026 월별 채널별 매출 추이</SectionTitle>
+          <div style={{ ...CARD }}>
+            <ResponsiveContainer width="100%" height={150}>
+              <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <XAxis dataKey="month" stroke="#AEAEB2" fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis stroke="#AEAEB2" fontSize={9} tickLine={false} axisLine={false} width={48}
+                  tickFormatter={v => v >= 100000000 ? `${(v/100000000).toFixed(1)}억` : v >= 10000000 ? `${(v/10000000).toFixed(0)}천만` : v >= 10000 ? `${(v/10000).toFixed(0)}만` : '0'} />
+                <Tooltip contentStyle={tip}
+                  formatter={(v, name) => [fmtKRW(v), CH_LABELS[name] || name]}
+                  cursor={{ stroke: '#E5E5EA' }} />
+                <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }}
+                  formatter={(v) => CH_LABELS[v] || v} />
+                <Line type="monotone" dataKey="oliveyoung" stroke={CH_COLORS.oliveyoung} strokeWidth={1.8}
+                  dot={{ r: 2.5, fill: CH_COLORS.oliveyoung, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+                <Line type="monotone" dataKey="smartstore" stroke={CH_COLORS.smartstore} strokeWidth={1.8}
+                  dot={{ r: 2.5, fill: CH_COLORS.smartstore, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+                <Line type="monotone" dataKey="cafe24" stroke={CH_COLORS.cafe24} strokeWidth={1.8}
+                  dot={{ r: 2.5, fill: CH_COLORS.cafe24, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+                <Line type="monotone" dataKey="total" stroke={CH_COLORS.total} strokeWidth={2.5}
+                  strokeDasharray="4 2"
+                  dot={{ r: 2.5, fill: CH_COLORS.total, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* ── 3. 한국 채널별 매출 ── */}
         <div style={{ marginBottom: 14 }}>
           <SectionTitle>한국 채널별 매출</SectionTitle>
           <SalesTable
@@ -395,64 +423,44 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── 6. 연결 현황 상세 ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: 12, marginBottom: 14 }}>
-          {/* 월별 추이 차트 */}
+        {/* ── 6. 데이터 소스 연결 현황 ── */}
+        <div style={{ marginBottom: 14 }}>
+          <SectionTitle>데이터 소스 연결</SectionTitle>
           <div style={{ ...CARD }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>
-              2026 월별 채널별 매출 추이
-            </div>
-            <ResponsiveContainer width="100%" height={140}>
-              <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                <XAxis dataKey="month" stroke="#AEAEB2" fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis stroke="#AEAEB2" fontSize={9} tickLine={false} axisLine={false} width={48}
-                  tickFormatter={v => v >= 100000000 ? `${(v/100000000).toFixed(1)}억` : v >= 10000000 ? `${(v/10000000).toFixed(0)}천만` : v >= 10000 ? `${(v/10000).toFixed(0)}만` : '0'} />
-                <Tooltip contentStyle={tip}
-                  formatter={(v, name) => [fmtKRW(v), CH_LABELS[name] || name]}
-                  cursor={{ stroke: '#E5E5EA' }} />
-                <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }}
-                  formatter={(v) => CH_LABELS[v] || v} />
-                <Line type="monotone" dataKey="oliveyoung" stroke={CH_COLORS.oliveyoung} strokeWidth={1.8}
-                  dot={{ r: 2.5, fill: CH_COLORS.oliveyoung, strokeWidth: 0 }} activeDot={{ r: 4 }} />
-                <Line type="monotone" dataKey="smartstore" stroke={CH_COLORS.smartstore} strokeWidth={1.8}
-                  dot={{ r: 2.5, fill: CH_COLORS.smartstore, strokeWidth: 0 }} activeDot={{ r: 4 }} />
-                <Line type="monotone" dataKey="cafe24" stroke={CH_COLORS.cafe24} strokeWidth={1.8}
-                  dot={{ r: 2.5, fill: CH_COLORS.cafe24, strokeWidth: 0 }} activeDot={{ r: 4 }} />
-                <Line type="monotone" dataKey="total" stroke={CH_COLORS.total} strokeWidth={2.5}
-                  strokeDasharray="4 2"
-                  dot={{ r: 2.5, fill: CH_COLORS.total, strokeWidth: 0 }} activeDot={{ r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* 데이터 소스 연결 상태 */}
-          <div style={CARD}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>데이터 소스 연결</div>
-            {[
-              { key: 'zernio', label: 'Zernio SNS', sub: 'SNS 자동화' },
-              { key: 'anthropic', label: 'Anthropic', sub: 'Claude AI' },
-              { key: 'amazon', label: 'Amazon', sub: 'SP-API' },
-              { key: 'cafe24', label: 'Cafe24', sub: 'OAuth API' },
-              { key: 'oliveyoung', label: '올리브영', sub: 'Sheets CSV' },
-              { key: 'smartstore', label: '스마트스토어', sub: 'Naver API' },
-              { key: 'instagram', label: 'Instagram', sub: 'Graph API' },
-              { key: 'naverAds', label: '네이버 광고', sub: 'Ads API' },
-              { key: 'googleAds', label: '구글 광고', sub: 'Google Ads' },
-            ].map(({ key, label, sub }, i, arr) => {
-              const c = conn[key];
-              return (
-                <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', borderBottom: i < arr.length - 1 ? '1px solid #F5F5F7' : 'none' }}>
-                  <ConnDot ok={c?.connected} />
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontSize: 11.5, color: '#1D1D1F' }}>{label}</span>
-                    <span style={{ fontSize: 9.5, color: '#AEAEB2', marginLeft: 4 }}>{sub}</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
+              {[
+                { key: 'zernio', label: 'Zernio SNS', sub: 'SNS 자동화' },
+                { key: 'anthropic', label: 'Anthropic', sub: 'Claude AI' },
+                { key: 'amazon', label: 'Amazon US', sub: 'SP-API (B2C)' },
+                { key: 'cafe24', label: 'Cafe24', sub: 'OAuth API' },
+                { key: 'oliveyoung', label: '올리브영', sub: 'Sheets CSV' },
+                { key: 'smartstore', label: '스마트스토어', sub: 'Naver (Redis)' },
+                { key: 'instagram', label: 'Instagram', sub: 'Graph API' },
+                { key: 'naverAds', label: '네이버 광고', sub: 'Ads API' },
+                { key: 'exportSheet', label: '수출시트', sub: 'Sheets (B2B)' },
+              ].map(({ key, label, sub }, i, arr) => {
+                const c = conn[key];
+                const col = i % 3;
+                const row = Math.floor(i / 3);
+                const totalRows = Math.ceil(arr.length / 3);
+                return (
+                  <div key={key} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px',
+                    borderRight: col < 2 ? '1px solid #F2F2F5' : 'none',
+                    borderBottom: row < totalRows - 1 ? '1px solid #F2F2F5' : 'none',
+                  }}>
+                    <ConnDot ok={c?.connected} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 11.5, color: '#1D1D1F', fontWeight: 500 }}>{label}</div>
+                      <div style={{ fontSize: 9.5, color: '#AEAEB2' }}>{sub}</div>
+                    </div>
+                    <span style={{ fontSize: 10, color: c?.connected ? '#34C759' : '#AEAEB2' }}>
+                      {c?.connected ? '연결' : '-'}
+                    </span>
                   </div>
-                  <span style={{ fontSize: 10.5, color: c?.connected ? '#34C759' : '#AEAEB2' }}>
-                    {c?.connected ? '연결' : '-'}
-                  </span>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
 

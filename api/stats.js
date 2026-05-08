@@ -225,6 +225,20 @@ export default async function handler(req, res) {
     const activityLog = await redis.lrange('activity:log', 0, 9);
     const parsedLog = (activityLog || []).map(l => { try { return typeof l === 'string' ? JSON.parse(l) : l; } catch { return l; } });
 
+    // === H. Naver + Cafe24 from Redis (Mac cron / Vercel cache) ===
+    const [naverDaily, cafe24Daily, chiefReport] = await Promise.all([
+      redis.get('sales:naver:daily'),
+      redis.get('sales:cafe24:daily'),
+      redis.get('chief:daily-report'),
+    ]);
+    const nowMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const naverMonthly = naverDaily?.monthly || {};
+    const cafe24Monthly = cafe24Daily?.monthly || {};
+    const naverMonthSales = naverMonthly[nowMonthKey]?.revenue || 0;
+    const cafe24MonthSales = cafe24Monthly[nowMonthKey]?.revenue || 0;
+    const naverYearly = Object.values(naverMonthly).reduce((s, m) => s + (m.revenue || 0), 0);
+    const cafe24Yearly = Object.values(cafe24Monthly).reduce((s, m) => s + (m.revenue || 0), 0);
+
     // === G. Data source connection status (per service) ===
     // 스마트스토어: Redis에 실제 데이터 있으면 연결됨 (Mac cron이 채움)
     const naverHasData = Object.keys(naverMonthly).length > 0;
@@ -309,20 +323,6 @@ export default async function handler(req, res) {
       const r = await redis.get(`agent:report:${id}:${todayStr}`);
       if (r) agentReports[id] = typeof r === 'string' ? JSON.parse(r) : r;
     }));
-
-    // === H. Naver + Cafe24 from Redis (Mac cron / Vercel cache) ===
-    const [naverDaily, cafe24Daily, chiefReport] = await Promise.all([
-      redis.get('sales:naver:daily'),
-      redis.get('sales:cafe24:daily'),
-      redis.get('chief:daily-report'),
-    ]);
-    const nowMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-    const naverMonthly = naverDaily?.monthly || {};
-    const cafe24Monthly = cafe24Daily?.monthly || {};
-    const naverMonthSales = naverMonthly[nowMonthKey]?.revenue || 0;
-    const cafe24MonthSales = cafe24Monthly[nowMonthKey]?.revenue || 0;
-    const naverYearly = Object.values(naverMonthly).reduce((s, m) => s + (m.revenue || 0), 0);
-    const cafe24Yearly = Object.values(cafe24Monthly).reduce((s, m) => s + (m.revenue || 0), 0);
 
     // === Yesterday's sales per channel ===
     const kstNow = new Date(Date.now() + 9 * 3600000);
