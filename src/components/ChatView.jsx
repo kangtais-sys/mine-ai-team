@@ -769,7 +769,7 @@ const AGENT_DASHBOARDS = {
             <div style={{ marginTop: 8, padding: '7px 10px', borderRadius: 7, background: urlLearnResult.error ? '#FFF0F0' : `${accent}0D`, border: `1px solid ${urlLearnResult.error ? '#FFD0D0' : accent + '33'}`, fontSize: 10, color: urlLearnResult.error ? '#FF6B6B' : accent }}>
               {urlLearnResult.error
                 ? `실패: ${urlLearnResult.error}`
-                : `✓ 학습 완료 — "${urlLearnResult.title || urlLearnResult.url}" · ${urlLearnResult.crawledPages || 1}페이지 분석${urlLearnResult.isUpdate ? ' (업데이트)' : ''}`}
+                : `✓ 학습 완료 — "${urlLearnResult.title || urlLearnResult.url}" · 텍스트 ${urlLearnResult.crawledPages || 1}페이지${urlLearnResult.visionPages ? ` + 이미지 ${urlLearnResult.visionPages}페이지` : ''} 분석${urlLearnResult.isUpdate ? ' (업데이트)' : ''}`}
             </div>
           )}
         </div>

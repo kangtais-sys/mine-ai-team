@@ -22,13 +22,20 @@ async function callClaude(system, userContent) {
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-20250514',
-      max_tokens: 800,
+      max_tokens: 1200,
       system,
       messages: [{ role: 'user', content: userContent }],
     }),
   });
   const data = await res.json();
-  return data.content?.[0]?.text || '';
+  // 에러 응답 로깅
+  if (data.error) {
+    console.error('[Learn] Claude API 오류:', JSON.stringify(data.error));
+    return '';
+  }
+  const text = data.content?.[0]?.text?.trim() || '';
+  if (!text) console.warn('[Learn] Claude 응답 비어 있음. stop_reason:', data.stop_reason, 'usage:', JSON.stringify(data.usage));
+  return text;
 }
 
 // ────────────────────────────────────────────────

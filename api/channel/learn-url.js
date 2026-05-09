@@ -12,9 +12,11 @@ const redis = new Redis({
 });
 
 const MAX_URLS_PER_ACCOUNT = 10;
-const MAX_CRAWL_PAGES      = 10;    // 제품 페이지 최대 탐색 수
-const MAX_CHARS_PER_PAGE   = 4000;  // 페이지당 문자 한도
-const MAX_TOTAL_CHARS      = 18000; // Claude 전달 총 한도
+const MAX_CRAWL_PAGES      = 8;     // 제품 페이지 최대 탐색 수
+const MAX_CHARS_PER_PAGE   = 3000;  // 페이지당 텍스트 한도
+const MAX_TOTAL_CHARS      = 15000; // Claude 전달 총 한도
+const MAX_IMAGES_PER_PAGE  = 3;     // 페이지당 Vision 분석 이미지 수
+const MAX_IMAGE_PAGES      = 4;     // Vision 분석할 최대 페이지 수
 
 // ────────────────────────────────────────────────
 // Jina AI Reader
@@ -32,6 +34,64 @@ async function fetchWithJina(url, ms = 20000) {
 
 async function fetchSafe(url) {
   try { return await fetchWithJina(url); } catch { return null; }
+}
+
+// ────────────────────────────────────────────────
+// 마크다운에서 같은 도메인 이미지 URL 추출 (상품 상세 이미지)
+// ────────────────────────────────────────────────
+function extractImageUrls(markdown, baseUrl) {
+  const base = new URL(baseUrl);
+  const seen = new Set();
+  const imgs = [];
+  // Jina가 반환하는 ![alt](url) 형태 파싱
+  const re = /!\[[^\]]*\]\((https?:\/\/[^)\s"]+\.(?:jpg|jpeg|png|webp)(?:\?[^)]*)?)\)/gi;
+  let m;
+  while ((m = re.exec(markdown)) !== null) {
+    const imgUrl = m[1];
+    try {
+      const u = new URL(imgUrl);
+      // 같은 도메인 + 상품 상세 이미지 경로만 (로고·아이콘 제외)
+      if (u.hostname !== base.hostname) continue;
+      if (imgUrl.includes('/category/') || imgUrl.includes('/logo/') || imgUrl.includes('/icon')) continue;
+      if (seen.has(imgUrl)) continue;
+      seen.add(imgUrl);
+      imgs.push(imgUrl);
+    } catch {}
+  }
+  return imgs;
+}
+
+// Claude Vision으로 이미지에서 텍스트 추출
+async function readImagesWithVision(imageUrls) {
+  if (!imageUrls.length) return '';
+  const targets = imageUrls.slice(0, MAX_IMAGES_PER_PAGE);
+  const imageContent = targets.map(url => ({
+    type: 'image',
+    source: { type: 'url', url },
+  }));
+  imageContent.push({
+    type: 'text',
+    text: '이 이미지들은 한국 뷰티 브랜드 쇼핑몰의 제품 상세 이미지입니다. 이미지에서 텍스트 정보를 읽어 제품명, 성분, 효능, 가격, 용량, 사용법, 주의사항을 추출해 한국어로 정리해주세요. 이미지에 텍스트가 없으면 "텍스트 없음"이라고만 답하세요.',
+  });
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-20250514',
+        max_tokens: 800,
+        messages: [{ role: 'user', content: imageContent }],
+      }),
+    });
+    const data = await res.json();
+    const text = data.content?.[0]?.text?.trim() || '';
+    return text === '텍스트 없음' ? '' : text;
+  } catch { return ''; }
 }
 
 // ────────────────────────────────────────────────
@@ -73,6 +133,7 @@ async function crawlSite(startUrl) {
   const allLinks = extractInternalLinks(indexContent, startUrl);
   const targets  = prioritize(allLinks).slice(0, MAX_CRAWL_PAGES);
 
+  // 텍스트 크롤
   const pages = [{ url: startUrl, content: indexContent }];
   for (let i = 0; i < targets.length; i += 3) {
     const batch = targets.slice(i, i + 3);
@@ -84,12 +145,35 @@ async function crawlSite(startUrl) {
     }
   }
 
-  const combined = pages
+  // Claude Vision으로 상품 이미지 텍스트 추출 (제품 상세 페이지 우선)
+  const productPages = pages.filter(p =>
+    p.url.includes('/product/detail') || p.url.includes('/goods/') || p.url.match(/product_no=/)
+  ).slice(0, MAX_IMAGE_PAGES);
+
+  const visionResults = [];
+  for (const page of productPages) {
+    const imgUrls = extractImageUrls(page.content, startUrl);
+    if (imgUrls.length === 0) continue;
+    const visionText = await readImagesWithVision(imgUrls);
+    if (visionText) visionResults.push(`[이미지 분석 — ${page.url}]\n${visionText}`);
+  }
+
+  const textContent = pages
     .map(p => `=== ${p.url} ===\n${p.content}`)
     .join('\n\n')
-    .slice(0, MAX_TOTAL_CHARS);
+    .slice(0, MAX_TOTAL_CHARS - 3000);
 
-  return { title, combined, crawledCount: pages.length, foundLinks: allLinks.length };
+  const combined = visionResults.length > 0
+    ? `${textContent}\n\n=== 상품 이미지 분석 (Claude Vision) ===\n${visionResults.join('\n\n')}`
+    : textContent;
+
+  return {
+    title,
+    combined: combined.slice(0, MAX_TOTAL_CHARS),
+    crawledCount: pages.length,
+    foundLinks: allLinks.length,
+    visionPages: visionResults.length,
+  };
 }
 
 // ────────────────────────────────────────────────
@@ -148,8 +232,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: `사이트 접근 실패: ${e.message}` });
   }
 
-  const { title, combined, crawledCount, foundLinks } = crawlResult;
-  console.log(`[LearnURL][${account}] ${foundLinks}개 링크 발견 → ${crawledCount}페이지 크롤 완료`);
+  const { title, combined, crawledCount, foundLinks, visionPages = 0 } = crawlResult;
+  console.log(`[LearnURL][${account}] ${foundLinks}링크 → ${crawledCount}페이지 크롤 + ${visionPages}페이지 Vision 분석`);
 
   // 2. Claude 통합 분석
   const accountName = account === 'yuminhye' ? '유민혜 인플루언서 채널' : '밀리밀리(MILLIMILLI) K뷰티 브랜드';
@@ -206,6 +290,7 @@ export default async function handler(req, res) {
     url,
     crawledPages: crawledCount,
     foundLinks,
+    visionPages,
     isUpdate: !!alreadyLearned,
   });
 }
