@@ -1,60 +1,40 @@
 // 임시: Instagram Business 계정 ID 탐색
 export default async function handler(req, res) {
   const igToken = process.env.INSTAGRAM_ACCESS_TOKEN;
-  const metaToken = process.env.META_ACCESS_TOKEN;
   const results = {};
 
-  const milliId = '17841437734938544'; // millimilli IG Business ID (확인됨)
-  const sysUserId = '122101078449302709'; // mine-ai system user FB ID (debug_token 에서 확인)
-  const bmId = '6230686894709601';
+  const milliId = '17841437734938544';
+  const lalaId = process.env.IG_USER_ID_YUMINHYE || '17841411572493732';
 
-  // 1. 시스템 사용자의 instagram_accounts edge (IG token)
-  if (igToken) {
-    const r1 = await fetch(
-      `https://graph.facebook.com/v21.0/${sysUserId}/instagram_accounts?fields=id,username,followers_count&access_token=${igToken}`
-    ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.sys_ig_accounts_ig_token = r1;
-  }
+  // 1. millimilli 확인 (기준값)
+  const r1 = await fetch(
+    `https://graph.facebook.com/v21.0/${milliId}?fields=id,username,followers_count&access_token=${igToken}`
+  ).then(r => r.json()).catch(e => ({ error: e.message }));
+  results.millimilli = r1;
 
-  // 2. 시스템 사용자의 instagram_accounts edge (META token)
-  if (metaToken) {
-    const r2 = await fetch(
-      `https://graph.facebook.com/v21.0/${sysUserId}/instagram_accounts?fields=id,username,followers_count&access_token=${metaToken}`
-    ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.sys_ig_accounts_meta_token = r2;
-  }
+  // 2. lala_lounge_ ID로 프로필 직접 조회 (graph.facebook.com)
+  const r2 = await fetch(
+    `https://graph.facebook.com/v21.0/${lalaId}?fields=id,username,followers_count&access_token=${igToken}`
+  ).then(r => r.json()).catch(e => ({ error: e.message }));
+  results.lala_fb = r2;
 
-  // 3. milliId 계정 기본 정보 확인
-  if (igToken) {
-    const r3 = await fetch(
-      `https://graph.facebook.com/v21.0/${milliId}?fields=id,username,followers_count&access_token=${igToken}`
-    ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.millimilli_profile = r3;
-  }
+  // 3. lala_lounge_ ID로 media 조회 (graph.facebook.com)
+  const r3 = await fetch(
+    `https://graph.facebook.com/v21.0/${lalaId}/media?fields=id,timestamp&limit=3&access_token=${igToken}`
+  ).then(r => r.json()).catch(e => ({ error: e.message }));
+  results.lala_media_fb = r3;
 
-  // 4. BM의 FB page 기반 IG 계정 연결 확인 (IG token으로 me/accounts)
-  if (igToken) {
-    const r4 = await fetch(
-      `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account{id,username}&access_token=${igToken}`
-    ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.me_fb_pages_ig_token = r4;
-  }
+  // 4. lala_lounge_ ID로 media 조회 (graph.instagram.com)
+  const r4 = await fetch(
+    `https://graph.instagram.com/v25.0/${lalaId}/media?fields=id,timestamp&limit=3&access_token=${igToken}`
+  ).then(r => r.json()).catch(e => ({ error: e.message }));
+  results.lala_media_ig = r4;
 
-  // 5. META token으로 BM 연결 FB pages
-  if (metaToken) {
-    const r5 = await fetch(
-      `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account{id,username}&access_token=${metaToken}`
-    ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.me_fb_pages_meta_token = r5;
-  }
-
-  // 6. millimilli IG ID로 팔로워 + 사용 가능한 필드 확인
-  if (igToken) {
-    const r6 = await fetch(
-      `https://graph.facebook.com/v21.0/${milliId}?fields=id,username,biography,followers_count,media_count&access_token=${igToken}`
-    ).then(r => r.json()).catch(e => ({ error: e.message }));
-    results.millimilli_fields_test = r6;
-  }
+  // 5. graph.instagram.com/me - 현재 토큰이 어떤 계정인지
+  const r5 = await fetch(
+    `https://graph.instagram.com/me?fields=id,username&access_token=${igToken}`
+  ).then(r => r.json()).catch(e => ({ error: e.message }));
+  results.ig_me = r5;
 
   return res.status(200).json(results);
 }
