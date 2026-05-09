@@ -90,6 +90,7 @@ export default function Dashboard() {
   const { stats, revenueData, fetchStats } = useDashboardStore();
   const [googleStatus, setGoogleStatus] = useState(null);
   const [igRefreshing, setIgRefreshing] = useState(false);
+  const [igPosts, setIgPosts] = useState({ yuminhye: null, millimilli: null });
 
   // Chief AI 채팅
   const [chiefMessages, setChiefMessages] = useState([
@@ -126,6 +127,19 @@ export default function Dashboard() {
     if (!chiefMounted.current) { chiefMounted.current = true; return; }
     chiefEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chiefMessages]);
+
+  useEffect(() => {
+    // Instagram 게시물 데이터 (최근 10개 — 게시물 수 + 평균 댓글 계산용)
+    Promise.all([
+      fetch('/api/channel/posts?account=yuminhye').then(r => r.json()).catch(() => null),
+      fetch('/api/channel/posts?account=millimilli').then(r => r.json()).catch(() => null),
+    ]).then(([ym, ml]) => {
+      setIgPosts({
+        yuminhye: ym?.posts || null,
+        millimilli: ml?.posts || null,
+      });
+    });
+  }, []);
 
   useEffect(() => {
     fetchStats();
@@ -396,8 +410,8 @@ export default function Dashboard() {
           <SectionTitle>채널 현황</SectionTitle>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             {[
-              { name: '유민혜', data: ym, handle: '@lala_lounge_ / @yuminhye', refresh: true },
-              { name: '밀리밀리', data: ml, handle: '@millimilli_official', refresh: false },
+              { name: '유민혜', data: ym, handle: '@lala_lounge_ / @yuminhye', refresh: true, posts: igPosts.yuminhye },
+              { name: '밀리밀리', data: ml, handle: '@millimilli_official', refresh: false, posts: igPosts.millimilli },
             ].map((acc) => (
               <div key={acc.name} style={CARD}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -428,27 +442,47 @@ export default function Dashboard() {
                     </div>
                   ))}
                 </div>
-                {/* 합계 + 최근 7일 */}
-                <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid #F2F2F5' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 10, color: '#AEAEB2' }}>전체 팔로워</div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: '#1D1D1F' }}>{fmtCount(acc.data?.total)}</div>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 10, color: '#AEAEB2' }}>최근 7일 게시물</div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: '#1D1D1F' }}>
-                      {stats?.contentCount != null ? '-' : '-'}
+                {/* 합계 + 최근 게시물 + 평균 댓글 */}
+                {(() => {
+                  const posts = acc.posts;
+                  const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
+                  const recent7 = posts ? posts.filter(p => new Date(p.timestamp).getTime() > cutoff) : null;
+                  const avgComments = posts && posts.length > 0
+                    ? Math.round(posts.reduce((s, p) => s + (p.comments_count || 0), 0) / posts.length)
+                    : null;
+                  const avgLikes = posts && posts.length > 0
+                    ? Math.round(posts.reduce((s, p) => s + (p.like_count || 0), 0) / posts.length)
+                    : null;
+                  return (
+                    <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid #F2F2F5' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 10, color: '#AEAEB2' }}>전체 팔로워</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: '#1D1D1F' }}>{fmtCount(acc.data?.total)}</div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 10, color: '#AEAEB2' }}>7일 게시물</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: '#1D1D1F' }}>
+                          {recent7 !== null ? `${recent7.length}개` : '-'}
+                        </div>
+                        <div style={{ fontSize: 9, color: '#AEAEB2' }}>최근 7일 기준</div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 10, color: '#AEAEB2' }}>평균 댓글</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: '#1D1D1F' }}>
+                          {avgComments !== null ? avgComments.toLocaleString() : '-'}
+                        </div>
+                        <div style={{ fontSize: 9, color: '#AEAEB2' }}>최근 10게시물</div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 10, color: '#AEAEB2' }}>평균 좋아요</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: '#E1306C' }}>
+                          {avgLikes !== null ? avgLikes.toLocaleString() : '-'}
+                        </div>
+                        <div style={{ fontSize: 9, color: '#AEAEB2' }}>최근 10게시물</div>
+                      </div>
                     </div>
-                    <div style={{ fontSize: 9, color: '#AEAEB2' }}>Zernio 데이터 준비중</div>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 10, color: '#AEAEB2' }}>평균 댓글</div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: '#1D1D1F' }}>
-                      {stats?.engagement?.comments > 0 ? Math.round(stats.engagement.comments / 7) : '-'}
-                    </div>
-                    <div style={{ fontSize: 9, color: '#AEAEB2' }}>7일 평균</div>
-                  </div>
-                </div>
+                  );
+                })()}
               </div>
             ))}
           </div>
