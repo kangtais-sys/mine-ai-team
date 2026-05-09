@@ -21,6 +21,7 @@ const zFetch = (path, opts = {}) =>
 const PROFILE_TO_ACCOUNT = {
   '69d08807986d57bb8f72f7e6': 'yuminhye',
   '69d08cc1986d57bb8f733102': 'millimilli',
+  '69fca4b192b3d8e85f8cfea6': 'millimilli', // 실제 웹훅 account.id 확인값
 };
 const YUMINHYE_HANDLES = new Set(['lala_lounge_', 'yuminhye', 'peerstory', '15초유민혜', '0.8l_yuminhye']);
 const MILLIMILLI_HANDLES = new Set(['millimilli.kr', 'millimilli-l4j', 'millimilli.official', 'millimilli_official', 'millimilli']);
@@ -103,7 +104,7 @@ export default async function handler(req, res) {
   } catch {}
 
   const eventType = body.type || body.event;
-  const profileId = body.profileId || body.profile?._id || body.data?.profileId;
+  const profileId = body.profileId || body.profile?._id || body.data?.profileId || body.account?.id;
   const accountUsername = body.accountUsername || body.account?.username || body.data?.accountUsername;
   const account = detectAccount(profileId, accountUsername);
 
