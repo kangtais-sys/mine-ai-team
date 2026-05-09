@@ -127,6 +127,10 @@ export function buildPrompt(account, text, extraRules = [], learned = null, urlK
   const learnedText = learned?.learned
     ? `\n\n[학습된 채널 특성]\n- 주요 주제: ${(learned.learned.mainTopics || []).join(', ')}\n- 말투: ${learned.learned.toneInsights || ''}\n- 참여 유발: ${(learned.learned.commentTriggers || []).join(', ')}`
     : '';
+  // 답변 이력 기반 학습 스타일 추가
+  const replyStyleText = learned?.learnedReplies?.learnedStyle
+    ? `\n\n[실제 응대 이력에서 학습한 말투·스타일 — 최우선 반영]\n${learned.learnedReplies.learnedStyle}${learned.learnedReplies.commonPhrases?.length ? `\n자주 쓰는 표현: ${learned.learnedReplies.commonPhrases.join(', ')}` : ''}${learned.learnedReplies.emojiPattern ? `\n이모지 패턴: ${learned.learnedReplies.emojiPattern}` : ''}`
+    : '';
   const urlText = buildUrlKnowledgeText(urlKnowledge);
 
   if (account === 'yuminhye') {
@@ -135,7 +139,7 @@ export function buildPrompt(account, text, extraRules = [], learned = null, urlK
 이모지 1-2개, 1-2문장. 악성/스팸이면 SKIP만 반환.
 말투: 반말 또는 가벼운 존댓말, 친근하고 따뜻하게.
 칭찬/공감 → 진심 어린 리액션. 뷰티/스킨케어 질문 → 개인적인 경험 공유.
-개인 연락 요청/광고 → SKIP.${learnedText}${urlText}${rulesText}`;
+개인 연락 요청/광고 → SKIP.${replyStyleText}${learnedText}${urlText}${rulesText}`;
   }
 
   const isOYSale = OY_KEYWORDS.some(k => (text || '').includes(k));
@@ -144,7 +148,7 @@ export function buildPrompt(account, text, extraRules = [], learned = null, urlK
 일본어→일본어 / 영어→영어로 답변.
 제품/성분 문의 → 아는 범위에서 답변 + "카카오채널 @밀리밀리에서 자세히 안내드릴게요 🫶"
 칭찬 → 진심 어린 감사.
-${isOYSale ? '올영세일 기간! 올리브영에서 구매 적극 추천.' : '구매: 1) 자사몰 millimilli.official (혜택 최고) 2) 스마트스토어 3) 올리브영.'}${learnedText}${urlText}${rulesText}`;
+${isOYSale ? '올영세일 기간! 올리브영에서 구매 적극 추천.' : '구매: 1) 자사몰 millimilli.official (혜택 최고) 2) 스마트스토어 3) 올리브영.'}${replyStyleText}${learnedText}${urlText}${rulesText}`;
 }
 
 // ────────────────────────────────────────────────

@@ -244,6 +244,9 @@ const AGENT_DASHBOARDS = {
     const [urlInput, setUrlInput] = useState('');
     const [learningUrl, setLearningUrl] = useState(false);
     const [urlLearnResult, setUrlLearnResult] = useState(null);
+    // 답변 이력 재학습
+    const [learningReplies, setLearningReplies] = useState(false);
+    const [replyLearnResult, setReplyLearnResult] = useState(null);
 
     // accent per account
     const ACCENT = { yuminhye: '#FF6B6B', millimilli: '#5E6AD2' };
@@ -381,6 +384,27 @@ const AGENT_DASHBOARDS = {
         }).catch(() => {});
       } catch (e) { setLearnResult({ error: e.message }); }
       setLearning(false);
+    };
+
+    const handleLearnReplies = async () => {
+      setLearningReplies(true);
+      setReplyLearnResult(null);
+      try {
+        const res = await fetch('/api/channel/learn', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account: tab, mode: 'replies' }),
+        });
+        const d = await res.json();
+        setReplyLearnResult(d);
+        if (d.success) {
+          fetch('/api/channel/persona').then(r => r.json()).then(pd => {
+            setPersonaData(pd);
+            setRules(pd?.rules || []);
+          }).catch(() => {});
+        }
+      } catch (e) { setReplyLearnResult({ error: e.message }); }
+      setLearningReplies(false);
     };
 
     // 승인 큐 핸들러
@@ -559,7 +583,15 @@ const AGENT_DASHBOARDS = {
                     style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 6, border: 'none', cursor: learning ? 'default' : 'pointer', fontFamily: 'inherit', background: learning ? '#F5F5F7' : `${accent}15`, color: learning ? '#AEAEB2' : accent, fontSize: 11, fontWeight: 600 }}
                   >
                     <RefreshCw size={11} style={{ animation: learning ? 'spin 1s linear infinite' : 'none' }} />
-                    {learning ? '학습 중...' : '재학습'}
+                    {learning ? '학습 중...' : '게시물 학습'}
+                  </button>
+                  <button
+                    onClick={handleLearnReplies}
+                    disabled={learningReplies}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 6, border: 'none', cursor: learningReplies ? 'default' : 'pointer', fontFamily: 'inherit', background: learningReplies ? '#F5F5F7' : '#34C75915', color: learningReplies ? '#AEAEB2' : '#34C759', fontSize: 11, fontWeight: 600 }}
+                  >
+                    <RefreshCw size={11} style={{ animation: learningReplies ? 'spin 1s linear infinite' : 'none' }} />
+                    {learningReplies ? '학습 중...' : '답변 학습'}
                   </button>
                 </>
               ) : (
@@ -599,6 +631,8 @@ const AGENT_DASHBOARDS = {
           {learnResult && !learnResult.error && (
             <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 7, background: `${accent}0D`, border: `1px solid ${accent}33` }}>
               <div style={{ fontSize: 10, fontWeight: 600, color: accent, marginBottom: 4 }}>AI 학습 완료 — 최근 게시물 분석 결과</div>
+              {learnResult.learned?.mainTopics && <div style={{ fontSize: 10, color: '#1D1D1F' }}>주요 주제: {Array.isArray(learnResult.learned.mainTopics) ? learnResult.learned.mainTopics.join(', ') : learnResult.learned.mainTopics}</div>}
+              {learnResult.learned?.toneInsights && <div style={{ fontSize: 10, color: '#1D1D1F', marginTop: 2 }}>톤: {learnResult.learned.toneInsights}</div>}
               {learnResult.mainTopics && <div style={{ fontSize: 10, color: '#1D1D1F' }}>주요 주제: {Array.isArray(learnResult.mainTopics) ? learnResult.mainTopics.join(', ') : learnResult.mainTopics}</div>}
               {learnResult.toneInsights && <div style={{ fontSize: 10, color: '#1D1D1F', marginTop: 2 }}>톤: {learnResult.toneInsights}</div>}
             </div>
@@ -606,6 +640,19 @@ const AGENT_DASHBOARDS = {
           {learnResult?.error && (
             <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 7, background: '#FFF0F0', border: '1px solid #FFD0D0', fontSize: 10, color: '#FF6B6B' }}>
               학습 실패: {learnResult.error}
+            </div>
+          )}
+          {replyLearnResult && !replyLearnResult.error && replyLearnResult.success && (
+            <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 7, background: '#34C75910', border: '1px solid #34C75933' }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: '#34C759', marginBottom: 4 }}>답변 이력 학습 완료 — {replyLearnResult.learnedFrom}건 분석</div>
+              {replyLearnResult.learnedReplies?.replyTone && <div style={{ fontSize: 10, color: '#1D1D1F' }}>응대 톤: {replyLearnResult.learnedReplies.replyTone}</div>}
+              {replyLearnResult.learnedReplies?.commonPhrases?.length > 0 && <div style={{ fontSize: 10, color: '#1D1D1F', marginTop: 2 }}>자주 쓰는 표현: {replyLearnResult.learnedReplies.commonPhrases.join(', ')}</div>}
+              {replyLearnResult.learnedReplies?.learnedStyle && <div style={{ fontSize: 10, color: '#6E6E73', marginTop: 4, fontStyle: 'italic' }}>{replyLearnResult.learnedReplies.learnedStyle}</div>}
+            </div>
+          )}
+          {replyLearnResult && !replyLearnResult.success && (
+            <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 7, background: '#FFF0F0', border: '1px solid #FFD0D0', fontSize: 10, color: '#FF6B6B' }}>
+              {replyLearnResult.error ? `학습 실패: ${replyLearnResult.error}` : replyLearnResult.message}
             </div>
           )}
 
@@ -645,6 +692,17 @@ const AGENT_DASHBOARDS = {
                   <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.6 }}>{v}</div>
                 </div>
               ))}
+              {persona.learnedReplies?.learnedStyle && (
+                <div style={{ marginTop: 4, padding: '8px 10px', borderRadius: 7, background: '#34C75908', border: '1px solid #34C75933' }}>
+                  <div style={{ fontSize: 10, color: '#34C759', fontWeight: 600, marginBottom: 4 }}>
+                    답변 이력 학습 ({persona.replyLearnedFrom || 0}건 · {persona.replyLearnedAt ? new Date(persona.replyLearnedAt).toLocaleDateString('ko-KR') : ''})
+                  </div>
+                  <div style={{ fontSize: 10, color: '#1D1D1F', lineHeight: 1.6 }}>{persona.learnedReplies.learnedStyle}</div>
+                  {persona.learnedReplies.commonPhrases?.length > 0 && (
+                    <div style={{ fontSize: 10, color: '#6E6E73', marginTop: 4 }}>자주 쓰는 표현: {persona.learnedReplies.commonPhrases.join(', ')}</div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ fontSize: 11, color: '#AEAEB2' }}>
