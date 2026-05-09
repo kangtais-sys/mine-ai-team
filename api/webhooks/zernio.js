@@ -19,9 +19,13 @@ const zFetch = (path, opts = {}) =>
 // Zernio 프로필 ID → 계정 키 (1순위 식별)
 // ────────────────────────────────────────────────
 const PROFILE_TO_ACCOUNT = {
-  '69d08807986d57bb8f72f7e6': 'yuminhye',
-  '69d08cc1986d57bb8f733102': 'millimilli',
-  '69fca4b192b3d8e85f8cfea6': 'millimilli', // 실제 웹훅 account.id 확인값
+  // yuminhye 계정들
+  '69d08807986d57bb8f72f7e6': 'yuminhye',   // 원래 yuminhye 프로필 ID
+  '69fca4b192b3d8e85f8cfea6': 'yuminhye',   // lala_lounge_ 계정 (웹훅 실측값)
+  // millimilli 계정들
+  '69d08cc1986d57bb8f733102': 'millimilli', // 원래 millimilli 프로필 ID
+  '69fbfc1992b3d8e85f86d277': 'millimilli', // millimilli.kr (웹훅 실측값)
+  '69fbfd0692b3d8e85f86d882': 'millimilli', // millimilli.us (웹훅 실측값)
 };
 const YUMINHYE_HANDLES = new Set(['lala_lounge_', 'yuminhye', 'peerstory', '15초유민혜', '0.8l_yuminhye']);
 const MILLIMILLI_HANDLES = new Set(['millimilli.kr', 'millimilli-l4j', 'millimilli.official', 'millimilli_official', 'millimilli']);
