@@ -85,7 +85,7 @@ export function isActiveHour(settings) {
   const kstHour = new Date(Date.now() + 9 * 3600000).getUTCHours();
   const start = settings.activeHoursStart ?? 9;
   const end   = settings.activeHoursEnd   ?? 23;
-  return kstHour >= start && kstHour < end;
+  return kstHour >= start && kstHour <= end;
 }
 
 export async function checkRateLimit(type, account, settings) {

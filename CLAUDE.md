@@ -6,6 +6,12 @@
 - **GitHub**: kangtais-sys/mine-ai-team
 - **오너**: 유민혜 (MINE) — MILLIMILLI 브랜드 대표, 0.8L 인플루언서 마케팅 플랫폼 대표
 
+## ⚠️ 자동응대 플랫폼 — ZERNIO 전용
+- **인스타그램 댓글/DM 자동응대는 100% Zernio 경유** — Meta(Instagram) 직접 API 연동 없음
+- `api/webhooks/instagram.js`와 `api/cron/instagram.js`는 미사용 파일임 (수정하지 말 것)
+- 자동응대 관련 코드는 반드시 `api/webhooks/zernio.js`와 `api/cron/inbox.js`에만 적용
+- Zernio 계정 ID 매핑 (웹훅 실측): lala_lounge_=69fca4b192b3d8e85f8cfea6(yuminhye), millimilli.kr=69fbfc1992b3d8e85f86d277, millimilli.us=69fbfd0692b3d8e85f86d882
+
 ## 핵심 인프라
 - **배포**: Vercel (Pro, 5분 cron 지원)
 - **자동화**: n8n (https://peerstory.app.n8n.cloud)
