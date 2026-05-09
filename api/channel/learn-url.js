@@ -1,5 +1,5 @@
 // URL 학습 API — Jina 텍스트 + Microlink 뷰포트 스크린샷 + Claude Vision
-// 어떤 사이트든 (Cafe24 포함) 학습 가능
+// 어떤 사이트든 (Cafe24, 링크트리 포함) 학습 가능
 export const config = { maxDuration: 120 };
 
 import { Redis } from '@upstash/redis';
@@ -25,6 +25,43 @@ async function jinaFetch(url, maxChars = 4000) {
   } catch {
     return '';
   }
+}
+
+// ────────────────────────────────────────────────
+// 링크트리류 도메인 감지
+// ────────────────────────────────────────────────
+const LINKTREE_DOMAINS = ['linktr.ee', 'lnk.bio', 'bio.link', 'beacons.ai', 'msha.ke', 'solo.to', 'linkin.bio', 'campsite.bio'];
+
+function isLinktreePage(url) {
+  try {
+    const host = new URL(url).hostname.replace('www.', '');
+    return LINKTREE_DOMAINS.some(d => host === d || host.endsWith('.' + d));
+  } catch { return false; }
+}
+
+// ────────────────────────────────────────────────
+// 링크트리에서 외부 링크 추출
+// ────────────────────────────────────────────────
+function extractLinktreeLinks(md, maxLinks = 5) {
+  const linkRe = /\]\((https?:\/\/[^)\s"]+)\)/g;
+  const seen = new Set();
+  const links = [];
+  const skip = ['linktr.ee', 'lnk.bio', 'bio.link', 'instagram.com', 'twitter.com', 'x.com', 'youtube.com', 'tiktok.com', 'facebook.com'];
+  let m;
+
+  while ((m = linkRe.exec(md)) !== null) {
+    try {
+      const u = new URL(m[1]);
+      const host = u.hostname.replace('www.', '');
+      if (skip.some(s => host === s || host.endsWith('.' + s))) continue;
+      const clean = u.origin + u.pathname + u.search;
+      if (seen.has(clean)) continue;
+      seen.add(clean);
+      links.push(clean);
+      if (links.length >= maxLinks) break;
+    } catch {}
+  }
+  return links;
 }
 
 // ────────────────────────────────────────────────
@@ -93,12 +130,56 @@ async function getScreenshotBase64(url) {
 
 // ────────────────────────────────────────────────
 // 1단계: 페이지 수집 (텍스트 + 스크린샷)
+// 링크트리인 경우 외부 링크를 각각 방문해서 학습
 // ────────────────────────────────────────────────
 async function collectPageData(startUrl) {
   // 메인 페이지 Jina 텍스트 수집
   const mainText = await jinaFetch(startUrl, 5000);
   const title = (mainText.match(/^#\s+(.+)$/m) || [])[1]?.trim().slice(0, 100) || '';
 
+  // ── 링크트리 모드 ──────────────────────────────
+  if (isLinktreePage(startUrl)) {
+    const linkedUrls = extractLinktreeLinks(mainText, 5);
+    console.log(`[LearnURL] 링크트리 감지 → 외부 링크 ${linkedUrls.length}개 발견:`, linkedUrls);
+
+    if (linkedUrls.length === 0) {
+      // 링크가 없으면 그냥 메인만 반환
+      return { title: title || '링크트리', mainText, combinedProductText: '', screenshot: null, productUrls: [], linkedUrls: [] };
+    }
+
+    // 각 링크 텍스트 + 스크린샷 병렬 수집
+    const results = await Promise.all(
+      linkedUrls.map(async (u) => {
+        const [text, shot] = await Promise.all([
+          jinaFetch(u, 2500),
+          getScreenshotBase64(u),
+        ]);
+        return { url: u, text, shot };
+      })
+    );
+
+    // 텍스트 합치기
+    const combinedProductText = results
+      .filter(r => r.text)
+      .map((r, i) => `[링크${i + 1}: ${r.url}]\n${r.text}`)
+      .join('\n\n')
+      .slice(0, 6000);
+
+    // 스크린샷은 첫 번째로 성공한 것만 사용
+    const screenshot = results.find(r => r.shot)?.shot || null;
+
+    return {
+      title: title || 'Link Page',
+      mainText,
+      combinedProductText,
+      screenshot,
+      productUrls: linkedUrls,
+      linkedUrls,
+      isLinktree: true,
+    };
+  }
+
+  // ── 일반 사이트 모드 ───────────────────────────
   // 제품 URL 추출
   const productUrls = extractProductUrls(mainText, startUrl, 4);
   console.log(`[LearnURL] 제품 URL ${productUrls.length}개 발견`);
@@ -132,7 +213,7 @@ async function analyzeWithClaude(data, accountName) {
   const { screenshot, mainText, combinedProductText } = data;
 
   const instructionText = `당신은 ${accountName}의 SNS 응대 AI입니다.
-아래 쇼핑몰 정보에서 고객 응대에 필요한 내용을 추출하세요.
+아래${data.isLinktree ? ' 링크 모음 페이지(링크트리)의 각 사이트' : ' 쇼핑몰'} 정보에서 고객 응대에 필요한 내용을 추출하세요.
 제품명, 성분, 효능, 가격, 용량, 사용법, 브랜드 메시지, 구매처, FAQ 등을 포함하세요.
 반드시 JSON만 반환. 마크다운 없이.
 {
@@ -259,8 +340,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: `수집 실패: ${e.message}` });
   }
 
-  const { title, screenshot, productUrls } = pageData;
-  console.log(`[LearnURL][${account}] 스크린샷: ${screenshot ? 'O' : 'X'}, 제품URL: ${productUrls.length}개`);
+  const { title, screenshot, productUrls, linkedUrls, isLinktree } = pageData;
+  console.log(`[LearnURL][${account}] ${isLinktree ? '링크트리' : '일반'} | 스크린샷: ${screenshot ? 'O' : 'X'}, 링크: ${productUrls.length}개`);
 
   if (!pageData.mainText && !screenshot) {
     return res.status(400).json({ error: '페이지 내용을 읽을 수 없습니다' });
@@ -279,6 +360,7 @@ export default async function handler(req, res) {
     summary,
     screenshotPages: screenshot ? 1 : 0,
     productUrlsFound: productUrls.length,
+    ...(isLinktree && { linkedUrls, isLinktree: true }),
     learnedAt: new Date().toISOString(),
   };
   const alreadyLearned = existing.find(i => i.url === url);
@@ -294,6 +376,7 @@ export default async function handler(req, res) {
     url,
     screenshotPages: newItem.screenshotPages,
     productPagesFound: productUrls.length,
+    ...(isLinktree && { linkedSites: linkedUrls?.length || 0 }),
     isUpdate: !!alreadyLearned,
   });
 }
