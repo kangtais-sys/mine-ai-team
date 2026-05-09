@@ -45,17 +45,17 @@ function detectAccount(profileId, username) {
 // 댓글/DM 처리 공통 함수
 // ────────────────────────────────────────────────
 async function processItem({ type, itemId, text, author, account, settings }) {
-  // 중복 방지
-  const dupeKey = `zernio:replied:${type}:${itemId}`;
-  if (await redis.get(dupeKey)) return { skipped: true, reason: 'duplicate' };
-  await redis.set(dupeKey, true, { ex: type === 'comment' ? 86400 : 3600 });
-
-  // 활성 시간대 체크
+  // 활성 시간대 체크 (dupe key 설정 전 — 비활성 시간엔 dupe key 안 씀)
   if (!isActiveHour(settings)) {
     const kstH = new Date(Date.now() + 9 * 3600000).getUTCHours();
     console.log(`[Zernio][${account}] 비활성 시간대 skip (KST ${kstH}시)`);
     return { skipped: true, reason: 'inactive_hour' };
   }
+
+  // 중복 방지
+  const dupeKey = `zernio:replied:${type}:${itemId}`;
+  if (await redis.get(dupeKey)) return { skipped: true, reason: 'duplicate' };
+  await redis.set(dupeKey, true, { ex: type === 'comment' ? 86400 : 3600 });
 
   // 일일 한도 / 쿨다운 체크
   const rateCheck = await checkRateLimit(type, account, settings);
