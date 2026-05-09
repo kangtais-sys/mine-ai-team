@@ -115,20 +115,23 @@ export default async function handler(req, res) {
   const settings = await getSettings(account);
 
   // 댓글 이벤트
-  if (eventType === 'comment' || eventType === 'new_comment') {
+  if (eventType === 'comment' || eventType === 'new_comment' || eventType === 'comment.received') {
     if (!settings.autoComment) { console.log(`[Zernio][${account}] autoComment OFF`); return; }
-    const d = body.data || body.comment || body;
+    const d = body.comment || body.data || body;
     const itemId = d.id || d._id;
     const text = d.text || d.content || '';
-    const author = d.username || d.author?.username || '';
+    const author = d.author?.username || d.username || '';
+    const postId = d.platformPostId || body.post?.platformPostId || '';
     if (!itemId || !text) return;
+    // 대댓글은 스킵 (isReply)
+    if (d.isReply) { console.log(`[Zernio][${account}] 대댓글 skip`); return; }
     try { await processItem({ type: 'comment', itemId, text, author, account }); }
     catch (e) { console.error(`[Zernio][${account}] 댓글 오류:`, e.message); }
     return;
   }
 
   // DM 이벤트
-  if (eventType === 'message' || eventType === 'new_message' || eventType === 'dm') {
+  if (eventType === 'message' || eventType === 'new_message' || eventType === 'dm' || eventType === 'message.received') {
     if (!settings.autoDm) { console.log(`[Zernio][${account}] autoDm OFF`); return; }
     const d = body.data || body.message || body;
     const itemId = d.id || d._id;
