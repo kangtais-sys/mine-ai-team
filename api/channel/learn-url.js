@@ -43,16 +43,18 @@ function extractImageUrls(markdown, baseUrl) {
   const base = new URL(baseUrl);
   const seen = new Set();
   const imgs = [];
-  // Jina가 반환하는 ![alt](url) 형태 파싱
-  const re = /!\[[^\]]*\]\((https?:\/\/[^)\s"]+\.(?:jpg|jpeg|png|webp)(?:\?[^)]*)?)\)/gi;
+  // 마크다운 이미지 링크 파싱: ![alt](url)
+  const re = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/gi;
   let m;
   while ((m = re.exec(markdown)) !== null) {
-    const imgUrl = m[1];
+    const imgUrl = m[1].split('?')[0]; // 쿼리스트링 제거
+    if (!/\.(jpg|jpeg|png|webp)$/i.test(imgUrl)) continue;
     try {
       const u = new URL(imgUrl);
-      // 같은 도메인 + 상품 상세 이미지 경로만 (로고·아이콘 제외)
       if (u.hostname !== base.hostname) continue;
-      if (imgUrl.includes('/category/') || imgUrl.includes('/logo/') || imgUrl.includes('/icon')) continue;
+      // 로고·아이콘·썸네일 제외, 상품 상세 이미지만
+      const skip = ['/category/', '/logo/', '/icon', '/small/', '/tiny/', 'glo.png'];
+      if (skip.some(s => imgUrl.includes(s))) continue;
       if (seen.has(imgUrl)) continue;
       seen.add(imgUrl);
       imgs.push(imgUrl);
@@ -145,17 +147,23 @@ async function crawlSite(startUrl) {
     }
   }
 
-  // Claude Vision으로 상품 이미지 텍스트 추출 (제품 상세 페이지 우선)
-  const productPages = pages.filter(p =>
-    p.url.includes('/product/detail') || p.url.includes('/goods/') || p.url.match(/product_no=/)
-  ).slice(0, MAX_IMAGE_PAGES);
+  // Claude Vision으로 상품 이미지 텍스트 추출 (제품 상세 페이지, 이미지 추출용 별도 전체 fetch)
+  const productUrls = pages
+    .filter(p => p.url.includes('/product/detail') || p.url.includes('/goods/') || p.url.match(/product_no=/))
+    .map(p => p.url)
+    .slice(0, MAX_IMAGE_PAGES);
 
   const visionResults = [];
-  for (const page of productPages) {
-    const imgUrls = extractImageUrls(page.content, startUrl);
-    if (imgUrls.length === 0) continue;
-    const visionText = await readImagesWithVision(imgUrls);
-    if (visionText) visionResults.push(`[이미지 분석 — ${page.url}]\n${visionText}`);
+  for (const productUrl of productUrls) {
+    try {
+      // 이미지 URL 추출을 위해 더 긴 컨텐츠로 재fetch (최대 12000자)
+      const fullContent = await fetchWithJina(productUrl, 18000).then(c => c.slice(0, 12000)).catch(() => null);
+      if (!fullContent) continue;
+      const imgUrls = extractImageUrls(fullContent, startUrl);
+      if (imgUrls.length === 0) continue;
+      const visionText = await readImagesWithVision(imgUrls);
+      if (visionText) visionResults.push(`[이미지 분석 — ${productUrl}]\n${visionText}`);
+    } catch {}
   }
 
   const textContent = pages
