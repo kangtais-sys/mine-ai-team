@@ -563,6 +563,98 @@ const AGENT_DASHBOARDS = {
               </div>
             ))}
           </div>
+
+          {/* 세부 제한 설정 — 인스타 밴 방지 */}
+          {(() => {
+            const s = acctSettings;
+            const isOn = s.autoComment || s.autoDm;
+            const [open, setOpen] = React.useState(false);
+            const saveSetting = async (field, value) => {
+              setSettings(prev => ({ ...prev, [tab]: { ...prev[tab], [field]: value } }));
+              await fetch('/api/channel/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ account: tab, [field]: value }),
+              });
+            };
+            return (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #F0F0F5' }}>
+                <button
+                  onClick={() => setOpen(p => !p)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, fontSize: 11, color: '#6E6E73', fontFamily: 'inherit' }}
+                >
+                  <span style={{ fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+                  세부 제한 설정 (인스타 밴 방지)
+                  {!isOn && <span style={{ fontSize: 9, color: '#FF9500', marginLeft: 4 }}>자동응대 켤 때 먼저 확인하세요</span>}
+                </button>
+                {open && (
+                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {/* 활성 시간대 */}
+                    <div>
+                      <div style={{ fontSize: 10, color: '#AEAEB2', marginBottom: 4 }}>활성 시간대 (KST) — 이 시간에만 응대</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <select value={s.activeHoursStart ?? 9} onChange={e => saveSetting('activeHoursStart', Number(e.target.value))}
+                          style={{ padding: '4px 6px', borderRadius: 6, border: '1px solid #E5E5EA', fontSize: 11, background: '#F5F5F7', fontFamily: 'inherit' }}>
+                          {Array.from({ length: 24 }, (_, i) => <option key={i} value={i}>{i}시</option>)}
+                        </select>
+                        <span style={{ fontSize: 11, color: '#6E6E73' }}>~</span>
+                        <select value={s.activeHoursEnd ?? 23} onChange={e => saveSetting('activeHoursEnd', Number(e.target.value))}
+                          style={{ padding: '4px 6px', borderRadius: 6, border: '1px solid #E5E5EA', fontSize: 11, background: '#F5F5F7', fontFamily: 'inherit' }}>
+                          {Array.from({ length: 24 }, (_, i) => <option key={i} value={i}>{i}시</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    {/* 댓글 설정 */}
+                    {s.autoComment && (
+                      <div>
+                        <div style={{ fontSize: 10, color: '#AEAEB2', marginBottom: 4 }}>댓글 — 하루 최대 / 최소 간격</div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <div style={{ flex: 1 }}>
+                            <input type="number" min="1" max="100" value={s.commentDailyLimit ?? 50}
+                              onChange={e => saveSetting('commentDailyLimit', Number(e.target.value))}
+                              style={{ width: '100%', padding: '4px 8px', borderRadius: 6, border: '1px solid #E5E5EA', fontSize: 11, background: '#F5F5F7', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                            <div style={{ fontSize: 9, color: '#AEAEB2', marginTop: 2 }}>하루 최대 (건)</div>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <input type="number" min="1" max="60" value={s.commentCooldownMin ?? 2}
+                              onChange={e => saveSetting('commentCooldownMin', Number(e.target.value))}
+                              style={{ width: '100%', padding: '4px 8px', borderRadius: 6, border: '1px solid #E5E5EA', fontSize: 11, background: '#F5F5F7', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                            <div style={{ fontSize: 9, color: '#AEAEB2', marginTop: 2 }}>응대 간격 (분)</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {/* DM 설정 */}
+                    {s.autoDm && (
+                      <div>
+                        <div style={{ fontSize: 10, color: '#AEAEB2', marginBottom: 4 }}>DM — 하루 최대 / 최소 간격</div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <div style={{ flex: 1 }}>
+                            <input type="number" min="1" max="50" value={s.dmDailyLimit ?? 20}
+                              onChange={e => saveSetting('dmDailyLimit', Number(e.target.value))}
+                              style={{ width: '100%', padding: '4px 8px', borderRadius: 6, border: '1px solid #E5E5EA', fontSize: 11, background: '#F5F5F7', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                            <div style={{ fontSize: 9, color: '#AEAEB2', marginTop: 2 }}>하루 최대 (건)</div>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <input type="number" min="1" max="60" value={s.dmCooldownMin ?? 3}
+                              onChange={e => saveSetting('dmCooldownMin', Number(e.target.value))}
+                              style={{ width: '100%', padding: '4px 8px', borderRadius: 6, border: '1px solid #E5E5EA', fontSize: 11, background: '#F5F5F7', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                            <div style={{ fontSize: 9, color: '#AEAEB2', marginTop: 2 }}>응대 간격 (분)</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {/* 현재 설정 요약 */}
+                    <div style={{ padding: '6px 8px', borderRadius: 6, background: '#F5F5F7', fontSize: 10, color: '#6E6E73', lineHeight: 1.7 }}>
+                      현재: {s.activeHoursStart ?? 9}시~{s.activeHoursEnd ?? 23}시 운영
+                      {s.autoComment && ` · 댓글 하루 ${s.commentDailyLimit ?? 50}건 / ${s.commentCooldownMin ?? 2}분 간격`}
+                      {s.autoDm && ` · DM 하루 ${s.dmDailyLimit ?? 20}건 / ${s.dmCooldownMin ?? 3}분 간격`}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Persona card */}

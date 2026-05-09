@@ -30,8 +30,57 @@ async function getToken() {
 async function getSettings(account) {
   try {
     const s = await redis.get(`channel:settings:${account}`);
-    return s || { autoComment: false, autoDm: false };
-  } catch { return { autoComment: false, autoDm: false }; }
+    return {
+      autoComment: false, autoDm: false,
+      activeHoursStart: 9, activeHoursEnd: 23,
+      commentDailyLimit: 50, dmDailyLimit: 20,
+      commentCooldownMin: 2, dmCooldownMin: 3,
+      ...(s || {}),
+    };
+  } catch {
+    return { autoComment: false, autoDm: false, activeHoursStart: 9, activeHoursEnd: 23, commentDailyLimit: 50, dmDailyLimit: 20, commentCooldownMin: 2, dmCooldownMin: 3 };
+  }
+}
+
+// ────────────────────────────────────────────────
+// 인스타 밴 방지 — 시간대 / 일일 한도 / 쿨다운 체크
+// ────────────────────────────────────────────────
+function isActiveHour(settings) {
+  const nowKST = new Date(Date.now() + 9 * 3600000);
+  const h = nowKST.getUTCHours();
+  return h >= settings.activeHoursStart && h < settings.activeHoursEnd;
+}
+
+async function checkRateLimit(type, account, settings) {
+  const limit = type === 'comment' ? settings.commentDailyLimit : settings.dmDailyLimit;
+  const cooldownMs = (type === 'comment' ? settings.commentCooldownMin : settings.dmCooldownMin) * 60 * 1000;
+
+  // KST 기준 오늘 날짜 키
+  const todayKST = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+  const dailyKey = `channel:rate:daily:${type}:${account}:${todayKST}`;
+  const cooldownKey = `channel:rate:cooldown:${type}:${account}`;
+
+  // 쿨다운 체크
+  if (await redis.get(cooldownKey)) {
+    console.log(`[Rate][${account}] ${type} 쿨다운 중 — skip`);
+    return { allowed: false, reason: 'cooldown' };
+  }
+
+  // 일일 한도 체크
+  const todayCount = Number(await redis.get(dailyKey) || 0);
+  if (todayCount >= limit) {
+    console.log(`[Rate][${account}] ${type} 일일 한도 ${limit}건 초과 (${todayCount}건) — skip`);
+    return { allowed: false, reason: 'daily_limit' };
+  }
+
+  return { allowed: true, dailyKey, cooldownKey, cooldownMs };
+}
+
+async function recordUsage(type, account, { dailyKey, cooldownKey, cooldownMs }) {
+  await Promise.all([
+    redis.incr(dailyKey).then(() => redis.expire(dailyKey, 86400 * 2)),
+    redis.set(cooldownKey, 1, { px: cooldownMs }),
+  ]);
 }
 
 async function getEnabledRules(account) {
@@ -180,6 +229,16 @@ export default async function handler(req, res) {
             continue;
           }
 
+          // ── 밴 방지: 시간대 체크 ──
+          if (!isActiveHour(settings)) {
+            console.log(`[Meta][${account}] 비활성 시간대 (${settings.activeHoursStart}~${settings.activeHoursEnd}시) → skip`);
+            continue;
+          }
+
+          // ── 밴 방지: 일일한도 + 쿨다운 ──
+          const commentRate = await checkRateLimit('comment', account, settings);
+          if (!commentRate.allowed) continue;
+
           // 중복 방지 (24h)
           const dupeKey = `ig:replied:comment:${commentId}`;
           if (await redis.get(dupeKey)) { console.log(`[Meta] 중복 skip: ${commentId}`); continue; }
@@ -219,6 +278,7 @@ export default async function handler(req, res) {
             const success = replyRes.ok;
             if (success) {
               console.log(`[Meta][${account}] 댓글 답글 전송: "${reply.substring(0, 40)}"`);
+              await recordUsage('comment', account, commentRate);
             } else {
               const err = await replyRes.json();
               console.error(`[Meta][${account}] 댓글 답글 실패:`, err.error?.message);
@@ -252,6 +312,16 @@ export default async function handler(req, res) {
             continue;
           }
 
+          // ── 밴 방지: 시간대 체크 ──
+          if (!isActiveHour(settings)) {
+            console.log(`[Meta][${account}] DM 비활성 시간대 → skip`);
+            continue;
+          }
+
+          // ── 밴 방지: 일일한도 + 쿨다운 ──
+          const dmRate = await checkRateLimit('dm', account, settings);
+          if (!dmRate.allowed) continue;
+
           // 중복 방지
           const dupeKey = `ig:replied:dm:${senderId}:${Date.now().toString().slice(0, -4)}`;
           if (await redis.get(dupeKey)) continue;
@@ -284,6 +354,7 @@ export default async function handler(req, res) {
             const success = dmRes.ok;
             if (success) {
               console.log(`[Meta][${account}] DM 답장 전송: "${reply.substring(0, 40)}"`);
+              await recordUsage('dm', account, dmRate);
             } else {
               const err = await dmRes.json();
               console.error(`[Meta][${account}] DM 답장 실패:`, err.error?.message);
