@@ -659,14 +659,23 @@ const AGENT_DASHBOARDS = {
 
         {/* Persona card */}
         <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>{tabAccountLabel[tab]} 페르소나</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F' }}>{tabAccountLabel[tab]} 페르소나</div>
+              {(persona?.learnedAt || persona?.replyLearnedAt) && (
+                <div style={{ fontSize: 9, color: '#AEAEB2', marginTop: 2, display: 'flex', gap: 8 }}>
+                  {persona?.learnedAt && <span>게시물 학습 {timeAgo(persona.learnedAt)} · {persona?.learnedFrom || 0}개</span>}
+                  {persona?.replyLearnedAt && <span>답변 학습 {timeAgo(persona.replyLearnedAt)} · {persona?.replyLearnedFrom || 0}건</span>}
+                </div>
+              )}
+            </div>
             <div style={{ display: 'flex', gap: 5 }}>
               {!editingPersona ? (
                 <>
                   <button
                     onClick={() => {
                       setEditedPersona({
+
                         character: persona?.character || '',
                         tone: persona?.tone || '',
                         topics: Array.isArray(persona?.topics) ? persona.topics.join(', ') : (persona?.topics || ''),

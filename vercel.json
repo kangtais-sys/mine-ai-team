@@ -61,6 +61,10 @@
       "schedule": "0 23 * * *"
     },
     {
+      "path": "/api/cron/persona-learn",
+      "schedule": "0 0 * * 1"
+    },
+    {
       "path": "/api/cron/drive-upload",
       "schedule": "*/15 * * * *"
     },
@@ -325,6 +329,10 @@
     {
       "source": "/api/cron/channel-report",
       "destination": "/api/cron/channel-report"
+    },
+    {
+      "source": "/api/cron/persona-learn",
+      "destination": "/api/cron/persona-learn"
     },
     {
       "source": "/api/sales/cafe24",
