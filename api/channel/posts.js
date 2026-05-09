@@ -6,7 +6,8 @@ const redis = new Redis({
 });
 
 async function getToken() {
-  return (await redis.get('instagram_access_token').catch(() => null)) || process.env.INSTAGRAM_ACCESS_TOKEN;
+  // env var 우선 — Redis에 저장된 구버전 토큰이 있어도 env var로 덮어씀
+  return process.env.INSTAGRAM_ACCESS_TOKEN || (await redis.get('instagram_access_token').catch(() => null));
 }
 
 // Map account → IG Business Account User ID (set these in Vercel env)
