@@ -197,11 +197,25 @@ async function analyzeWithClaude(data, accountName) {
   const raw = apiData.content?.[0]?.text?.trim() || '';
   console.log('[LearnURL] Claude 응답 길이:', raw.length, '| 첫 150자:', raw.slice(0, 150));
 
+  // raw가 비어있으면 디버그 정보 포함해서 반환
+  if (!raw) {
+    const debugInfo = {
+      httpStatus: res.status,
+      stopReason: apiData.stop_reason,
+      usage: apiData.usage,
+      contentLength: apiData.content?.length,
+      hasScreenshot: !!screenshot,
+      textBlockLen: textBlock.length,
+    };
+    console.warn('[LearnURL] raw 비어있음! 디버그:', JSON.stringify(debugInfo));
+    return { keyFacts: [`응답 비어있음 — stop_reason:${apiData.stop_reason} usage:${JSON.stringify(apiData.usage)}`] };
+  }
+
   try {
     return JSON.parse(raw.replace(/```json\n?|```\n?/g, '').trim());
   } catch {
     if (raw.length > 10) return { keyFacts: [raw.slice(0, 500)] };
-    return null;
+    return { keyFacts: ['JSON 파싱 실패 — raw:' + raw.slice(0, 100)] };
   }
 }
 
