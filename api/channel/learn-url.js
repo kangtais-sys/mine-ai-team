@@ -1,8 +1,6 @@
-// URL 학습 API — 사이트 자동 전체 탐색 (Jina AI Reader, 가입 불필요)
-// POST { account, url } → 시작 URL → 내부 링크 탐색 → 제품 페이지 크롤 → Claude 통합 분석 → Redis
-// DELETE { account, url } → 학습 항목 삭제
-// GET  { account }       → 학습된 URL 목록
-export const config = { maxDuration: 300 };
+// URL 학습 API — Microlink 스크린샷 + Jina 텍스트 + Claude Vision
+// 어떤 사이트든 (Cafe24 포함) 학습 가능
+export const config = { maxDuration: 120 };
 
 import { Redis } from '@upstash/redis';
 
@@ -12,209 +10,145 @@ const redis = new Redis({
 });
 
 const MAX_URLS_PER_ACCOUNT = 10;
-const MAX_CRAWL_PAGES      = 8;     // 제품 페이지 최대 탐색 수
-const MAX_CHARS_PER_PAGE   = 3000;  // 페이지당 텍스트 한도
-const MAX_TOTAL_CHARS      = 15000; // Claude 전달 총 한도
-const MAX_IMAGES_PER_PAGE  = 3;     // 페이지당 Vision 분석 이미지 수
-const MAX_IMAGE_PAGES      = 4;     // Vision 분석할 최대 페이지 수
 
 // ────────────────────────────────────────────────
-// Jina AI Reader
+// 1단계: Microlink로 페이지 스크린샷 (어떤 사이트든)
 // ────────────────────────────────────────────────
-async function fetchWithJina(url, ms = 20000, maxChars = MAX_CHARS_PER_PAGE) {
-  const res = await fetch(`https://r.jina.ai/${url}`, {
-    headers: { 'Accept': 'text/plain', 'X-Return-Format': 'markdown' },
-    signal: AbortSignal.timeout(ms),
-  });
-  if (!res.ok) throw new Error(`Jina ${res.status}`);
-  const text = await res.text();
-  if (!text || text.length < 30) throw new Error('빈 페이지');
-  return text.slice(0, maxChars);
-}
+async function getScreenshots(startUrl) {
+  // 시작 페이지 스크린샷
+  const screenshots = [];
 
-async function fetchSafe(url) {
-  try { return await fetchWithJina(url); } catch { return null; }
-}
-
-// ────────────────────────────────────────────────
-// 마크다운에서 같은 도메인 이미지 URL 추출 (상품 상세 이미지)
-// ────────────────────────────────────────────────
-function extractImageUrls(markdown, baseUrl) {
-  const base = new URL(baseUrl);
-  const seen = new Set();
-  const detail = []; // NNEditor (Cafe24 상세 이미지) 우선
-  const fallback = [];
-  const re = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/gi;
-  let m;
-  while ((m = re.exec(markdown)) !== null) {
-    const imgUrl = m[1].split('?')[0];
-    if (!/\.(jpg|jpeg|png|webp)$/i.test(imgUrl)) continue;
-    try {
-      const u = new URL(imgUrl);
-      if (u.hostname !== base.hostname) continue;
-      const skip = ['/category/', '/logo/', '/icon', '/small/', '/tiny/', 'glo.png', 'btn_', 'snapfit', 'kakao'];
-      if (skip.some(s => imgUrl.includes(s))) continue;
-      if (seen.has(imgUrl)) continue;
-      seen.add(imgUrl);
-      // Cafe24 상세 페이지 이미지(NNEditor)와 appfiles 분리
-      if (imgUrl.includes('/NNEditor/') || imgUrl.includes('/upload/')) {
-        detail.push(imgUrl);
-      } else {
-        fallback.push(imgUrl);
-      }
-    } catch {}
-  }
-  return [...detail, ...fallback]; // 상세 이미지 우선
-}
-
-// 이미지 다운로드 후 base64 변환 (URL 방식보다 신뢰성 높음)
-async function imageToBase64(url) {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MilliliBot/1.0)' },
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!res.ok) throw new Error(`Image fetch ${res.status}`);
-  const buf = await res.arrayBuffer();
-  const b64 = Buffer.from(buf).toString('base64');
-  const ext = url.split('.').pop().toLowerCase();
-  const mediaType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-  return { b64, mediaType };
-}
-
-// Claude Vision으로 이미지에서 텍스트 추출 (base64 방식)
-async function readImagesWithVision(imageUrls) {
-  if (!imageUrls.length) return '';
-  const targets = imageUrls.slice(0, MAX_IMAGES_PER_PAGE);
-
-  // 이미지 다운로드 (병렬)
-  const downloads = await Promise.allSettled(targets.map(url => imageToBase64(url)));
-  const imageContent = [];
-  for (const dl of downloads) {
-    if (dl.status !== 'fulfilled') continue;
-    imageContent.push({
-      type: 'image',
-      source: { type: 'base64', media_type: dl.value.mediaType, data: dl.value.b64 },
-    });
-  }
-  if (imageContent.length === 0) return '';
-
-  imageContent.push({
-    type: 'text',
-    text: '이 이미지들은 한국 뷰티 브랜드 쇼핑몰의 제품 상세 이미지입니다. 이미지에서 텍스트를 읽어 제품명, 성분, 효능, 가격, 용량, 사용법, 주의사항을 한국어로 정리해주세요. 텍스트가 없으면 "텍스트 없음"이라고만 답하세요.',
-  });
+  // Jina로 내부 링크 먼저 추출 (텍스트 크롤)
+  let textContent = '';
+  let title = '';
+  let productUrls = [];
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-20250514',
-        max_tokens: 800,
-        messages: [{ role: 'user', content: imageContent }],
-      }),
+    const jinaRes = await fetch(`https://r.jina.ai/${startUrl}`, {
+      headers: { 'Accept': 'text/plain', 'X-Return-Format': 'markdown' },
+      signal: AbortSignal.timeout(15000),
     });
-    const data = await res.json();
-    if (data.error) { console.error('[Vision] Claude 에러:', JSON.stringify(data.error)); return ''; }
-    const text = data.content?.[0]?.text?.trim() || '';
-    console.log(`[Vision] 추출 결과 (${imageContent.length - 1}이미지): ${text.slice(0, 80)}`);
-    return text === '텍스트 없음' ? '' : text;
-  } catch (e) { console.error('[Vision] fetch 실패:', e.message); return ''; }
-}
+    const md = await jinaRes.text();
+    textContent = md.slice(0, 5000);
+    title = (md.match(/^#\s+(.+)$/m) || [])[1]?.trim().slice(0, 100) || '';
 
-// ────────────────────────────────────────────────
-// 마크다운에서 같은 도메인 내부 링크 추출
-// ────────────────────────────────────────────────
-function extractInternalLinks(markdown, baseUrl) {
-  const base = new URL(baseUrl);
-  const seen = new Set();
-  const links = [];
-  const re = /\]\((https?:\/\/[^)\s"]+)\)/g;
-  let m;
-  while ((m = re.exec(markdown)) !== null) {
-    try {
-      const u = new URL(m[1]);
-      if (u.hostname !== base.hostname) continue;
-      const clean = u.origin + u.pathname + u.search;
-      if (!seen.has(clean)) { seen.add(clean); links.push(clean); }
-    } catch {}
-  }
-  return links;
-}
-
-// 제품 상세 > 카테고리 > 기타, 회원/주문/장바구니 제외
-function prioritize(links) {
-  const skip = ['/member/', '/order/', '/myshop/', '/board/', '/community/', 'login', 'join', '/cart', '/wish', 'instagram.com', 'kakao'];
-  const ok = links.filter(l => !skip.some(s => l.includes(s)));
-  const detail   = ok.filter(l => l.includes('/product/detail') || l.includes('/goods/') || l.match(/product_no=/));
-  const category = ok.filter(l => l.includes('/product/list') || l.includes('/cate_no') || l.includes('/category'));
-  const rest     = ok.filter(l => !detail.includes(l) && !category.includes(l));
-  return [...detail, ...category, ...rest];
-}
-
-// ────────────────────────────────────────────────
-// 사이트 자동 탐색
-// ────────────────────────────────────────────────
-async function crawlSite(startUrl) {
-  const indexContent = await fetchWithJina(startUrl);
-  const title = (indexContent.match(/^#\s+(.+)$/m) || [])[1]?.trim().slice(0, 100) || '';
-  const allLinks = extractInternalLinks(indexContent, startUrl);
-  const targets  = prioritize(allLinks).slice(0, MAX_CRAWL_PAGES);
-
-  // 텍스트 크롤
-  const pages = [{ url: startUrl, content: indexContent }];
-  for (let i = 0; i < targets.length; i += 3) {
-    const batch = targets.slice(i, i + 3);
-    const results = await Promise.allSettled(
-      batch.map(u => fetchSafe(u).then(c => ({ url: u, content: c })))
-    );
-    for (const r of results) {
-      if (r.status === 'fulfilled' && r.value?.content) pages.push(r.value);
+    // 제품 상세 링크 추출
+    const base = new URL(startUrl);
+    const linkRe = /\]\((https?:\/\/[^)\s"]+)\)/g;
+    const seen = new Set();
+    let m;
+    while ((m = linkRe.exec(md)) !== null) {
+      try {
+        const u = new URL(m[1]);
+        if (u.hostname !== base.hostname) continue;
+        const clean = u.origin + u.pathname + u.search;
+        const skip = ['/member/', '/order/', '/cart', '/wish', '/board/', 'login', 'join'];
+        if (skip.some(s => clean.includes(s))) continue;
+        if (seen.has(clean)) continue;
+        seen.add(clean);
+        // 제품 상세 우선
+        if (clean.includes('/product/detail') || clean.includes('/goods/') || clean.includes('product_no=')) {
+          productUrls.push(clean);
+        }
+      } catch {}
     }
+  } catch (e) {
+    console.log('[LearnURL] Jina 텍스트 크롤 실패:', e.message);
   }
 
-  // Claude Vision으로 상품 이미지 텍스트 추출 (제품 상세 페이지, 이미지 추출용 별도 전체 fetch)
-  const productUrls = pages
-    .filter(p => p.url.includes('/product/detail') || p.url.includes('/goods/') || p.url.match(/product_no=/))
-    .map(p => p.url)
-    .slice(0, MAX_IMAGE_PAGES);
+  // 스크린샷 대상: 시작 URL + 제품 페이지 최대 3개
+  const screenshotTargets = [startUrl, ...productUrls.slice(0, 3)];
+  console.log(`[LearnURL] 스크린샷 대상: ${screenshotTargets.length}개`);
 
-  // 제품 페이지 Vision 분석 - 병렬 실행
-  const visionJobs = productUrls.map(async (productUrl) => {
+  // Microlink로 스크린샷 병렬 요청
+  const screenshotJobs = screenshotTargets.map(async (url) => {
     try {
-      const fullContent = await fetchWithJina(productUrl, 20000, 15000);
-      if (!fullContent) return null;
-      const imgUrls = extractImageUrls(fullContent, startUrl);
-      if (imgUrls.length === 0) return null;
-      console.log(`[Vision] ${productUrl} → 이미지 ${imgUrls.length}개`);
-      const visionText = await readImagesWithVision(imgUrls);
-      return visionText ? `[이미지 분석 — ${productUrl}]\n${visionText}` : null;
+      const mlRes = await fetch(
+        `https://api.microlink.io?url=${encodeURIComponent(url)}&screenshot=true&fullPage=true&waitFor=2000`,
+        { signal: AbortSignal.timeout(25000) }
+      );
+      const ml = await mlRes.json();
+      const imgUrl = ml?.data?.screenshot?.url;
+      if (imgUrl) {
+        console.log(`[LearnURL] 스크린샷 완료: ${url.slice(0, 60)}`);
+        return { url, imgUrl };
+      }
     } catch (e) {
-      console.warn(`[Vision] 실패: ${productUrl}`, e.message);
-      return null;
+      console.log(`[LearnURL] Microlink 실패: ${url.slice(0, 60)}`, e.message);
     }
+    return null;
   });
-  const visionResults = (await Promise.all(visionJobs)).filter(Boolean);
 
-  const textContent = pages
-    .map(p => `=== ${p.url} ===\n${p.content}`)
-    .join('\n\n')
-    .slice(0, MAX_TOTAL_CHARS - 3000);
+  const results = await Promise.all(screenshotJobs);
+  screenshots.push(...results.filter(Boolean));
 
-  const combined = visionResults.length > 0
-    ? `${textContent}\n\n=== 상품 이미지 분석 (Claude Vision) ===\n${visionResults.join('\n\n')}`
-    : textContent;
+  return { title, textContent, screenshots, productUrls };
+}
 
-  return {
-    title,
-    combined: combined.slice(0, MAX_TOTAL_CHARS),
-    crawledCount: pages.length,
-    foundLinks: allLinks.length,
-    visionPages: visionResults.length,
-  };
+// ────────────────────────────────────────────────
+// 2단계: Claude Vision으로 스크린샷 읽기
+// ────────────────────────────────────────────────
+async function analyzeWithVision(screenshots, textContent, accountName) {
+  if (screenshots.length === 0 && !textContent) return null;
+
+  const content = [];
+
+  // 스크린샷 이미지 추가 (URL 방식 — Microlink CDN이므로 차단 없음)
+  for (const s of screenshots.slice(0, 4)) {
+    content.push({
+      type: 'image',
+      source: { type: 'url', url: s.imgUrl },
+    });
+  }
+
+  // 텍스트 내용도 함께 전달
+  const textPart = textContent
+    ? `\n\n[페이지 텍스트 내용]\n${textContent.slice(0, 3000)}`
+    : '';
+
+  content.push({
+    type: 'text',
+    text: `당신은 ${accountName}의 SNS 응대 AI입니다.
+위 스크린샷(들)은 브랜드 쇼핑몰 페이지입니다. 화면에 보이는 모든 텍스트를 읽어 고객 응대에 필요한 정보를 추출하세요.
+제품명, 성분, 효능, 가격, 용량, 사용법, 브랜드 메시지, 구매처, FAQ 등을 포함하세요.
+반드시 JSON만 반환. 마크다운 없이.
+{
+  "products": ["제품명 — 특징/성분/효능/가격", ...],
+  "brand": "브랜드 핵심 메시지",
+  "channels": "구매처 정보",
+  "faq": ["Q: 답변", ...],
+  "keyFacts": ["중요 사실", ...]
+}${textPart}`,
+  });
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-20250514',
+      max_tokens: 1200,
+      messages: [{ role: 'user', content }],
+    }),
+  });
+
+  const data = await res.json();
+  if (data.error) {
+    console.error('[LearnURL] Claude 에러:', JSON.stringify(data.error));
+    return null;
+  }
+
+  const raw = data.content?.[0]?.text?.trim() || '';
+  console.log('[LearnURL] Claude 응답:', raw.slice(0, 100));
+
+  try {
+    return JSON.parse(raw.replace(/```json\n?|```\n?/g, '').trim());
+  } catch {
+    return { keyFacts: [raw.slice(0, 500)] };
+  }
 }
 
 // ────────────────────────────────────────────────
@@ -262,62 +196,39 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'account must be yuminhye or millimilli' });
   }
   if (!url || !isValidUrl(url)) {
-    return res.status(400).json({ error: '유효한 URL을 입력해주세요 (https://...)' });
+    return res.status(400).json({ error: '유효한 URL을 입력해주세요' });
   }
 
-  // 1. 사이트 자동 탐색 (시작 페이지 → 제품 상세 링크 자동 발견 → 크롤)
+  // 1. 스크린샷 + 텍스트 수집
   let crawlResult;
   try {
-    crawlResult = await crawlSite(url);
+    crawlResult = await getScreenshots(url);
   } catch (e) {
-    return res.status(400).json({ error: `사이트 접근 실패: ${e.message}` });
+    return res.status(400).json({ error: `수집 실패: ${e.message}` });
   }
 
-  const { title, combined, crawledCount, foundLinks, visionPages = 0 } = crawlResult;
-  console.log(`[LearnURL][${account}] ${foundLinks}링크 → ${crawledCount}페이지 크롤 + ${visionPages}페이지 Vision 분석`);
+  const { title, textContent, screenshots, productUrls } = crawlResult;
+  console.log(`[LearnURL][${account}] 스크린샷 ${screenshots.length}개, 제품링크 ${productUrls.length}개`);
 
-  // 2. Claude 통합 분석
+  if (screenshots.length === 0 && !textContent) {
+    return res.status(400).json({ error: '페이지 내용을 읽을 수 없습니다' });
+  }
+
+  // 2. Claude Vision 분석
   const accountName = account === 'yuminhye' ? '유민혜 인플루언서 채널' : '밀리밀리(MILLIMILLI) K뷰티 브랜드';
-  let summary = '';
-  try {
-    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-20250514',
-        max_tokens: 1000,
-        system: `당신은 ${accountName}의 SNS 응대 AI입니다.
-여러 페이지에서 수집한 사이트 전체 내용을 분석해 고객 응대에 필요한 정보를 추출하세요.
-- 각 제품명 + 특징 + 성분/효능 + 가격(있으면) + 용량
-- 브랜드 철학, 핵심 메시지
-- 구매처/판매채널
-- 자주 묻는 질문과 답
-반드시 JSON만 반환. 마크다운 없이.
-{
-  "products": ["제품명 — 특징/성분/효능/가격 요약", ...],
-  "brand": "브랜드 핵심 메시지",
-  "channels": "구매처 정보",
-  "faq": ["Q: 답변", ...],
-  "keyFacts": ["중요 사실", ...]
-}`,
-        messages: [{ role: 'user', content: `사이트 크롤 결과 (${crawledCount}페이지):\n\n${combined}` }],
-      }),
-    });
-    const data = await claudeRes.json();
-    summary = data.content?.[0]?.text?.trim() || '';
-    try { JSON.parse(summary.replace(/```json\n?|```\n?/g, '').trim()); }
-    catch { summary = JSON.stringify({ keyFacts: [summary.slice(0, 800)] }); }
-  } catch (e) {
-    return res.status(500).json({ error: `Claude 분석 실패: ${e.message}` });
-  }
+  const analyzed = await analyzeWithVision(screenshots, textContent, accountName);
+
+  const summary = analyzed ? JSON.stringify(analyzed) : JSON.stringify({ keyFacts: ['분석 실패'] });
 
   // 3. Redis 저장
   const existing = await getKnowledge(account);
-  const newItem = { url, title: title || url, summary, crawledPages: crawledCount, learnedAt: new Date().toISOString() };
+  const newItem = {
+    url,
+    title: title || url,
+    summary,
+    screenshotPages: screenshots.length,
+    learnedAt: new Date().toISOString(),
+  };
   const alreadyLearned = existing.find(i => i.url === url);
   const updated = alreadyLearned
     ? existing.map(i => i.url === url ? newItem : i)
@@ -329,9 +240,8 @@ export default async function handler(req, res) {
     success: true,
     title: newItem.title,
     url,
-    crawledPages: crawledCount,
-    foundLinks,
-    visionPages,
+    screenshotPages: screenshots.length,
+    productPagesFound: productUrls.length,
     isUpdate: !!alreadyLearned,
   });
 }
