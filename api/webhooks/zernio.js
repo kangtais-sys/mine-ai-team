@@ -2,6 +2,7 @@ import {
   redis, isUrgent, saveToApprovalQueue,
   getSettings, getEnabledRules, getLearnedPersona, getUrlKnowledge,
   buildPrompt, callClaude, logAction,
+  isActiveHour, checkRateLimit, recordUsage,
 } from '../channel/_autoReplyUtils.js';
 
 const ZERNIO = 'https://zernio.com/api/v1';
@@ -43,11 +44,24 @@ function detectAccount(profileId, username) {
 // ────────────────────────────────────────────────
 // 댓글/DM 처리 공통 함수
 // ────────────────────────────────────────────────
-async function processItem({ type, itemId, text, author, account }) {
+async function processItem({ type, itemId, text, author, account, settings }) {
   // 중복 방지
   const dupeKey = `zernio:replied:${type}:${itemId}`;
   if (await redis.get(dupeKey)) return { skipped: true, reason: 'duplicate' };
   await redis.set(dupeKey, true, { ex: type === 'comment' ? 86400 : 3600 });
+
+  // 활성 시간대 체크
+  if (!isActiveHour(settings)) {
+    console.log(`[Zernio][${account}] 비활성 시간대 skip (KST ${new Date(Date.now() + 9 * 3600000).getUTCHours()}시)`);
+    return { skipped: true, reason: 'inactive_hour' };
+  }
+
+  // 일일 한도 / 쿨다운 체크
+  const rateCheck = await checkRateLimit(type, account, settings);
+  if (rateCheck.blocked) {
+    console.log(`[Zernio][${account}] 속도 제한: ${rateCheck.reason}`);
+    return { skipped: true, reason: rateCheck.reason };
+  }
 
   // 공통 데이터 로드
   const [extraRules, learned, urlKnowledge] = await Promise.all([
@@ -83,6 +97,7 @@ async function processItem({ type, itemId, text, author, account }) {
 
   const success = !result.error;
   await logAction(type, account, { itemId, author, text: text.slice(0, 100), reply, success });
+  if (success) await recordUsage(type, account, settings);
   console.log(`[Zernio][${account}] ${type} 답장: "${reply.slice(0, 40)}"`);
   return { success, reply };
 }
@@ -130,7 +145,7 @@ export default async function handler(req, res) {
     if (!itemId || !text) return;
     // 대댓글은 스킵 (isReply)
     if (d.isReply) { console.log(`[Zernio][${account}] 대댓글 skip`); return; }
-    try { await processItem({ type: 'comment', itemId, text, author, account }); }
+    try { await processItem({ type: 'comment', itemId, text, author, account, settings }); }
     catch (e) { console.error(`[Zernio][${account}] 댓글 오류:`, e.message); }
     return;
   }
@@ -142,7 +157,7 @@ export default async function handler(req, res) {
     const itemId = d.id || d._id;
     const text = d.text || d.content || '';
     if (!itemId || !text) return;
-    try { await processItem({ type: 'dm', itemId, text, author: '', account }); }
+    try { await processItem({ type: 'dm', itemId, text, author: '', account, settings }); }
     catch (e) { console.error(`[Zernio][${account}] DM 오류:`, e.message); }
     return;
   }

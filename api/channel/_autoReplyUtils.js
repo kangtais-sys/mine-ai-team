@@ -79,6 +79,44 @@ export function buildUrlKnowledgeText(urlKnowledge) {
 }
 
 // ────────────────────────────────────────────────
+// 활성 시간대 / 일일 한도 / 쿨다운 (인스타 밴 방지)
+// ────────────────────────────────────────────────
+export function isActiveHour(settings) {
+  const kstHour = new Date(Date.now() + 9 * 3600000).getUTCHours();
+  const start = settings.activeHoursStart ?? 9;
+  const end   = settings.activeHoursEnd   ?? 23;
+  return kstHour >= start && kstHour < end;
+}
+
+export async function checkRateLimit(type, account, settings) {
+  const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+  const dailyKey    = `channel:rate:daily:${type}:${account}:${today}`;
+  const cooldownKey = `channel:rate:cooldown:${type}:${account}`;
+  const limit   = type === 'comment' ? (settings.commentDailyLimit ?? 100) : (settings.dmDailyLimit ?? 50);
+  const coolMin = type === 'comment' ? (settings.commentCooldownMin ?? 1)   : (settings.dmCooldownMin ?? 2);
+
+  const [daily, cooldown] = await Promise.all([
+    redis.get(dailyKey),
+    redis.get(cooldownKey),
+  ]);
+  if (cooldown) return { blocked: true, reason: `쿨다운 (${coolMin}분)` };
+  if (Number(daily || 0) >= limit) return { blocked: true, reason: `일일 한도 초과 (${limit}건)` };
+  return { blocked: false };
+}
+
+export async function recordUsage(type, account, settings) {
+  const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+  const dailyKey    = `channel:rate:daily:${type}:${account}:${today}`;
+  const cooldownKey = `channel:rate:cooldown:${type}:${account}`;
+  const coolMin = type === 'comment' ? (settings.commentCooldownMin ?? 1) : (settings.dmCooldownMin ?? 2);
+  await Promise.all([
+    redis.incr(dailyKey),
+    redis.expire(dailyKey, 86400),
+    redis.set(cooldownKey, 1, { ex: coolMin * 60 }),
+  ]);
+}
+
+// ────────────────────────────────────────────────
 // Redis helpers
 // ────────────────────────────────────────────────
 export async function getSettings(account) {
