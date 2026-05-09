@@ -1,4 +1,4 @@
-import { readSheet } from '../utils/sheets.js';
+import { readPublicSheet } from '../utils/sheets.js';
 import { getOrders, getOrderCount } from '../utils/cafe24.js';
 import { getEcommerceData } from '../utils/ga4.js';
 import { Redis } from '@upstash/redis';
@@ -18,7 +18,8 @@ export default async function handler(req, res) {
   const parseWon = (v) => Number((v || '0').replace(/[₩,\s]/g, '')) || 0;
   if (process.env.OLIVEYOUNG_SHEET_ID) {
     try {
-      const rows = await readSheet(process.env.OLIVEYOUNG_SHEET_ID, '스킨케어파트!A1:G500');
+      // 공개 시트 — OAuth 불필요, gid=352972103 (스킨케어파트 탭)
+      const rows = await readPublicSheet(process.env.OLIVEYOUNG_SHEET_ID, 352972103);
       const dataRows = rows.slice(1);
       const totalSales = dataRows.reduce((s, r) => s + parseWon(r[4]), 0);
       const totalQty = dataRows.reduce((s, r) => s + (Number(r[5]) || 0), 0);

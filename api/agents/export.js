@@ -1,4 +1,4 @@
-import { readSheet } from '../utils/sheets.js';
+import { readPublicSheet } from '../utils/sheets.js';
 import { Redis } from '@upstash/redis';
 
 const redis = new Redis({
@@ -23,7 +23,8 @@ export default async function handler(req, res) {
   // A. 수출시트 — 바이어별/국가별 집계
   if (process.env.EXPORT_SHEET_ID) {
     try {
-      const rows = await readSheet(process.env.EXPORT_SHEET_ID);
+      // 공개 시트 — OAuth 불필요 (첫 번째 탭)
+      const rows = await readPublicSheet(process.env.EXPORT_SHEET_ID);
       const headers = rows[0] || [];
       const data = rows.slice(1).map(row => {
         const obj = {};

@@ -20,13 +20,19 @@ export default async function handler(req, res) {
   const today = kstNow.toISOString().slice(0, 10);
 
   try {
-    const [naverDaily, cafe24Daily, publishLog, inboxLog, commentTotal, dmTotal] = await Promise.all([
+    const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://mine-ai-team.vercel.app';
+
+    const [naverDaily, cafe24Daily, publishLog, inboxLog, commentTotal, dmTotal, marketerData, exportData] = await Promise.all([
       redis.get('sales:naver:daily'),
       redis.get('sales:cafe24:daily'),
       redis.get(`publish-log:${today}`),
       redis.get(`inbox-log:${today}`),
       redis.get('stat:comment:total'),
       redis.get('stat:dm:total'),
+      // 실제 마케터 API 호출 — 실시간 Meta 광고 데이터
+      fetch(`${baseUrl}/api/agents/marketer`).then(r => r.json()).catch(() => null),
+      // 수출 API — B2B 바이어 데이터
+      fetch(`${baseUrl}/api/agents/export`).then(r => r.json()).catch(() => null),
     ]);
 
     const thisMonth = kstNow.toISOString().slice(0, 7);
@@ -62,12 +68,24 @@ export default async function handler(req, res) {
         prompt: `오늘(${today}) AI CS 일일 보고를 2-3줄로 작성. 카카오채널 미연결 상태. 연결 필요성 간결하게 보고.`,
         data: {},
       },
-      {
-        id: 'marketer',
-        name: 'AI 마케터',
-        prompt: `오늘(${today}) AI 마케터 일일 보고를 2-3줄로 작성. 네이버/Meta 광고 API 미연결. 연결 시 제공 가능 지표(ROAS, CPA) 안내.`,
-        data: {},
-      },
+      (() => {
+        const meta = marketerData?.meta;
+        const metaConnected = meta?.status === 'connected';
+        let marketerPrompt;
+        if (metaConnected && meta.totalSpendYesterday > 0) {
+          const fmt2 = (n) => Math.round(n || 0).toLocaleString('ko-KR');
+          const roasYday = meta.totalRevenueYesterday > 0 && meta.totalSpendYesterday > 0
+            ? (meta.totalRevenueYesterday / meta.totalSpendYesterday).toFixed(2) : '-';
+          const roasMonth = meta.totalRevenueMonth > 0 && meta.totalSpendMonth > 0
+            ? (meta.totalRevenueMonth / meta.totalSpendMonth).toFixed(2) : '-';
+          marketerPrompt = `오늘(${today}) AI 마케터 일일 보고를 2-3줄로 작성. Meta 광고 연결됨. 전일 광고비 ${fmt2(meta.totalSpendYesterday)}원, 전일 매출 ${fmt2(meta.totalRevenueYesterday)}원(ROAS ${roasYday}), 당월 광고비 ${fmt2(meta.totalSpendMonth)}원 / 매출 ${fmt2(meta.totalRevenueMonth)}원(ROAS ${roasMonth}). 계정별 특이사항 있으면 언급. 핵심 수치 → 제안 순으로.`;
+        } else if (metaConnected) {
+          marketerPrompt = `오늘(${today}) AI 마케터 일일 보고를 2-3줄로 작성. Meta 광고 연결됨. 전일 실적 데이터 없음(캠페인 미집행 또는 집계 대기). 당월 누적: 광고비 ${fmt(meta?.totalSpendMonth || 0)}원.`;
+        } else {
+          marketerPrompt = `오늘(${today}) AI 마케터 일일 보고를 2-3줄로 작성. Meta 광고 API 연결 오류 발생. 원인 파악 및 재연결 필요. ROAS 모니터링 중단 상태.`;
+        }
+        return { id: 'marketer', name: 'AI 마케터', prompt: marketerPrompt, data: { metaConnected, spend: meta?.totalSpendYesterday, revenue: meta?.totalRevenueYesterday } };
+      })(),
       {
         id: 'commerce',
         name: 'AI 커머스MD',
@@ -86,12 +104,14 @@ export default async function handler(req, res) {
         prompt: `오늘(${today}) AI 랭킹&리뷰 일일 보고를 2-3줄로 작성. 올리브영 시트 연동 상태. 랭킹 변동 특이사항 없으면 "변동 없음" 보고.`,
         data: {},
       },
-      {
-        id: 'export',
-        name: 'AI 수출',
-        prompt: `오늘(${today}) AI 수출 일일 보고를 2-3줄로 작성. Amazon SP-API 연결됨. 이번달 판매 현황 및 특이사항.`,
-        data: {},
-      },
+      (() => {
+        const exp = exportData;
+        const pipeline = exp?.buyerPipeline || {};
+        const totalExport = exp?.exports?.totalAmount || 0;
+        const buyerCount = exp?.byBuyer?.length || 0;
+        const exportPrompt = `오늘(${today}) AI 수출(B2B) 일일 보고를 2-3줄로 작성. 수출 총액 ${fmt(totalExport)}원, 거래 바이어 ${buyerCount}개사. 파이프라인: DB ${pipeline.db || 0}→1차메일 ${pipeline.firstMail || 0}→답장 ${pipeline.replied || 0}→샘플 ${pipeline.sample || 0}→제안서 ${pipeline.proposal || 0}→계약 ${pipeline.contract || 0}. 진행 중인 특이사항 있으면 언급.`;
+        return { id: 'export', name: 'AI 수출', prompt: exportPrompt, data: { totalExport, buyerCount, pipeline } };
+      })(),
       {
         id: 'chief',
         name: 'Chief AI',
