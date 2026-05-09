@@ -1,10 +1,10 @@
 import { agents } from '../lib/agents';
 import { LayoutDashboard } from 'lucide-react';
 
-export default function Sidebar({ route, onNavigate }) {
+export default function Sidebar({ route, onNavigate, urgentCount = 0 }) {
   const { page, agentId } = route || {};
 
-  const menuItem = (active, icon, label, onClick) => (
+  const menuItem = (active, icon, label, onClick, badge = 0) => (
     <button
       onClick={onClick}
       style={{
@@ -30,6 +30,22 @@ export default function Sidebar({ route, onNavigate }) {
     >
       {icon}
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+      {badge > 0 && (
+        <span style={{
+          background: '#FF3B30',
+          color: '#FFF',
+          fontSize: 9,
+          fontWeight: 700,
+          padding: '1px 5px',
+          borderRadius: 8,
+          minWidth: 16,
+          textAlign: 'center',
+          lineHeight: '14px',
+          flexShrink: 0,
+        }}>
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </button>
   );
 
@@ -54,7 +70,8 @@ export default function Sidebar({ route, onNavigate }) {
           page === 'dashboard',
           <LayoutDashboard size={15} strokeWidth={1.8} />,
           '대시보드',
-          () => onNavigate('dashboard')
+          () => onNavigate('dashboard'),
+          0
         )}
       </div>
 
@@ -68,13 +85,16 @@ export default function Sidebar({ route, onNavigate }) {
         {agents.map((agent) => {
           const Icon = agent.icon;
           const isActive = page === 'chat' && agentId === agent.id;
+          // AI 채널운영 에이전트에 긴급 배지
+          const badge = agent.id === 'channel' ? urgentCount : 0;
           return (
             <div key={agent.id} style={{ marginBottom: 1 }}>
               {menuItem(
                 isActive,
                 <Icon size={15} strokeWidth={1.8} />,
                 agent.name,
-                () => onNavigate('chat', agent.id)
+                () => onNavigate('chat', agent.id),
+                badge
               )}
             </div>
           );

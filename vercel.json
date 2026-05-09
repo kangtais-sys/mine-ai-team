@@ -1,91 +1,350 @@
 {
   "crons": [
-    { "path": "/api/cron/publish-morning", "schedule": "0 2 * * *" },
-    { "path": "/api/cron/publish-evening", "schedule": "0 10 * * *" },
-    { "path": "/api/cron/crosspost", "schedule": "0 1,6,11 * * *" },
-    { "path": "/api/cron/daily-report", "schedule": "0 23 * * *" },
-    { "path": "/api/cron/upload-pipeline", "schedule": "*/5 * * * *" },
-    { "path": "/api/cron/youtube-comments", "schedule": "*/30 * * * *" },
-    { "path": "/api/scrape/instagram-followers", "schedule": "0 0 * * *" },
-    { "path": "/api/cron/refresh-token", "schedule": "0 0 1 * *" },
-    { "path": "/api/cron/gov-announcements", "schedule": "0 1 * * 1" },
-    { "path": "/api/cron/review-monitor", "schedule": "0 3 * * *" },
-    { "path": "/api/cron/promo-calendar", "schedule": "0 2 * * 1" },
-    { "path": "/api/cron/ad-optimize", "schedule": "0 4 * * *" },
-    { "path": "/api/cron/chief-report", "schedule": "0 23 * * *" },
-    { "path": "/api/cron/inbox", "schedule": "*/5 * * * *" },
-    { "path": "/api/cron/channel-report", "schedule": "0 23 * * *" },
-    { "path": "/api/cron/drive-upload", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/sisuru-trend", "schedule": "0 14 * * *" },
-    { "path": "/api/sales/amazon", "schedule": "0 */2 * * *" }
+    {
+      "path": "/api/cron/publish-morning",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/publish-evening",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/crosspost",
+      "schedule": "0 1,6,11 * * *"
+    },
+    {
+      "path": "/api/cron/daily-report",
+      "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/upload-pipeline",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/youtube-comments",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/scrape/instagram-followers",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-token",
+      "schedule": "0 0 1 * *"
+    },
+    {
+      "path": "/api/cron/gov-announcements",
+      "schedule": "0 1 * * 1"
+    },
+    {
+      "path": "/api/cron/review-monitor",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/promo-calendar",
+      "schedule": "0 2 * * 1"
+    },
+    {
+      "path": "/api/cron/ad-optimize",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/chief-report",
+      "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/inbox",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/channel-report",
+      "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/drive-upload",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/sisuru-trend",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/sales/amazon",
+      "schedule": "0 */2 * * *"
+    }
   ],
   "rewrites": [
-    { "source": "/api/auth/google", "destination": "/api/auth/google" },
-    { "source": "/api/auth/google-callback", "destination": "/api/auth/google-callback" },
-    { "source": "/api/auth/google-status", "destination": "/api/auth/google-status" },
-    { "source": "/api/auth/tiktok", "destination": "/api/auth/tiktok" },
-    { "source": "/api/auth/tiktok-callback", "destination": "/api/auth/tiktok-callback" },
-    { "source": "/api/auth/cafe24", "destination": "/api/auth/cafe24" },
-    { "source": "/api/auth/cafe24-callback", "destination": "/api/auth/cafe24-callback" },
-    { "source": "/api/auth/cafe24-status", "destination": "/api/auth/cafe24-status" },
-    { "source": "/api/chat", "destination": "/api/chat" },
-    { "source": "/api/orchestrate", "destination": "/api/orchestrate" },
-    { "source": "/api/briefing", "destination": "/api/briefing" },
-    { "source": "/api/upload-status", "destination": "/api/upload-status" },
-    { "source": "/api/upload-check", "destination": "/api/upload-check" },
-    { "source": "/api/creator-status", "destination": "/api/creator-status" },
-    { "source": "/api/ai-content", "destination": "/api/ai-content" },
-    { "source": "/api/instagram-logs", "destination": "/api/instagram-logs" },
-    { "source": "/api/cron/upload-pipeline", "destination": "/api/cron/upload-pipeline" },
-    { "source": "/api/cron/youtube-comments", "destination": "/api/cron/youtube-comments" },
-    { "source": "/api/cron/publish-morning", "destination": "/api/cron/publish-morning" },
-    { "source": "/api/cron/publish-evening", "destination": "/api/cron/publish-evening" },
-    { "source": "/api/cron/inbox", "destination": "/api/cron/inbox" },
-    { "source": "/api/cron/crosspost", "destination": "/api/cron/crosspost" },
-    { "source": "/api/cron/daily-report", "destination": "/api/cron/daily-report" },
-    { "source": "/api/zernio/post", "destination": "/api/zernio/post" },
-    { "source": "/api/zernio/accounts", "destination": "/api/zernio/accounts" },
-    { "source": "/api/zernio/inbox", "destination": "/api/zernio/inbox" },
-    { "source": "/api/scrape/instagram-followers", "destination": "/api/scrape/instagram-followers" },
-    { "source": "/api/video-analyze", "destination": "/api/video-analyze" },
-    { "source": "/api/stats", "destination": "/api/stats" },
-    { "source": "/api/agents/creator", "destination": "/api/agents/creator" },
-    { "source": "/api/agents/community", "destination": "/api/agents/community" },
-    { "source": "/api/agents/cs", "destination": "/api/agents/cs" },
-    { "source": "/api/agents/marketer", "destination": "/api/agents/marketer" },
-    { "source": "/api/agents/commerce", "destination": "/api/agents/commerce" },
-    { "source": "/api/agents/management", "destination": "/api/agents/management" },
-    { "source": "/api/agents/brand", "destination": "/api/agents/brand" },
-    { "source": "/api/agents/export", "destination": "/api/agents/export" },
-    { "source": "/api/agents/strategy", "destination": "/api/agents/strategy" },
-    { "source": "/api/webhooks/zernio", "destination": "/api/webhooks/zernio" },
-    { "source": "/api/cron/refresh-token", "destination": "/api/cron/refresh-token" },
-    { "source": "/api/cron/gov-announcements", "destination": "/api/cron/gov-announcements" },
-    { "source": "/api/cron/review-monitor", "destination": "/api/cron/review-monitor" },
-    { "source": "/api/cron/promo-calendar", "destination": "/api/cron/promo-calendar" },
-    { "source": "/api/cron/ad-optimize", "destination": "/api/cron/ad-optimize" },
-    { "source": "/api/cron/chief-report", "destination": "/api/cron/chief-report" },
-    { "source": "/api/cron/drive-upload", "destination": "/api/cron/drive-upload" },
-    { "source": "/api/cron/sisuru-content", "destination": "/api/cron/sisuru-content" },
-    { "source": "/api/cron/sisuru-trend", "destination": "/api/cron/sisuru-trend" },
-    { "source": "/api/sisuru-select", "destination": "/api/sisuru-select" },
-    { "source": "/api/cs/kakao-webhook", "destination": "/api/cs/kakao-webhook" },
-    { "source": "/api/cs/daily-report", "destination": "/api/cs/daily-report" },
-    { "source": "/api/sales/sheets", "destination": "/api/sales/sheets" },
-    { "source": "/api/sales/amazon", "destination": "/api/sales/amazon" },
-    { "source": "/api/channel/persona", "destination": "/api/channel/persona" },
-    { "source": "/api/channel/settings", "destination": "/api/channel/settings" },
-    { "source": "/api/channel/history", "destination": "/api/channel/history" },
-    { "source": "/api/channel/posts", "destination": "/api/channel/posts" },
-    { "source": "/api/channel/learn", "destination": "/api/channel/learn" },
-    { "source": "/api/channel/learn-url", "destination": "/api/channel/learn-url" },
-    { "source": "/api/channel/approval", "destination": "/api/channel/approval" },
-    { "source": "/api/channel/discover-ig", "destination": "/api/channel/discover-ig" },
-    { "source": "/api/cron/channel-report", "destination": "/api/cron/channel-report" },
-    { "source": "/api/sales/cafe24", "destination": "/api/sales/cafe24" },
-    { "source": "/api/sales/cafe24-debug", "destination": "/api/sales/cafe24-debug" },
-    { "source": "/api/sales/naver", "destination": "/api/sales/naver" },
-    { "source": "/api/naver-debug", "destination": "/api/naver-debug" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    {
+      "source": "/api/auth/google",
+      "destination": "/api/auth/google"
+    },
+    {
+      "source": "/api/auth/google-callback",
+      "destination": "/api/auth/google-callback"
+    },
+    {
+      "source": "/api/auth/google-status",
+      "destination": "/api/auth/google-status"
+    },
+    {
+      "source": "/api/auth/tiktok",
+      "destination": "/api/auth/tiktok"
+    },
+    {
+      "source": "/api/auth/tiktok-callback",
+      "destination": "/api/auth/tiktok-callback"
+    },
+    {
+      "source": "/api/auth/cafe24",
+      "destination": "/api/auth/cafe24"
+    },
+    {
+      "source": "/api/auth/cafe24-callback",
+      "destination": "/api/auth/cafe24-callback"
+    },
+    {
+      "source": "/api/auth/cafe24-status",
+      "destination": "/api/auth/cafe24-status"
+    },
+    {
+      "source": "/api/chat",
+      "destination": "/api/chat"
+    },
+    {
+      "source": "/api/orchestrate",
+      "destination": "/api/orchestrate"
+    },
+    {
+      "source": "/api/briefing",
+      "destination": "/api/briefing"
+    },
+    {
+      "source": "/api/upload-status",
+      "destination": "/api/upload-status"
+    },
+    {
+      "source": "/api/upload-check",
+      "destination": "/api/upload-check"
+    },
+    {
+      "source": "/api/creator-status",
+      "destination": "/api/creator-status"
+    },
+    {
+      "source": "/api/ai-content",
+      "destination": "/api/ai-content"
+    },
+    {
+      "source": "/api/instagram-logs",
+      "destination": "/api/instagram-logs"
+    },
+    {
+      "source": "/api/cron/upload-pipeline",
+      "destination": "/api/cron/upload-pipeline"
+    },
+    {
+      "source": "/api/cron/youtube-comments",
+      "destination": "/api/cron/youtube-comments"
+    },
+    {
+      "source": "/api/cron/publish-morning",
+      "destination": "/api/cron/publish-morning"
+    },
+    {
+      "source": "/api/cron/publish-evening",
+      "destination": "/api/cron/publish-evening"
+    },
+    {
+      "source": "/api/cron/inbox",
+      "destination": "/api/cron/inbox"
+    },
+    {
+      "source": "/api/cron/crosspost",
+      "destination": "/api/cron/crosspost"
+    },
+    {
+      "source": "/api/cron/daily-report",
+      "destination": "/api/cron/daily-report"
+    },
+    {
+      "source": "/api/zernio/post",
+      "destination": "/api/zernio/post"
+    },
+    {
+      "source": "/api/zernio/accounts",
+      "destination": "/api/zernio/accounts"
+    },
+    {
+      "source": "/api/zernio/inbox",
+      "destination": "/api/zernio/inbox"
+    },
+    {
+      "source": "/api/scrape/instagram-followers",
+      "destination": "/api/scrape/instagram-followers"
+    },
+    {
+      "source": "/api/video-analyze",
+      "destination": "/api/video-analyze"
+    },
+    {
+      "source": "/api/stats",
+      "destination": "/api/stats"
+    },
+    {
+      "source": "/api/agents/creator",
+      "destination": "/api/agents/creator"
+    },
+    {
+      "source": "/api/agents/community",
+      "destination": "/api/agents/community"
+    },
+    {
+      "source": "/api/agents/cs",
+      "destination": "/api/agents/cs"
+    },
+    {
+      "source": "/api/agents/marketer",
+      "destination": "/api/agents/marketer"
+    },
+    {
+      "source": "/api/agents/commerce",
+      "destination": "/api/agents/commerce"
+    },
+    {
+      "source": "/api/agents/management",
+      "destination": "/api/agents/management"
+    },
+    {
+      "source": "/api/agents/brand",
+      "destination": "/api/agents/brand"
+    },
+    {
+      "source": "/api/agents/export",
+      "destination": "/api/agents/export"
+    },
+    {
+      "source": "/api/agents/strategy",
+      "destination": "/api/agents/strategy"
+    },
+    {
+      "source": "/api/webhooks/zernio",
+      "destination": "/api/webhooks/zernio"
+    },
+    {
+      "source": "/api/cron/refresh-token",
+      "destination": "/api/cron/refresh-token"
+    },
+    {
+      "source": "/api/cron/gov-announcements",
+      "destination": "/api/cron/gov-announcements"
+    },
+    {
+      "source": "/api/cron/review-monitor",
+      "destination": "/api/cron/review-monitor"
+    },
+    {
+      "source": "/api/cron/promo-calendar",
+      "destination": "/api/cron/promo-calendar"
+    },
+    {
+      "source": "/api/cron/ad-optimize",
+      "destination": "/api/cron/ad-optimize"
+    },
+    {
+      "source": "/api/cron/chief-report",
+      "destination": "/api/cron/chief-report"
+    },
+    {
+      "source": "/api/cron/drive-upload",
+      "destination": "/api/cron/drive-upload"
+    },
+    {
+      "source": "/api/cron/sisuru-content",
+      "destination": "/api/cron/sisuru-content"
+    },
+    {
+      "source": "/api/cron/sisuru-trend",
+      "destination": "/api/cron/sisuru-trend"
+    },
+    {
+      "source": "/api/sisuru-select",
+      "destination": "/api/sisuru-select"
+    },
+    {
+      "source": "/api/cs/kakao-webhook",
+      "destination": "/api/cs/kakao-webhook"
+    },
+    {
+      "source": "/api/cs/daily-report",
+      "destination": "/api/cs/daily-report"
+    },
+    {
+      "source": "/api/sales/sheets",
+      "destination": "/api/sales/sheets"
+    },
+    {
+      "source": "/api/sales/amazon",
+      "destination": "/api/sales/amazon"
+    },
+    {
+      "source": "/api/channel/persona",
+      "destination": "/api/channel/persona"
+    },
+    {
+      "source": "/api/channel/settings",
+      "destination": "/api/channel/settings"
+    },
+    {
+      "source": "/api/channel/history",
+      "destination": "/api/channel/history"
+    },
+    {
+      "source": "/api/channel/posts",
+      "destination": "/api/channel/posts"
+    },
+    {
+      "source": "/api/channel/learn",
+      "destination": "/api/channel/learn"
+    },
+    {
+      "source": "/api/channel/learn-url",
+      "destination": "/api/channel/learn-url"
+    },
+    {
+      "source": "/api/channel/approval",
+      "destination": "/api/channel/approval"
+    },
+    {
+      "source": "/api/channel/discover-ig",
+      "destination": "/api/channel/discover-ig"
+    },
+    {
+      "source": "/api/channel/report",
+      "destination": "/api/channel/report"
+    },
+    {
+      "source": "/api/cron/channel-report",
+      "destination": "/api/cron/channel-report"
+    },
+    {
+      "source": "/api/sales/cafe24",
+      "destination": "/api/sales/cafe24"
+    },
+    {
+      "source": "/api/sales/cafe24-debug",
+      "destination": "/api/sales/cafe24-debug"
+    },
+    {
+      "source": "/api/sales/naver",
+      "destination": "/api/sales/naver"
+    },
+    {
+      "source": "/api/naver-debug",
+      "destination": "/api/naver-debug"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
   ]
 }

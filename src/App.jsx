@@ -24,6 +24,28 @@ export default function App() {
   const [route, setRoute] = useState(parseHash);
   const setActiveAgent = useChatStore(s => s.setActiveAgent);
 
+  // 긴급 승인 대기 배지용 카운트
+  const [urgentCount, setUrgentCount] = useState(0);
+
+  const fetchUrgentCount = async () => {
+    try {
+      const res = await fetch('/api/channel/approval');
+      const data = await res.json();
+      if (data && !data.error) {
+        const ym = (data.yuminhye || []).filter(i => i.status === 'pending').length;
+        const mm = (data.millimilli || []).filter(i => i.status === 'pending').length;
+        setUrgentCount(ym + mm);
+      }
+    } catch {}
+  };
+
+  // 마운트 시 + 5분마다 긴급 카운트 갱신
+  useEffect(() => {
+    fetchUrgentCount();
+    const interval = setInterval(fetchUrgentCount, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Sync hash → state (back/forward navigation, hard refresh)
   useEffect(() => {
     const onHash = () => {
@@ -50,10 +72,10 @@ export default function App() {
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#F5F5F7' }}>
       <div style={{ width: 240, minWidth: 240, maxWidth: 240, height: '100vh', position: 'fixed', left: 0, top: 0, zIndex: 50 }}>
-        <Sidebar route={route} onNavigate={navigate} />
+        <Sidebar route={route} onNavigate={navigate} urgentCount={urgentCount} />
       </div>
       <div style={{ marginLeft: 240, width: 'calc(100vw - 240px)', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#F5F5F7' }}>
-        {page === 'dashboard' && <Dashboard />}
+        {page === 'dashboard' && <Dashboard urgentCount={urgentCount} />}
         {page === 'channel' && <ChannelView />}
         {page === 'chat' && <ChatView />}
       </div>

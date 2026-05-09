@@ -86,11 +86,13 @@ function SalesTable({ title, flag, rows, currency = 'KRW' }) {
   );
 }
 
-export default function Dashboard() {
+export default function Dashboard({ urgentCount = 0 }) {
   const { stats, revenueData, fetchStats } = useDashboardStore();
   const [googleStatus, setGoogleStatus] = useState(null);
   const [igRefreshing, setIgRefreshing] = useState(false);
   const [igPosts, setIgPosts] = useState({ yuminhye: null, millimilli: null });
+  // 채널 운영 일일 보고서
+  const [channelReport, setChannelReport] = useState(null);
 
   // Chief AI 채팅
   const [chiefMessages, setChiefMessages] = useState([
@@ -139,6 +141,10 @@ export default function Dashboard() {
         millimilli: ml?.posts || null,
       });
     });
+    // 채널 일일 보고서 fetch
+    fetch('/api/channel/report').then(r => r.json()).then(d => {
+      if (d && !d.error) setChannelReport(d);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -225,6 +231,55 @@ export default function Dashboard() {
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden', minHeight: 0 }}>
       <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px 40px', minWidth: 0 }}>
+
+        {/* ── 0. 긴급 승인 알림 배너 (있을 때만) ── */}
+        {urgentCount > 0 && (
+          <div style={{ marginBottom: 14, background: '#FFF5F5', border: '1px solid #FF3B30', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#FF3B30', flexShrink: 0, boxShadow: '0 0 0 3px rgba(255,59,48,0.2)' }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#FF3B30' }}>⚠ 긴급 승인 대기 {urgentCount}건</div>
+              <div style={{ fontSize: 11, color: '#6E6E73', marginTop: 2 }}>AI 채널운영 에이전트 → 긴급/승인 탭에서 확인하세요</div>
+            </div>
+            <a href="#chat/channel" style={{ fontSize: 11, color: '#FF3B30', fontWeight: 600, textDecoration: 'none', border: '1px solid #FF3B30', borderRadius: 6, padding: '4px 10px' }}>
+              바로가기 →
+            </a>
+          </div>
+        )}
+
+        {/* ── 0b. 채널 운영 일일 보고서 ── */}
+        {channelReport?.report && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <SectionTitle>📋 채널 운영 일일 보고 ({channelReport.date})</SectionTitle>
+              <span style={{ fontSize: 10, color: '#AEAEB2' }}>매일 아침 8시 자동 생성</span>
+            </div>
+            <div style={{ ...CARD, padding: '14px 18px' }}>
+              <div style={{ fontSize: 12.5, color: '#1D1D1F', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+                {channelReport.report}
+              </div>
+              {channelReport.summary && (
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #F2F2F5', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {['yuminhye', 'millimilli'].map(acct => {
+                    const s = channelReport.summary[acct];
+                    if (!s) return null;
+                    const cat = s.categories || {};
+                    const name = acct === 'yuminhye' ? '유민혜' : '밀리밀리';
+                    return (
+                      <div key={acct} style={{ background: '#F5F5F7', borderRadius: 8, padding: '8px 12px' }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: '#1D1D1F', marginBottom: 5 }}>{name}</div>
+                        <div style={{ fontSize: 10.5, color: '#6E6E73', lineHeight: 1.6 }}>
+                          {s.urgentPending > 0 && <div style={{ color: '#FF3B30', fontWeight: 600 }}>⚠ 긴급 대기 {s.urgentPending}건</div>}
+                          <div>제품문의 {cat.product || 0} · 칭찬 {cat.praise || 0} · 불만 {cat.complaint || 0} · DM {cat.dm || 0}</div>
+                          <div>자동댓글 누계 {(s.autoCommentTotal || 0).toLocaleString()}건</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ── 1. 전체 매출 합계 (일/월/연) ── */}
         <div style={{ marginBottom: 14 }}>
