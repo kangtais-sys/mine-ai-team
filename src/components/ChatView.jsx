@@ -726,7 +726,7 @@ const AGENT_DASHBOARDS = {
                     <BookOpen size={12} color={accent} style={{ marginTop: 1, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 11, fontWeight: 500, color: '#1D1D1F', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title || item.url}</div>
-                      <div style={{ fontSize: 9, color: '#AEAEB2', marginTop: 1 }}>{item.url.slice(0, 50)}{item.url.length > 50 ? '...' : ''} · {timeAgo(item.learnedAt)}</div>
+                      <div style={{ fontSize: 9, color: '#AEAEB2', marginTop: 1 }}>{item.url.slice(0, 50)}{item.url.length > 50 ? '...' : ''} · {item.crawledPages ? `${item.crawledPages}페이지 분석 · ` : ''}{timeAgo(item.learnedAt)}</div>
                     </div>
                     <button onClick={() => handleDeleteUrl(item.url)} style={{ padding: '2px 4px', border: 'none', background: 'transparent', cursor: 'pointer', flexShrink: 0 }}>
                       <Trash2 size={11} color="#AEAEB2" />
@@ -753,13 +753,15 @@ const AGENT_DASHBOARDS = {
               style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: urlInput.trim() && !learningUrl ? accent : '#E5E5EA', color: urlInput.trim() && !learningUrl ? '#FFF' : '#AEAEB2', cursor: urlInput.trim() && !learningUrl ? 'pointer' : 'default', fontSize: 11, fontFamily: 'inherit', fontWeight: 600, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}
             >
               <BookOpen size={12} style={{ animation: learningUrl ? 'spin 1s linear infinite' : 'none' }} />
-              {learningUrl ? '학습 중...' : '학습'}
+              {learningUrl ? '탐색 중...' : '사이트 학습'}
             </button>
           </div>
 
           {urlLearnResult && (
             <div style={{ marginTop: 8, padding: '7px 10px', borderRadius: 7, background: urlLearnResult.error ? '#FFF0F0' : `${accent}0D`, border: `1px solid ${urlLearnResult.error ? '#FFD0D0' : accent + '33'}`, fontSize: 10, color: urlLearnResult.error ? '#FF6B6B' : accent }}>
-              {urlLearnResult.error ? `실패: ${urlLearnResult.error}` : `✓ 학습 완료 — "${urlLearnResult.title || urlLearnResult.url}"${urlLearnResult.isUpdate ? ' (업데이트)' : ''}`}
+              {urlLearnResult.error
+                ? `실패: ${urlLearnResult.error}`
+                : `✓ 학습 완료 — "${urlLearnResult.title || urlLearnResult.url}" · ${urlLearnResult.crawledPages || 1}페이지 분석${urlLearnResult.isUpdate ? ' (업데이트)' : ''}`}
             </div>
           )}
         </div>

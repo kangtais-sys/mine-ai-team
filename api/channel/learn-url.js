@@ -1,8 +1,8 @@
-// URL 학습 API — 브랜드/제품 사이트를 학습해서 응대에 활용
-// POST { account, url } → Jina Reader로 크롤 (JS 렌더링 포함) → Claude 요약 → Redis 저장
+// URL 학습 API — 사이트 자동 전체 탐색 (Jina AI Reader, 가입 불필요)
+// POST { account, url } → 시작 URL → 내부 링크 탐색 → 제품 페이지 크롤 → Claude 통합 분석 → Redis
 // DELETE { account, url } → 학습 항목 삭제
-// GET { account } → 학습된 URL 목록
-export const config = { maxDuration: 30 };
+// GET  { account }       → 학습된 URL 목록
+export const config = { maxDuration: 60 };
 
 import { Redis } from '@upstash/redis';
 
@@ -12,43 +12,94 @@ const redis = new Redis({
 });
 
 const MAX_URLS_PER_ACCOUNT = 10;
-const MAX_CONTENT_CHARS = 12000;
+const MAX_CRAWL_PAGES      = 10;    // 제품 페이지 최대 탐색 수
+const MAX_CHARS_PER_PAGE   = 4000;  // 페이지당 문자 한도
+const MAX_TOTAL_CHARS      = 18000; // Claude 전달 총 한도
 
-// Jina AI Reader로 URL 크롤 (JS 렌더링 포함, 가입 불필요)
-async function fetchWithJina(url) {
-  const jinaUrl = `https://r.jina.ai/${url}`;
-  const response = await fetch(jinaUrl, {
-    headers: {
-      'Accept': 'text/plain',
-      'X-Return-Format': 'markdown',
-    },
-    signal: AbortSignal.timeout(25000),
+// ────────────────────────────────────────────────
+// Jina AI Reader
+// ────────────────────────────────────────────────
+async function fetchWithJina(url, ms = 20000) {
+  const res = await fetch(`https://r.jina.ai/${url}`, {
+    headers: { 'Accept': 'text/plain', 'X-Return-Format': 'markdown' },
+    signal: AbortSignal.timeout(ms),
   });
-  if (!response.ok) throw new Error(`Jina HTTP ${response.status}`);
-  const text = await response.text();
-  if (!text || text.length < 50) throw new Error('페이지 내용을 읽을 수 없습니다');
-  return text.slice(0, MAX_CONTENT_CHARS);
+  if (!res.ok) throw new Error(`Jina ${res.status}`);
+  const text = await res.text();
+  if (!text || text.length < 30) throw new Error('빈 페이지');
+  return text.slice(0, MAX_CHARS_PER_PAGE);
 }
 
-// 마크다운에서 제목 추출 (Jina는 첫 줄에 # Title 형태로 반환)
-function extractTitleFromMarkdown(markdown) {
-  const m = markdown.match(/^#\s+(.+)$/m);
-  return m ? m[1].trim().slice(0, 100) : '';
+async function fetchSafe(url) {
+  try { return await fetchWithJina(url); } catch { return null; }
 }
 
-// URL 유효성 체크
-function isValidUrl(url) {
-  try {
-    const u = new URL(url);
-    return u.protocol === 'http:' || u.protocol === 'https:';
-  } catch { return false; }
+// ────────────────────────────────────────────────
+// 마크다운에서 같은 도메인 내부 링크 추출
+// ────────────────────────────────────────────────
+function extractInternalLinks(markdown, baseUrl) {
+  const base = new URL(baseUrl);
+  const seen = new Set();
+  const links = [];
+  const re = /\]\((https?:\/\/[^)\s"]+)\)/g;
+  let m;
+  while ((m = re.exec(markdown)) !== null) {
+    try {
+      const u = new URL(m[1]);
+      if (u.hostname !== base.hostname) continue;
+      const clean = u.origin + u.pathname + u.search;
+      if (!seen.has(clean)) { seen.add(clean); links.push(clean); }
+    } catch {}
+  }
+  return links;
 }
 
+// 제품 상세 > 카테고리 > 기타, 회원/주문/장바구니 제외
+function prioritize(links) {
+  const skip = ['/member/', '/order/', '/myshop/', '/board/', '/community/', 'login', 'join', '/cart', '/wish', 'instagram.com', 'kakao'];
+  const ok = links.filter(l => !skip.some(s => l.includes(s)));
+  const detail   = ok.filter(l => l.includes('/product/detail') || l.includes('/goods/') || l.match(/product_no=/));
+  const category = ok.filter(l => l.includes('/product/list') || l.includes('/cate_no') || l.includes('/category'));
+  const rest     = ok.filter(l => !detail.includes(l) && !category.includes(l));
+  return [...detail, ...category, ...rest];
+}
+
+// ────────────────────────────────────────────────
+// 사이트 자동 탐색
+// ────────────────────────────────────────────────
+async function crawlSite(startUrl) {
+  const indexContent = await fetchWithJina(startUrl);
+  const title = (indexContent.match(/^#\s+(.+)$/m) || [])[1]?.trim().slice(0, 100) || '';
+  const allLinks = extractInternalLinks(indexContent, startUrl);
+  const targets  = prioritize(allLinks).slice(0, MAX_CRAWL_PAGES);
+
+  const pages = [{ url: startUrl, content: indexContent }];
+  for (let i = 0; i < targets.length; i += 3) {
+    const batch = targets.slice(i, i + 3);
+    const results = await Promise.allSettled(
+      batch.map(u => fetchSafe(u).then(c => ({ url: u, content: c })))
+    );
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value?.content) pages.push(r.value);
+    }
+  }
+
+  const combined = pages
+    .map(p => `=== ${p.url} ===\n${p.content}`)
+    .join('\n\n')
+    .slice(0, MAX_TOTAL_CHARS);
+
+  return { title, combined, crawledCount: pages.length, foundLinks: allLinks.length };
+}
+
+// ────────────────────────────────────────────────
+// Redis helpers
+// ────────────────────────────────────────────────
 async function getKnowledge(account) {
   try {
     const raw = await redis.get(`channel:url-knowledge:${account}`);
     if (!raw) return [];
-    return Array.isArray(raw) ? raw : (typeof raw === 'string' ? JSON.parse(raw) : []);
+    return Array.isArray(raw) ? raw : JSON.parse(raw);
   } catch { return []; }
 }
 
@@ -56,26 +107,29 @@ async function saveKnowledge(account, items) {
   await redis.set(`channel:url-knowledge:${account}`, JSON.stringify(items));
 }
 
+function isValidUrl(url) {
+  try { const u = new URL(url); return u.protocol === 'http:' || u.protocol === 'https:'; }
+  catch { return false; }
+}
+
+// ────────────────────────────────────────────────
+// Handler
+// ────────────────────────────────────────────────
 export default async function handler(req, res) {
-  // GET: 학습된 URL 목록
   if (req.method === 'GET') {
     const { account } = req.query || {};
     if (!account) return res.status(400).json({ error: 'account required' });
-    const items = await getKnowledge(account);
-    return res.status(200).json(items);
+    return res.status(200).json(await getKnowledge(account));
   }
 
-  // DELETE: URL 학습 삭제
   if (req.method === 'DELETE') {
     const { account, url } = req.body || {};
     if (!account || !url) return res.status(400).json({ error: 'account and url required' });
     const items = await getKnowledge(account);
-    const filtered = items.filter(i => i.url !== url);
-    await saveKnowledge(account, filtered);
-    return res.status(200).json({ success: true, count: filtered.length });
+    await saveKnowledge(account, items.filter(i => i.url !== url));
+    return res.status(200).json({ success: true });
   }
 
-  // POST: URL 학습
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const { account, url } = req.body || {};
@@ -86,21 +140,18 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: '유효한 URL을 입력해주세요 (https://...)' });
   }
 
-  // 최대 개수 체크
-  const existing = await getKnowledge(account);
-  const alreadyLearned = existing.find(i => i.url === url);
-
-  // 1. URL 크롤 (Jina AI Reader — JS 렌더링 포함, 가입 불필요)
-  let rawText = '';
-  let title = '';
+  // 1. 사이트 자동 탐색 (시작 페이지 → 제품 상세 링크 자동 발견 → 크롤)
+  let crawlResult;
   try {
-    rawText = await fetchWithJina(url);
-    title = extractTitleFromMarkdown(rawText);
+    crawlResult = await crawlSite(url);
   } catch (e) {
-    return res.status(400).json({ error: `URL 접근 실패: ${e.message}` });
+    return res.status(400).json({ error: `사이트 접근 실패: ${e.message}` });
   }
 
-  // 2. Claude로 요약 (브랜드/제품 지식 추출)
+  const { title, combined, crawledCount, foundLinks } = crawlResult;
+  console.log(`[LearnURL][${account}] ${foundLinks}개 링크 발견 → ${crawledCount}페이지 크롤 완료`);
+
+  // 2. Claude 통합 분석
   const accountName = account === 'yuminhye' ? '유민혜 인플루언서 채널' : '밀리밀리(MILLIMILLI) K뷰티 브랜드';
   let summary = '';
   try {
@@ -113,50 +164,48 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-20250514',
-        max_tokens: 600,
+        max_tokens: 1000,
         system: `당신은 ${accountName}의 SNS 응대 AI입니다.
-주어진 웹페이지 내용에서 고객 응대에 유용한 정보만 추출해주세요.
-- 제품명, 성분, 효능, 가격대, 용량, 사용법
+여러 페이지에서 수집한 사이트 전체 내용을 분석해 고객 응대에 필요한 정보를 추출하세요.
+- 각 제품명 + 특징 + 성분/효능 + 가격(있으면) + 용량
 - 브랜드 철학, 핵심 메시지
-- 구매처, 판매 채널
-- FAQ 또는 자주 묻는 내용
-응답은 반드시 JSON만 반환. 마크다운 없이.
+- 구매처/판매채널
+- 자주 묻는 질문과 답
+반드시 JSON만 반환. 마크다운 없이.
 {
-  "products": ["제품1 — 특징/성분/효능 요약", "제품2..."],
-  "brand": "브랜드 핵심 메시지 1-2문장",
+  "products": ["제품명 — 특징/성분/효능/가격 요약", ...],
+  "brand": "브랜드 핵심 메시지",
   "channels": "구매처 정보",
-  "faq": ["자주묻는Q: 답변", ...],
-  "keyFacts": ["기타 중요 사실 1", ...]
+  "faq": ["Q: 답변", ...],
+  "keyFacts": ["중요 사실", ...]
 }`,
-        messages: [{ role: 'user', content: `웹페이지 내용 (마크다운 형식):\n${rawText}` }],
+        messages: [{ role: 'user', content: `사이트 크롤 결과 (${crawledCount}페이지):\n\n${combined}` }],
       }),
     });
     const data = await claudeRes.json();
     summary = data.content?.[0]?.text?.trim() || '';
-    // JSON 파싱 시도
-    try { JSON.parse(summary.replace(/```json\n?|```\n?/g, '')); }
-    catch { summary = JSON.stringify({ keyFacts: [summary.slice(0, 500)] }); }
+    try { JSON.parse(summary.replace(/```json\n?|```\n?/g, '').trim()); }
+    catch { summary = JSON.stringify({ keyFacts: [summary.slice(0, 800)] }); }
   } catch (e) {
-    return res.status(500).json({ error: `Claude 요약 실패: ${e.message}` });
+    return res.status(500).json({ error: `Claude 분석 실패: ${e.message}` });
   }
 
   // 3. Redis 저장
-  const newItem = { url, title: title || url, summary, learnedAt: new Date().toISOString() };
-  let updated;
-  if (alreadyLearned) {
-    // 기존 항목 업데이트
-    updated = existing.map(i => i.url === url ? newItem : i);
-  } else {
-    updated = [newItem, ...existing].slice(0, MAX_URLS_PER_ACCOUNT);
-  }
+  const existing = await getKnowledge(account);
+  const newItem = { url, title: title || url, summary, crawledPages: crawledCount, learnedAt: new Date().toISOString() };
+  const alreadyLearned = existing.find(i => i.url === url);
+  const updated = alreadyLearned
+    ? existing.map(i => i.url === url ? newItem : i)
+    : [newItem, ...existing].slice(0, MAX_URLS_PER_ACCOUNT);
+
   await saveKnowledge(account, updated);
 
-  console.log(`[LearnURL][${account}] 학습 완료: ${url}`);
   return res.status(200).json({
     success: true,
     title: newItem.title,
     url,
+    crawledPages: crawledCount,
+    foundLinks,
     isUpdate: !!alreadyLearned,
-    count: updated.length,
   });
 }
