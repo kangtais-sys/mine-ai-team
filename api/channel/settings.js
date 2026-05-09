@@ -6,6 +6,7 @@ const redis = new Redis({
 });
 
 // 기본값 — 인스타 밴 방지 기준치
+// 계정 규모별: 소형(<1만) 50/20, 중형(1만~10만) 100/50, 대형(10만+) 200/80
 const DEFAULT = {
   autoComment: false,
   autoDm: false,
@@ -13,11 +14,11 @@ const DEFAULT = {
   activeHoursStart: 9,   // 오전 9시
   activeHoursEnd: 23,    // 오후 11시
   // 일일 최대 건수
-  commentDailyLimit: 50,
-  dmDailyLimit: 20,
+  commentDailyLimit: 100,
+  dmDailyLimit: 50,
   // 최소 응대 간격 (분)
-  commentCooldownMin: 2,
-  dmCooldownMin: 3,
+  commentCooldownMin: 1,
+  dmCooldownMin: 2,
 };
 
 export default async function handler(req, res) {
@@ -49,8 +50,8 @@ export default async function handler(req, res) {
     if (autoDm !== undefined) updated.autoDm = Boolean(autoDm);
     if (activeHoursStart !== undefined) updated.activeHoursStart = Number(activeHoursStart);
     if (activeHoursEnd !== undefined) updated.activeHoursEnd = Number(activeHoursEnd);
-    if (commentDailyLimit !== undefined) updated.commentDailyLimit = Math.min(100, Math.max(1, Number(commentDailyLimit)));
-    if (dmDailyLimit !== undefined) updated.dmDailyLimit = Math.min(50, Math.max(1, Number(dmDailyLimit)));
+    if (commentDailyLimit !== undefined) updated.commentDailyLimit = Math.min(300, Math.max(1, Number(commentDailyLimit)));
+    if (dmDailyLimit !== undefined) updated.dmDailyLimit = Math.min(150, Math.max(1, Number(dmDailyLimit)));
     if (commentCooldownMin !== undefined) updated.commentCooldownMin = Math.max(1, Number(commentCooldownMin));
     if (dmCooldownMin !== undefined) updated.dmCooldownMin = Math.max(1, Number(dmCooldownMin));
 

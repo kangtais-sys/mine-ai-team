@@ -610,7 +610,7 @@ const AGENT_DASHBOARDS = {
                         <div style={{ fontSize: 10, color: '#AEAEB2', marginBottom: 4 }}>댓글 — 하루 최대 / 최소 간격</div>
                         <div style={{ display: 'flex', gap: 6 }}>
                           <div style={{ flex: 1 }}>
-                            <input type="number" min="1" max="100" value={s.commentDailyLimit ?? 50}
+                            <input type="number" min="1" max="300" value={s.commentDailyLimit ?? 100}
                               onChange={e => saveSetting('commentDailyLimit', Number(e.target.value))}
                               style={{ width: '100%', padding: '4px 8px', borderRadius: 6, border: '1px solid #E5E5EA', fontSize: 11, background: '#F5F5F7', fontFamily: 'inherit', boxSizing: 'border-box' }} />
                             <div style={{ fontSize: 9, color: '#AEAEB2', marginTop: 2 }}>하루 최대 (건)</div>
@@ -630,7 +630,7 @@ const AGENT_DASHBOARDS = {
                         <div style={{ fontSize: 10, color: '#AEAEB2', marginBottom: 4 }}>DM — 하루 최대 / 최소 간격</div>
                         <div style={{ display: 'flex', gap: 6 }}>
                           <div style={{ flex: 1 }}>
-                            <input type="number" min="1" max="50" value={s.dmDailyLimit ?? 20}
+                            <input type="number" min="1" max="150" value={s.dmDailyLimit ?? 50}
                               onChange={e => saveSetting('dmDailyLimit', Number(e.target.value))}
                               style={{ width: '100%', padding: '4px 8px', borderRadius: 6, border: '1px solid #E5E5EA', fontSize: 11, background: '#F5F5F7', fontFamily: 'inherit', boxSizing: 'border-box' }} />
                             <div style={{ fontSize: 9, color: '#AEAEB2', marginTop: 2 }}>하루 최대 (건)</div>
@@ -647,8 +647,8 @@ const AGENT_DASHBOARDS = {
                     {/* 현재 설정 요약 */}
                     <div style={{ padding: '6px 8px', borderRadius: 6, background: '#F5F5F7', fontSize: 10, color: '#6E6E73', lineHeight: 1.7 }}>
                       현재: {s.activeHoursStart ?? 9}시~{s.activeHoursEnd ?? 23}시 운영
-                      {s.autoComment && ` · 댓글 하루 ${s.commentDailyLimit ?? 50}건 / ${s.commentCooldownMin ?? 2}분 간격`}
-                      {s.autoDm && ` · DM 하루 ${s.dmDailyLimit ?? 20}건 / ${s.dmCooldownMin ?? 3}분 간격`}
+                      {s.autoComment && ` · 댓글 하루 ${s.commentDailyLimit ?? 100}건 / ${s.commentCooldownMin ?? 1}분 간격`}
+                      {s.autoDm && ` · DM 하루 ${s.dmDailyLimit ?? 50}건 / ${s.dmCooldownMin ?? 2}분 간격`}
                     </div>
                   </div>
                 )}
