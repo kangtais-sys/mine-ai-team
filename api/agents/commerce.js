@@ -100,11 +100,68 @@ export default async function handler(req, res) {
     ? { status: 'connected' }
     : { status: 'disconnected', message: '틱톡샵 연결 필요' };
 
-  // Promotions calendar (from KV)
+  // Promotions calendar (from KV → fallback to curated indie-beauty calendar)
+  const INDIE_BEAUTY_PROMOS = [
+    {
+      date: '2026-06-01', name: '올영세일 (올리브영 최대 행사)',
+      channel: '올리브영', importance: 'high',
+      suggestion: '퀵비 앰플 번들(10+2 구성) + 체험단 100명 운영. 올리브영 올세일 기간 중 랭킹 1위 유지 위해 광고비 1.5배 증액. 인플루언서 리뷰 영상 사전 세팅(D-7).',
+    },
+    {
+      date: '2026-06-16', name: '올리브영 올세일 후속 리텐션',
+      channel: '올리브영/자사몰', importance: 'medium',
+      suggestion: '세일 구매자 대상 카카오 알림톡 "재구매 쿠폰" 발송. 자사몰 단독 리필팩 출시로 충성 고객 Lock-in. 후기 작성 유도 이벤트.',
+    },
+    {
+      date: '2026-07-01', name: '여름 선케어 기획전',
+      channel: '전 채널', importance: 'high',
+      suggestion: '선크림/미스트 조합 "여름 데일리 루틴 세트" 번들. TikTok "5초 선크림 바르기" 챌린지 연동. 스마트스토어 카테고리 최적화(선케어 → SPF 키워드).',
+    },
+    {
+      date: '2026-08-01', name: '스마트스토어 브랜드데이',
+      channel: '스마트스토어', importance: 'high',
+      suggestion: '베스트셀러 단독 500개 한정 "밀리밀리 데이" 쿠폰(-20%). 스마트스토어 쇼핑라이브 진행(유민혜 실시간 방송). 검색광고 브랜드키워드 집중 세팅.',
+    },
+    {
+      date: '2026-09-15', name: '추석 선물세트 기획',
+      channel: '올리브영/스마트스토어', importance: 'high',
+      suggestion: '한정판 추석 기프트박스 출시(퀵비 앰플 + 미스트 세트). 기프티콘 상품 등록. 올리브영 MD 미팅 요청(D-30 시작). 선물용 포장지 디자인 준비.',
+    },
+    {
+      date: '2026-11-11', name: '빼빼로/쇼핑 시즌',
+      channel: '전 채널', importance: 'medium',
+      suggestion: '빼빼로 모양 제품 패키지 에디션 SNS 바이럴. 스마트스토어 11.11 기획전 신청(D-30). 타임세일 2시간 단위 운영.',
+    },
+    {
+      date: '2026-11-29', name: '블랙프라이데이 (틱톡샵US)',
+      channel: '틱톡샵US/아마존', importance: 'high',
+      suggestion: 'K-뷰티 번들 $39.99 세트 구성. TikTok LIVE 쇼핑 이벤트 진행(PST 오전 10시). Amazon 쿠폰 20% 적용 후 광고 집중. 해외 인플루언서 1명 협업.',
+    },
+    {
+      date: '2026-12-25', name: '크리스마스 한정판',
+      channel: '자사몰/스마트스토어', importance: 'medium',
+      suggestion: '크리스마스 에디션 패키지(레드+골드) 300세트 한정. 선착순 구매자 홀리데이 파우치 증정. 유민혜 인스타 언박싱 라이브.',
+    },
+  ];
+
   try {
     const cached = await redis.get('commerce:promotions');
-    result.promotions = cached ? (typeof cached === 'string' ? JSON.parse(cached) : cached) : null;
-  } catch {}
+    const cachedPromos = cached ? (typeof cached === 'string' ? JSON.parse(cached) : cached) : null;
+    // KV에 데이터 있으면 suggestion 병합, 없으면 인디뷰티 캘린더 사용
+    if (cachedPromos?.upcoming?.length) {
+      const merged = cachedPromos.upcoming.map(p => {
+        const match = INDIE_BEAUTY_PROMOS.find(r => r.date === p.date || r.name.includes(p.name?.slice(0, 4)));
+        return match ? { ...p, suggestion: match.suggestion } : p;
+      });
+      result.promotions = { ...cachedPromos, upcoming: merged };
+    } else {
+      const today = new Date().toISOString().slice(0, 10);
+      result.promotions = { upcoming: INDIE_BEAUTY_PROMOS.filter(p => p.date >= today) };
+    }
+  } catch {
+    const today = new Date().toISOString().slice(0, 10);
+    result.promotions = { upcoming: INDIE_BEAUTY_PROMOS.filter(p => p.date >= today) };
+  }
 
   // Daily suggestions (from KV)
   try {

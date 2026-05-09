@@ -904,17 +904,24 @@ const AGENT_DASHBOARDS = {
 
         {promos.length > 0 && (
           <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>다가오는 프로모션</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>다가오는 프로모션 & 인디뷰티 제안</div>
             {promos.slice(0, 5).map((p, i) => {
               const pDate = new Date(p.date);
               const dDay = Math.ceil((pDate - now) / 86400000);
               return (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < Math.min(promos.length, 5) - 1 ? '1px solid #F5F5F7' : 'none' }}>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: importColor[p.importance] || '#AEAEB2', width: 32 }}>
-                    {dDay >= 0 ? `D-${dDay}` : 'END'}
-                  </span>
-                  <span style={{ fontSize: 11, color: '#1D1D1F', flex: 1 }}>{p.name}</span>
-                  <span style={{ fontSize: 9, color: '#AEAEB2' }}>{p.channel}</span>
+                <div key={i} style={{ padding: '8px 0', borderBottom: i < Math.min(promos.length, 5) - 1 ? '1px solid #F5F5F7' : 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: p.suggestion ? 5 : 0 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: importColor[p.importance] || '#AEAEB2', width: 32, flexShrink: 0 }}>
+                      {dDay >= 0 ? `D-${dDay}` : 'END'}
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#1D1D1F', flex: 1 }}>{p.name}</span>
+                    <span style={{ fontSize: 9, color: '#AEAEB2', flexShrink: 0 }}>{p.channel}</span>
+                  </div>
+                  {p.suggestion && (
+                    <div style={{ marginLeft: 40, padding: '6px 10px', background: `${importColor[p.importance] || '#AEAEB2'}0D`, borderLeft: `2px solid ${importColor[p.importance] || '#AEAEB2'}`, borderRadius: '0 6px 6px 0', fontSize: 10.5, color: '#3D3D3D', lineHeight: 1.5 }}>
+                      {p.suggestion}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1053,74 +1060,107 @@ const AGENT_DASHBOARDS = {
     );
   },
 
-  // ── Global ─────────────────────────────────────────────────
+  // ── Global (B2B 수출 중심) ──────────────────────────────────
   global: () => {
     const [d, setD] = useState(null);
-    const [stats, setStats] = useState(null);
     useEffect(() => {
       fetch('/api/agents/export').then(r => r.json()).then(setD).catch(() => {});
-      fetch('/api/stats').then(r => r.json()).then(setStats).catch(() => {});
     }, []);
 
     const rates = d?.exchangeRates || {};
     const pipeline = d?.buyerPipeline || {};
     const countries = d?.byCountry || [];
+    const buyers = d?.byBuyer || [];
     const maxAmount = countries.length > 0 ? Math.max(...countries.map(c => c.amount || 0)) || 1 : 1;
+    const totalExport = d?.exports?.totalAmount || 0;
+
+    const PIPELINE_STEPS = [
+      { key: 'db', label: 'DB확보' },
+      { key: 'firstMail', label: '1차메일' },
+      { key: 'replied', label: '답장' },
+      { key: 'sample', label: '샘플발송' },
+      { key: 'proposal', label: '제안서' },
+      { key: 'contract', label: '계약' },
+    ];
 
     return (
       <>
         <DailyReportCard agentId="export" />
+
+        {/* KPI */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <KpiCard label="Amazon YTD" value={stats?.amazonYTD ? fmtUSD(stats.amazonYTD) : d?.exports?.totalAmount ? fmtKRW(d.exports.totalAmount) : '-'} sub="2026년 누적" icon={Globe} />
-          <KpiCard label="당월 아마존" value={stats?.amazon?.monthly ? fmtUSD(stats.amazon.monthly) : '-'} sub="이번 달" icon={Globe} />
+          <KpiCard label="수출 총액 (YTD)" value={totalExport > 0 ? fmtKRW(totalExport) : '-'} sub="수출시트 누적" icon={Globe} />
+          <KpiCard label="바이어 수" value={buyers.length > 0 ? `${buyers.length}개사` : '-'} sub="거래 바이어" icon={Globe} />
           <KpiCard label="USD/KRW" value={rates.USD ? `${rates.USD.toLocaleString()}원` : '-'} sub="현재 환율" icon={DollarSign} />
-          <KpiCard label="JPY/KRW" value={rates.JPY ? `${(rates.JPY * 100).toFixed(1)}원` : '-'} sub="100엔 기준" icon={DollarSign} />
+          <KpiCard label="EUR/KRW" value={rates.EUR ? `${rates.EUR.toLocaleString()}원` : '-'} sub="현재 환율" icon={DollarSign} />
         </div>
 
+        {/* 바이어별 수출 현황 */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>바이어별 수출 현황</div>
+          {buyers.length > 0 ? buyers.slice(0, 8).map((b, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: i < Math.min(buyers.length, 8) - 1 ? '1px solid #F5F5F7' : 'none' }}>
+              <div style={{ width: 22, height: 22, borderRadius: 6, background: '#F0F0FF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#5E6AD2', flexShrink: 0 }}>
+                {i + 1}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#1D1D1F', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</div>
+                <div style={{ fontSize: 9, color: '#AEAEB2' }}>{b.country} · {b.products?.slice(0,2).join(', ')}</div>
+              </div>
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#5E6AD2' }}>{fmtKRW(b.amount)}</div>
+                <div style={{ fontSize: 9, color: '#AEAEB2' }}>{b.qty.toLocaleString()}개</div>
+              </div>
+            </div>
+          )) : (
+            <div style={{ fontSize: 11, color: '#AEAEB2', textAlign: 'center', padding: '12px 0' }}>
+              {d?.exports?.status === 'disconnected' ? '수출시트 미연결 (EXPORT_SHEET_ID 필요)' : d === null ? '로딩 중...' : '수출 데이터 없음'}
+            </div>
+          )}
+          {d?.exports?.status === 'connected' && <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 6 }}>총 {d.exports.totalOrders}건 · 구글시트 연동</div>}
+        </div>
+
+        {/* 국가별 수출 */}
         {countries.length > 0 && (
           <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>국가별 수출 현황</div>
-            {countries.slice(0, 8).map((c, i) => (
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>국가별 수출 비중</div>
+            {countries.slice(0, 6).map((c, i) => (
               <div key={i} style={{ marginBottom: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                   <span style={{ fontSize: 11, color: '#1D1D1F' }}>{c.name}</span>
-                  <span style={{ fontSize: 10, color: '#6E6E73' }}>{fmt(c.amount)}원 ({c.products || 0}건)</span>
+                  <span style={{ fontSize: 10, color: '#6E6E73' }}>{fmtKRW(c.amount)} ({c.orders}건)</span>
                 </div>
                 <div style={{ height: 4, background: '#F5F5F7', borderRadius: 2, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${((c.amount || 0) / maxAmount) * 100}%`, background: '#5E6AD2', borderRadius: 2 }} />
                 </div>
               </div>
             ))}
-            <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 4 }}>2026년 누적 · 구글시트 연동</div>
           </div>
         )}
 
+        {/* 바이어 파이프라인 */}
         <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>바이어 파이프라인</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexWrap: 'nowrap', overflowX: 'auto' }}>
-            {[
-              { label: 'DB확보', value: pipeline.db },
-              { label: '1차메일', value: pipeline.firstMail },
-              { label: '답장', value: pipeline.replied },
-              { label: '샘플', value: pipeline.sample },
-              { label: '제안서', value: pipeline.proposal },
-              { label: '계약', value: pipeline.contract },
-            ].map((step, i, arr) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                <div style={{ textAlign: 'center', padding: '6px 8px', borderRadius: 6, background: '#F5F5F7', border: '1px solid #E5E5EA', minWidth: 46 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: '#1D1D1F' }}>{step.value ?? 0}</div>
-                  <div style={{ fontSize: 8, color: '#6E6E73' }}>{step.label}</div>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto', gap: 0 }}>
+            {PIPELINE_STEPS.map((step, i, arr) => (
+              <div key={step.key} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                <div style={{ textAlign: 'center', padding: '8px 10px', borderRadius: 6, background: (pipeline[step.key] || 0) > 0 ? '#F0F0FF' : '#F5F5F7', border: `1px solid ${(pipeline[step.key] || 0) > 0 ? '#5E6AD244' : '#E5E5EA'}`, minWidth: 52 }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: (pipeline[step.key] || 0) > 0 ? '#5E6AD2' : '#AEAEB2' }}>{pipeline[step.key] ?? 0}</div>
+                  <div style={{ fontSize: 8, color: '#6E6E73', marginTop: 1 }}>{step.label}</div>
                 </div>
-                {i < arr.length - 1 && <span style={{ color: '#D1D1D6', margin: '0 3px', fontSize: 10 }}>→</span>}
+                {i < arr.length - 1 && <span style={{ color: '#D1D1D6', margin: '0 3px', fontSize: 12 }}>›</span>}
               </div>
             ))}
           </div>
-          <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 6 }}>당월 누적</div>
+          <div style={{ fontSize: 9, color: '#AEAEB2', marginTop: 8 }}>
+            💡 파이프라인 업데이트: 채팅창에 "바이어 [업체명] 샘플 발송 완료" 입력 → 자동 기록
+          </div>
         </div>
 
+        {/* 일일 보고 */}
         {d?.dailyReport && (
           <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 8 }}>일간 성과 보고</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 8 }}>오늘 수출 업무 보고</div>
             <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
               {d.dailyReport.summary || d.dailyReport.text}
             </div>
@@ -1128,17 +1168,21 @@ const AGENT_DASHBOARDS = {
           </div>
         )}
 
+        {/* 환율 */}
         <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>해외 채널</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {Object.entries(d?.channels || {}).length > 0 ? (
-              Object.entries(d.channels).map(([ch, s], i) => (
-                <ConnBadge key={i} connected={s?.status === 'connected'} label={ch} />
-              ))
-            ) : (
-              <div style={{ fontSize: 11, color: '#AEAEB2' }}>채널 연결 데이터 없음</div>
-            )}
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 8 }}>실시간 환율</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+            {[['USD', '달러'], ['EUR', '유로'], ['JPY', '엔(100)'], ['SGD', '싱가포르'], ['CNY', '위안'], ['AED', '디르함']].map(([cur, label]) => (
+              <div key={cur} style={{ background: '#F5F5F7', borderRadius: 7, padding: '7px 10px' }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: '#5E6AD2' }}>{cur}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#1D1D1F' }}>
+                  {rates[cur] ? `${cur === 'JPY' ? (rates.JPY * 100).toFixed(0) : rates[cur].toLocaleString()}` : '-'}
+                </div>
+                <div style={{ fontSize: 9, color: '#AEAEB2' }}>{label}</div>
+              </div>
+            ))}
           </div>
+          {rates.updatedAt && <div style={{ fontSize: 9, color: '#D1D1D6', marginTop: 6 }}>업데이트: {rates.updatedAt.slice(0, 16)}</div>}
         </div>
       </>
     );
@@ -1154,7 +1198,7 @@ const quickActions = {
   marketer: ['오늘 광고 ROAS 분석해줘', '채널별 광고비 현황', '광고 최적화 제안해줘'],
   commerce: ['채널별 매출 현황 보고해줘', '이번 달 프로모션 제안해줘', '올리브영 랭킹 및 리뷰 분석해줘'],
   admin: ['대금출금 현황 보고해줘', '정부지원사업 공고 알려줘', '임직원 현황 정리해줘'],
-  global: ['수출 현황 보고해줘', '아마존 판매 분석해줘', '바이어 컨택 메일 작성해줘'],
+  global: ['이번 달 바이어 파이프라인 현황', '신규 바이어 1차 컨택 메일 작성해줘', '수출 제안서 초안 만들어줘'],
 };
 
 // ─── Main ChatView ──────────────────────────────────────────

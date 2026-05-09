@@ -359,26 +359,37 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* ── 3. 미국 B2C 채널별 매출 ── */}
+        {/* ── 3. 수출 B2B 바이어별 현황 ── */}
         <div style={{ marginBottom: 14 }}>
-          <SectionTitle>미국 B2C 채널별 매출</SectionTitle>
-          <SalesTable
-            title="미국 B2C"
-            flag="🇺🇸"
-            currency="USD"
-            rows={[
-              {
-                label: 'Amazon US',
-                dot: '#FF9900',
-                daily: null,
-                monthly: usB2c.amazon,
-                yearly: usB2cYear.amazon,
-                connected: conn.amazon?.connected,
-                sourceLabel: 'SP-API',
-              },
-              { label: 'TikTok Shop US', dot: '#2D3436', daily: null, monthly: 0, yearly: 0, connected: false, sourceLabel: '' },
-            ]}
-          />
+          <SectionTitle>수출 B2B — 바이어별 현황</SectionTitle>
+          <div style={{ ...CARD }}>
+            {!b2bConnected ? (
+              <div style={{ fontSize: 12, color: '#AEAEB2', textAlign: 'center', padding: '12px 0' }}>
+                수출시트 미연결 — EXPORT_SHEET_ID 환경변수 필요
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr 80px', gap: 0, marginBottom: 8, paddingBottom: 6, borderBottom: '1px solid #F2F2F5' }}>
+                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500 }}>바이어</div>
+                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, textAlign: 'right' }}>수출금액</div>
+                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, textAlign: 'right' }}>수량</div>
+                  <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, textAlign: 'right' }}>품목수</div>
+                </div>
+                {Object.entries(b2bData.byBuyer || {}).sort(([,a],[,b]) => b.revenue - a.revenue).slice(0, 6).map(([buyer, v], i, arr) => (
+                  <div key={buyer} style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr 80px', gap: 0, padding: '6px 0', borderBottom: i < arr.length - 1 ? '1px solid #F5F5F7' : 'none', alignItems: 'center' }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#1D1D1F', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{buyer}</div>
+                    <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 700, color: '#5E6AD2' }}>{fmtKRW(v.revenue)}</div>
+                    <div style={{ textAlign: 'right', fontSize: 10, color: '#6E6E73' }}>{v.qty.toLocaleString()}개</div>
+                    <div style={{ textAlign: 'right', fontSize: 10, color: '#AEAEB2' }}>{v.products.length}종</div>
+                  </div>
+                ))}
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #F2F2F5', display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: '#1D1D1F' }}>합계</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: '#5E6AD2' }}>{fmtKRW(b2bData.totalRevenue)}</span>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* ── 3b. 수출 B2B — 바이어 요약 ── */}

@@ -81,13 +81,13 @@ export const agents = [
     name: 'AI 수출',
     title: '해외 사업',
     icon: Globe,
-    description: '수출 현황 & 바이어 관리',
+    description: 'B2B 바이어 파이프라인 & 수출 계약 관리',
     apis: [
-      { name: '구글시트', key: 'google_sheets' },
+      { name: '수출시트 (Google Sheets)', key: 'export_sheet' },
       { name: '환율 API', key: 'exchange_rate' },
       { name: '네이버웍스', key: 'naver_works' },
     ],
-    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 수출 전문가입니다. 수출 현황(구글시트), 환율 모니터링, 네이버웍스 바이어 메일 관리. 아마존/쇼피/큐텐/틱톡샵US 해외 채널 매출 분석. 한국어로 응답.`
+    systemPrompt: `${BRAND_CONTEXT}\n당신은 AI 수출 전문가입니다. B2B 바이어 발굴·파이프라인 관리(DB확보→1차메일→답장→샘플→제안서→계약) 중심. 수출 현황 구글시트 분석, 환율 모니터링, 바이어별 수출 실적 추적. 아마존·쇼피 등 B2C 채널은 커머스MD가 담당하므로 B2B 거래처 관리에 집중. 바이어 컨택 메일 작성, 제안서 초안, 계약 조건 검토 지원. 한국어로 응답.`
   },
 ];
 
