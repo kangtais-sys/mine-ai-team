@@ -21,7 +21,7 @@ const MAX_IMAGE_PAGES      = 4;     // Vision 분석할 최대 페이지 수
 // ────────────────────────────────────────────────
 // Jina AI Reader
 // ────────────────────────────────────────────────
-async function fetchWithJina(url, ms = 20000) {
+async function fetchWithJina(url, ms = 20000, maxChars = MAX_CHARS_PER_PAGE) {
   const res = await fetch(`https://r.jina.ai/${url}`, {
     headers: { 'Accept': 'text/plain', 'X-Return-Format': 'markdown' },
     signal: AbortSignal.timeout(ms),
@@ -29,7 +29,7 @@ async function fetchWithJina(url, ms = 20000) {
   if (!res.ok) throw new Error(`Jina ${res.status}`);
   const text = await res.text();
   if (!text || text.length < 30) throw new Error('빈 페이지');
-  return text.slice(0, MAX_CHARS_PER_PAGE);
+  return text.slice(0, maxChars);
 }
 
 async function fetchSafe(url) {
@@ -156,8 +156,8 @@ async function crawlSite(startUrl) {
   const visionResults = [];
   for (const productUrl of productUrls) {
     try {
-      // 이미지 URL 추출을 위해 더 긴 컨텐츠로 재fetch (최대 12000자)
-      const fullContent = await fetchWithJina(productUrl, 18000).then(c => c.slice(0, 12000)).catch(() => null);
+      // 이미지 URL 추출을 위해 더 긴 컨텐츠로 재fetch (최대 15000자)
+      const fullContent = await fetchWithJina(productUrl, 18000, 15000).catch(() => null);
       if (!fullContent) continue;
       const imgUrls = extractImageUrls(fullContent, startUrl);
       if (imgUrls.length === 0) continue;
