@@ -181,41 +181,25 @@ async function analyzeWithClaude(data, accountName) {
   });
 
   const apiData = await res.json();
-  console.log('[LearnURL] Claude HTTP:', res.status, '| stop_reason:', apiData.stop_reason, '| error:', JSON.stringify(apiData.error || null));
 
   if (apiData.error) {
-    console.error('[LearnURL] Claude 에러 전체:', JSON.stringify(apiData.error));
+    console.error('[LearnURL] Claude 에러:', JSON.stringify(apiData.error));
     // Vision 실패 시 텍스트만으로 재시도
     if (screenshot && textBlock) {
       console.log('[LearnURL] 텍스트만으로 재시도');
       return analyzeWithClaude({ ...data, screenshot: null }, accountName);
     }
-    // 에러 정보를 keyFacts에 담아서 반환 (디버그용)
-    return { keyFacts: [`API 오류: ${apiData.error?.type} — ${apiData.error?.message}`] };
+    return null;
   }
 
   const raw = apiData.content?.[0]?.text?.trim() || '';
-  console.log('[LearnURL] Claude 응답 길이:', raw.length, '| 첫 150자:', raw.slice(0, 150));
-
-  // raw가 비어있으면 디버그 정보 포함해서 반환
-  if (!raw) {
-    const debugInfo = {
-      httpStatus: res.status,
-      stopReason: apiData.stop_reason,
-      usage: apiData.usage,
-      contentLength: apiData.content?.length,
-      hasScreenshot: !!screenshot,
-      textBlockLen: textBlock.length,
-    };
-    console.warn('[LearnURL] raw 비어있음! 디버그:', JSON.stringify(debugInfo));
-    return { keyFacts: [`응답 비어있음 — stop_reason:${apiData.stop_reason} usage:${JSON.stringify(apiData.usage)}`] };
-  }
+  console.log('[LearnURL] Claude 응답:', raw.slice(0, 100));
 
   try {
     return JSON.parse(raw.replace(/```json\n?|```\n?/g, '').trim());
   } catch {
     if (raw.length > 10) return { keyFacts: [raw.slice(0, 500)] };
-    return { keyFacts: ['JSON 파싱 실패 — raw:' + raw.slice(0, 100)] };
+    return null;
   }
 }
 
