@@ -92,8 +92,14 @@ export async function getEnabledRules(account) {
   try {
     const raw = await redis.get('channel:rules');
     const rules = Array.isArray(raw) ? raw : (typeof raw === 'string' ? JSON.parse(raw) : []);
+    // 계정 라벨 정규화 (한글/영어 모두 처리)
+    const LABEL_MAP = { '유민혜': 'yuminhye', '밀리밀리': 'millimilli', '전체': 'all' };
     return rules
-      .filter(r => r.enabled && (r.account === account || r.account === 'all'))
+      .filter(r => {
+        if (!r.enabled) return false;
+        const a = LABEL_MAP[r.account] || r.account || 'all';
+        return a === account || a === 'all';
+      })
       .map(r => r.text);
   } catch { return []; }
 }

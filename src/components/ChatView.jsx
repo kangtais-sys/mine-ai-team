@@ -252,6 +252,14 @@ const AGENT_DASHBOARDS = {
     const ACCENT = { yuminhye: '#FF6B6B', millimilli: '#5E6AD2' };
     const accent = ACCENT[tab];
 
+    // 탭 전환 시 결과 메시지 초기화
+    useEffect(() => {
+      setLearnResult(null);
+      setReplyLearnResult(null);
+      setUrlLearnResult(null);
+      setEditingPersona(false);
+    }, [tab]);
+
     useEffect(() => {
       // Load persona + rules
       fetch('/api/channel/persona').then(r => r.json()).then(d => {
@@ -770,9 +778,18 @@ const AGENT_DASHBOARDS = {
         <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>컨텍스트 규칙 (상황/이슈 추가)</div>
 
-          {rules.length > 0 ? (
+          {(() => {
+            const ACCT_LABEL = { yuminhye: '유민혜', millimilli: '밀리밀리' };
+            const visibleRules = rules.filter(r =>
+              r.account === tab ||
+              r.account === ACCT_LABEL[tab] ||
+              r.account === '전체' ||
+              r.account === 'all' ||
+              !r.account
+            );
+            return visibleRules.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-              {rules.map((rule) => (
+              {visibleRules.map((rule) => (
                 <div key={rule.id} style={{
                   display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px',
                   borderRadius: 7, background: rule.enabled !== false ? '#F5F5F7' : '#FAFAFA',
@@ -814,7 +831,8 @@ const AGENT_DASHBOARDS = {
             </div>
           ) : (
             <div style={{ fontSize: 11, color: '#AEAEB2', marginBottom: 10 }}>규칙 없음. 아래에서 추가하세요.</div>
-          )}
+          );
+          })()}
 
           {/* Add rule */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
