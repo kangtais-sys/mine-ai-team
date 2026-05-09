@@ -47,17 +47,25 @@ function genId() {
 }
 
 export default async function handler(req, res) {
-  // GET: return persona + rules
+  // GET: return persona + rules + url knowledge
   if (req.method === 'GET') {
-    const [ymRaw, mmRaw, rules] = await Promise.all([
+    const [ymRaw, mmRaw, rules, ymUrls, mmUrls] = await Promise.all([
       redis.get('channel:persona:yuminhye'),
       redis.get('channel:persona:millimilli'),
       getRules(),
+      redis.get('channel:url-knowledge:yuminhye').then(r => {
+        if (!r) return [];
+        try { return Array.isArray(r) ? r : JSON.parse(r); } catch { return []; }
+      }).catch(() => []),
+      redis.get('channel:url-knowledge:millimilli').then(r => {
+        if (!r) return [];
+        try { return Array.isArray(r) ? r : JSON.parse(r); } catch { return []; }
+      }).catch(() => []),
     ]);
 
     return res.status(200).json({
-      yuminhye: { ...DEFAULT_PERSONAS.yuminhye, ...(ymRaw || {}) },
-      millimilli: { ...DEFAULT_PERSONAS.millimilli, ...(mmRaw || {}) },
+      yuminhye: { ...DEFAULT_PERSONAS.yuminhye, ...(ymRaw || {}), urlKnowledge: ymUrls },
+      millimilli: { ...DEFAULT_PERSONAS.millimilli, ...(mmRaw || {}), urlKnowledge: mmUrls },
       rules,
     });
   }

@@ -235,6 +235,15 @@ const AGENT_DASHBOARDS = {
     const [editingPersona, setEditingPersona] = useState(false);
     const [editedPersona, setEditedPersona] = useState({});
     const [savingPersona, setSavingPersona] = useState(false);
+    // 승인 큐
+    const [approvalQueue, setApprovalQueue] = useState({ yuminhye: [], millimilli: [] });
+    const [editingReply, setEditingReply] = useState({}); // { id: 'edited text' }
+    const [approvingId, setApprovingId] = useState(null);
+    const [rejectingId, setRejectingId] = useState(null);
+    // URL 학습
+    const [urlInput, setUrlInput] = useState('');
+    const [learningUrl, setLearningUrl] = useState(false);
+    const [urlLearnResult, setUrlLearnResult] = useState(null);
 
     // accent per account
     const ACCENT = { yuminhye: '#FF6B6B', millimilli: '#5E6AD2' };
@@ -257,6 +266,10 @@ const AGENT_DASHBOARDS = {
           const followers = acctData?.instagram?.count || acctData?.total || null;
           setIgStats(prev => ({ ...prev, [acct]: { ...prev[acct], followers } }));
         });
+      }).catch(() => {});
+      // Load approval queue
+      fetch('/api/channel/approval').then(r => r.json()).then(d => {
+        if (d && !d.error) setApprovalQueue(d);
       }).catch(() => {});
       // Load history + avg comments per account
       ['yuminhye', 'millimilli'].forEach(acct => {
@@ -368,6 +381,80 @@ const AGENT_DASHBOARDS = {
         }).catch(() => {});
       } catch (e) { setLearnResult({ error: e.message }); }
       setLearning(false);
+    };
+
+    // 승인 큐 핸들러
+    const handleApprove = async (item) => {
+      setApprovingId(item.id);
+      try {
+        const reply = editingReply[item.id] !== undefined ? editingReply[item.id] : item.suggestedReply;
+        const res = await fetch('/api/channel/approval', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'approve', id: item.id, account: item.account || tab, reply }),
+        });
+        const d = await res.json();
+        if (d.success) {
+          setApprovalQueue(prev => ({
+            ...prev,
+            [item.account || tab]: (prev[item.account || tab] || []).filter(i => i.id !== item.id),
+          }));
+        }
+      } catch { /* silent */ }
+      setApprovingId(null);
+    };
+
+    const handleReject = async (item) => {
+      setRejectingId(item.id);
+      try {
+        await fetch('/api/channel/approval', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'reject', id: item.id, account: item.account || tab }),
+        });
+        setApprovalQueue(prev => ({
+          ...prev,
+          [item.account || tab]: (prev[item.account || tab] || []).filter(i => i.id !== item.id),
+        }));
+      } catch { /* silent */ }
+      setRejectingId(null);
+    };
+
+    // URL 학습 핸들러
+    const handleLearnUrl = async () => {
+      const url = urlInput.trim();
+      if (!url || learningUrl) return;
+      setLearningUrl(true);
+      setUrlLearnResult(null);
+      try {
+        const res = await fetch('/api/channel/learn-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account: tab, url }),
+        });
+        const d = await res.json();
+        setUrlLearnResult(d);
+        if (d.success) {
+          setUrlInput('');
+          // Refresh persona (URL knowledge included)
+          fetch('/api/channel/persona').then(r => r.json()).then(pd => {
+            setPersonaData(pd);
+          }).catch(() => {});
+        }
+      } catch (e) { setUrlLearnResult({ error: e.message }); }
+      setLearningUrl(false);
+    };
+
+    const handleDeleteUrl = async (url) => {
+      try {
+        await fetch('/api/channel/learn-url', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account: tab, url }),
+        });
+        const pd = await fetch('/api/channel/persona').then(r => r.json());
+        setPersonaData(pd);
+      } catch { /* silent */ }
     };
 
     // Toggle switch component
@@ -566,6 +653,59 @@ const AGENT_DASHBOARDS = {
           )}
         </div>
 
+        {/* URL 지식 학습 */}
+        <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 4 }}>참고 사이트 학습</div>
+          <div style={{ fontSize: 10, color: '#AEAEB2', marginBottom: 10 }}>브랜드 사이트·제품 페이지 URL을 입력하면 AI가 제품·성분·구매처 정보를 학습해 응대에 활용합니다.</div>
+
+          {/* 학습된 URL 목록 */}
+          {(() => {
+            const urlKnowledge = persona?.urlKnowledge || [];
+            return urlKnowledge.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                {urlKnowledge.map((item, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 7, background: `${accent}08`, border: `1px solid ${accent}22` }}>
+                    <BookOpen size={12} color={accent} style={{ marginTop: 1, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 500, color: '#1D1D1F', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title || item.url}</div>
+                      <div style={{ fontSize: 9, color: '#AEAEB2', marginTop: 1 }}>{item.url.slice(0, 50)}{item.url.length > 50 ? '...' : ''} · {timeAgo(item.learnedAt)}</div>
+                    </div>
+                    <button onClick={() => handleDeleteUrl(item.url)} style={{ padding: '2px 4px', border: 'none', background: 'transparent', cursor: 'pointer', flexShrink: 0 }}>
+                      <Trash2 size={11} color="#AEAEB2" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null;
+          })()}
+
+          {/* URL 입력 */}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              type="url"
+              value={urlInput}
+              onChange={e => setUrlInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLearnUrl()}
+              placeholder="https://millimilli.official/products/..."
+              style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: `1px solid ${urlInput ? accent + '88' : '#E5E5EA'}`, background: '#F5F5F7', fontSize: 11, fontFamily: 'inherit', color: '#1D1D1F', outline: 'none' }}
+            />
+            <button
+              onClick={handleLearnUrl}
+              disabled={learningUrl || !urlInput.trim()}
+              style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: urlInput.trim() && !learningUrl ? accent : '#E5E5EA', color: urlInput.trim() && !learningUrl ? '#FFF' : '#AEAEB2', cursor: urlInput.trim() && !learningUrl ? 'pointer' : 'default', fontSize: 11, fontFamily: 'inherit', fontWeight: 600, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}
+            >
+              <BookOpen size={12} style={{ animation: learningUrl ? 'spin 1s linear infinite' : 'none' }} />
+              {learningUrl ? '학습 중...' : '학습'}
+            </button>
+          </div>
+
+          {urlLearnResult && (
+            <div style={{ marginTop: 8, padding: '7px 10px', borderRadius: 7, background: urlLearnResult.error ? '#FFF0F0' : `${accent}0D`, border: `1px solid ${urlLearnResult.error ? '#FFD0D0' : accent + '33'}`, fontSize: 10, color: urlLearnResult.error ? '#FF6B6B' : accent }}>
+              {urlLearnResult.error ? `실패: ${urlLearnResult.error}` : `✓ 학습 완료 — "${urlLearnResult.title || urlLearnResult.url}"${urlLearnResult.isUpdate ? ' (업데이트)' : ''}`}
+            </div>
+          )}
+        </div>
+
         {/* Context rules */}
         <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>컨텍스트 규칙 (상황/이슈 추가)</div>
@@ -653,21 +793,90 @@ const AGENT_DASHBOARDS = {
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>응대 히스토리</div>
 
           {/* Sub-tabs */}
-          <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
-            {[['comment', '댓글'], ['dm', 'DM']].map(([id, label]) => (
-              <button
-                key={id}
-                onClick={() => setHistoryTab(id)}
-                style={{ fontSize: 11, padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: historyTab === id ? accent : '#F5F5F7', color: historyTab === id ? '#FFF' : '#6E6E73', fontWeight: historyTab === id ? 600 : 400 }}
-              >{label}</button>
-            ))}
-            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#AEAEB2', alignSelf: 'center' }}>
-              총 {historyTab === 'comment' ? (acctHistory.commentCount || 0) : (acctHistory.dmCount || 0)}건
-            </span>
-          </div>
-
-          {/* History list */}
           {(() => {
+            const pendingCount = (approvalQueue[tab] || []).length;
+            return (
+              <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+                {[['comment', '댓글'], ['dm', 'DM'], ['approval', '긴급/승인']].map(([id, label]) => (
+                  <button
+                    key={id}
+                    onClick={() => setHistoryTab(id)}
+                    style={{ fontSize: 11, padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: historyTab === id ? (id === 'approval' ? '#FF6B6B' : accent) : '#F5F5F7', color: historyTab === id ? '#FFF' : (id === 'approval' && pendingCount > 0 ? '#FF6B6B' : '#6E6E73'), fontWeight: historyTab === id ? 600 : (id === 'approval' && pendingCount > 0 ? 600 : 400), position: 'relative' }}
+                  >
+                    {label}
+                    {id === 'approval' && pendingCount > 0 && (
+                      <span style={{ marginLeft: 5, background: historyTab === 'approval' ? 'rgba(255,255,255,0.35)' : '#FF6B6B', color: historyTab === 'approval' ? '#FFF' : '#FFF', fontSize: 9, fontWeight: 700, padding: '0 5px', borderRadius: 8, verticalAlign: 'middle' }}>{pendingCount}</span>
+                    )}
+                  </button>
+                ))}
+                {historyTab !== 'approval' && (
+                  <span style={{ marginLeft: 'auto', fontSize: 10, color: '#AEAEB2', alignSelf: 'center' }}>
+                    총 {historyTab === 'comment' ? (acctHistory.commentCount || 0) : (acctHistory.dmCount || 0)}건
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Approval Queue */}
+          {historyTab === 'approval' && (() => {
+            const pendingItems = approvalQueue[tab] || [];
+            if (pendingItems.length === 0) {
+              return <div style={{ fontSize: 11, color: '#AEAEB2', textAlign: 'center', padding: '20px 0' }}>긴급/승인 대기 없음 ✓</div>;
+            }
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {pendingItems.map((item) => (
+                  <div key={item.id} style={{ padding: '10px 12px', borderRadius: 8, background: '#FFF8F0', border: '1px solid #FFD0B0' }}>
+                    {/* 헤더 */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <span style={{ fontSize: 9, fontWeight: 700, background: '#FF6B6B', color: '#FFF', padding: '1px 6px', borderRadius: 4 }}>
+                          {item.type === 'comment' ? '댓글' : 'DM'}
+                        </span>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: '#1D1D1F' }}>{item.author || '익명'}</span>
+                        <span style={{ fontSize: 9, color: '#FF6B6B', fontWeight: 500 }}>⚠ {item.urgentReason || '긴급'}</span>
+                      </div>
+                      <span style={{ fontSize: 9, color: '#AEAEB2' }}>{timeAgo(item.queuedAt)}</span>
+                    </div>
+                    {/* 원문 */}
+                    <div style={{ fontSize: 10, color: '#6E6E73', background: '#FFF', padding: '6px 8px', borderRadius: 5, marginBottom: 8, lineHeight: 1.5, border: '1px solid #F0E0D0' }}>
+                      "{item.text}"
+                    </div>
+                    {/* 예시 답변 (수정 가능) */}
+                    <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 500, marginBottom: 4 }}>AI 예시 답변 (수정 후 승인)</div>
+                    <textarea
+                      value={editingReply[item.id] !== undefined ? editingReply[item.id] : (item.suggestedReply || '')}
+                      onChange={e => setEditingReply(prev => ({ ...prev, [item.id]: e.target.value }))}
+                      rows={3}
+                      placeholder="AI가 예시 답변을 생성합니다..."
+                      style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid #E5C9A0', background: '#FFFDF8', fontSize: 11, fontFamily: 'inherit', color: '#1D1D1F', outline: 'none', resize: 'vertical', lineHeight: 1.5, boxSizing: 'border-box', marginBottom: 8 }}
+                    />
+                    {/* 버튼 */}
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        onClick={() => handleApprove(item)}
+                        disabled={approvingId === item.id}
+                        style={{ flex: 1, padding: '7px', borderRadius: 7, border: 'none', background: approvingId === item.id ? '#E5E5EA' : '#34C759', color: approvingId === item.id ? '#AEAEB2' : '#FFF', cursor: approvingId === item.id ? 'default' : 'pointer', fontSize: 11, fontWeight: 600, fontFamily: 'inherit' }}
+                      >
+                        {approvingId === item.id ? '발송 중...' : '✓ 승인 발송'}
+                      </button>
+                      <button
+                        onClick={() => handleReject(item)}
+                        disabled={rejectingId === item.id}
+                        style={{ padding: '7px 14px', borderRadius: 7, border: 'none', background: rejectingId === item.id ? '#E5E5EA' : '#F5F5F7', color: rejectingId === item.id ? '#AEAEB2' : '#6E6E73', cursor: rejectingId === item.id ? 'default' : 'pointer', fontSize: 11, fontFamily: 'inherit' }}
+                      >
+                        {rejectingId === item.id ? '처리 중...' : '✗ 거부'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* History list (comment/dm) */}
+          {historyTab !== 'approval' && (() => {
             const logs = historyTab === 'comment' ? (acctHistory.comments || []) : (acctHistory.dms || []);
             if (logs.length === 0) {
               return <div style={{ fontSize: 11, color: '#AEAEB2', textAlign: 'center', padding: '16px 0' }}>기록 없음</div>;
