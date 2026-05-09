@@ -2,7 +2,7 @@
 // POST { account, url } → 시작 URL → 내부 링크 탐색 → 제품 페이지 크롤 → Claude 통합 분석 → Redis
 // DELETE { account, url } → 학습 항목 삭제
 // GET  { account }       → 학습된 URL 목록
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 300 };
 
 import { Redis } from '@upstash/redis';
 
@@ -153,18 +153,22 @@ async function crawlSite(startUrl) {
     .map(p => p.url)
     .slice(0, MAX_IMAGE_PAGES);
 
-  const visionResults = [];
-  for (const productUrl of productUrls) {
+  // 제품 페이지 Vision 분석 - 병렬 실행
+  const visionJobs = productUrls.map(async (productUrl) => {
     try {
-      // 이미지 URL 추출을 위해 더 긴 컨텐츠로 재fetch (최대 15000자)
-      const fullContent = await fetchWithJina(productUrl, 18000, 15000).catch(() => null);
-      if (!fullContent) continue;
+      const fullContent = await fetchWithJina(productUrl, 20000, 15000);
+      if (!fullContent) return null;
       const imgUrls = extractImageUrls(fullContent, startUrl);
-      if (imgUrls.length === 0) continue;
+      if (imgUrls.length === 0) return null;
+      console.log(`[Vision] ${productUrl} → 이미지 ${imgUrls.length}개`);
       const visionText = await readImagesWithVision(imgUrls);
-      if (visionText) visionResults.push(`[이미지 분석 — ${productUrl}]\n${visionText}`);
-    } catch {}
-  }
+      return visionText ? `[이미지 분석 — ${productUrl}]\n${visionText}` : null;
+    } catch (e) {
+      console.warn(`[Vision] 실패: ${productUrl}`, e.message);
+      return null;
+    }
+  });
+  const visionResults = (await Promise.all(visionJobs)).filter(Boolean);
 
   const textContent = pages
     .map(p => `=== ${p.url} ===\n${p.content}`)
