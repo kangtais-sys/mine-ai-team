@@ -42,38 +42,65 @@ async function fetchSafe(url) {
 function extractImageUrls(markdown, baseUrl) {
   const base = new URL(baseUrl);
   const seen = new Set();
-  const imgs = [];
-  // 마크다운 이미지 링크 파싱: ![alt](url)
+  const detail = []; // NNEditor (Cafe24 상세 이미지) 우선
+  const fallback = [];
   const re = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/gi;
   let m;
   while ((m = re.exec(markdown)) !== null) {
-    const imgUrl = m[1].split('?')[0]; // 쿼리스트링 제거
+    const imgUrl = m[1].split('?')[0];
     if (!/\.(jpg|jpeg|png|webp)$/i.test(imgUrl)) continue;
     try {
       const u = new URL(imgUrl);
       if (u.hostname !== base.hostname) continue;
-      // 로고·아이콘·썸네일 제외, 상품 상세 이미지만
-      const skip = ['/category/', '/logo/', '/icon', '/small/', '/tiny/', 'glo.png'];
+      const skip = ['/category/', '/logo/', '/icon', '/small/', '/tiny/', 'glo.png', 'btn_', 'snapfit', 'kakao'];
       if (skip.some(s => imgUrl.includes(s))) continue;
       if (seen.has(imgUrl)) continue;
       seen.add(imgUrl);
-      imgs.push(imgUrl);
+      // Cafe24 상세 페이지 이미지(NNEditor)와 appfiles 분리
+      if (imgUrl.includes('/NNEditor/') || imgUrl.includes('/upload/')) {
+        detail.push(imgUrl);
+      } else {
+        fallback.push(imgUrl);
+      }
     } catch {}
   }
-  return imgs;
+  return [...detail, ...fallback]; // 상세 이미지 우선
 }
 
-// Claude Vision으로 이미지에서 텍스트 추출
+// 이미지 다운로드 후 base64 변환 (URL 방식보다 신뢰성 높음)
+async function imageToBase64(url) {
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MilliliBot/1.0)' },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new Error(`Image fetch ${res.status}`);
+  const buf = await res.arrayBuffer();
+  const b64 = Buffer.from(buf).toString('base64');
+  const ext = url.split('.').pop().toLowerCase();
+  const mediaType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+  return { b64, mediaType };
+}
+
+// Claude Vision으로 이미지에서 텍스트 추출 (base64 방식)
 async function readImagesWithVision(imageUrls) {
   if (!imageUrls.length) return '';
   const targets = imageUrls.slice(0, MAX_IMAGES_PER_PAGE);
-  const imageContent = targets.map(url => ({
-    type: 'image',
-    source: { type: 'url', url },
-  }));
+
+  // 이미지 다운로드 (병렬)
+  const downloads = await Promise.allSettled(targets.map(url => imageToBase64(url)));
+  const imageContent = [];
+  for (const dl of downloads) {
+    if (dl.status !== 'fulfilled') continue;
+    imageContent.push({
+      type: 'image',
+      source: { type: 'base64', media_type: dl.value.mediaType, data: dl.value.b64 },
+    });
+  }
+  if (imageContent.length === 0) return '';
+
   imageContent.push({
     type: 'text',
-    text: '이 이미지들은 한국 뷰티 브랜드 쇼핑몰의 제품 상세 이미지입니다. 이미지에서 텍스트 정보를 읽어 제품명, 성분, 효능, 가격, 용량, 사용법, 주의사항을 추출해 한국어로 정리해주세요. 이미지에 텍스트가 없으면 "텍스트 없음"이라고만 답하세요.',
+    text: '이 이미지들은 한국 뷰티 브랜드 쇼핑몰의 제품 상세 이미지입니다. 이미지에서 텍스트를 읽어 제품명, 성분, 효능, 가격, 용량, 사용법, 주의사항을 한국어로 정리해주세요. 텍스트가 없으면 "텍스트 없음"이라고만 답하세요.',
   });
 
   try {
@@ -91,9 +118,11 @@ async function readImagesWithVision(imageUrls) {
       }),
     });
     const data = await res.json();
+    if (data.error) { console.error('[Vision] Claude 에러:', JSON.stringify(data.error)); return ''; }
     const text = data.content?.[0]?.text?.trim() || '';
+    console.log(`[Vision] 추출 결과 (${imageContent.length - 1}이미지): ${text.slice(0, 80)}`);
     return text === '텍스트 없음' ? '' : text;
-  } catch { return ''; }
+  } catch (e) { console.error('[Vision] fetch 실패:', e.message); return ''; }
 }
 
 // ────────────────────────────────────────────────
