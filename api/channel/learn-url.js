@@ -1,5 +1,5 @@
 // URL 학습 API — 브랜드/제품 사이트를 학습해서 응대에 활용
-// POST { account, url } → 페이지 크롤 → Claude 요약 → Redis 저장
+// POST { account, url } → Jina Reader로 크롤 (JS 렌더링 포함) → Claude 요약 → Redis 저장
 // DELETE { account, url } → 학습 항목 삭제
 // GET { account } → 학습된 URL 목록
 export const config = { maxDuration: 30 };
@@ -12,32 +12,27 @@ const redis = new Redis({
 });
 
 const MAX_URLS_PER_ACCOUNT = 10;
-const MAX_CONTENT_CHARS = 8000;
+const MAX_CONTENT_CHARS = 12000;
 
-// HTML → 순수 텍스트 추출
-function extractText(html) {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
-    .replace(/<footer[\s\S]*?<\/footer>/gi, '')
-    .replace(/<header[\s\S]*?<\/header>/gi, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, MAX_CONTENT_CHARS);
+// Jina AI Reader로 URL 크롤 (JS 렌더링 포함, 가입 불필요)
+async function fetchWithJina(url) {
+  const jinaUrl = `https://r.jina.ai/${url}`;
+  const response = await fetch(jinaUrl, {
+    headers: {
+      'Accept': 'text/plain',
+      'X-Return-Format': 'markdown',
+    },
+    signal: AbortSignal.timeout(25000),
+  });
+  if (!response.ok) throw new Error(`Jina HTTP ${response.status}`);
+  const text = await response.text();
+  if (!text || text.length < 50) throw new Error('페이지 내용을 읽을 수 없습니다');
+  return text.slice(0, MAX_CONTENT_CHARS);
 }
 
-// 페이지 제목 추출
-function extractTitle(html) {
-  const m = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+// 마크다운에서 제목 추출 (Jina는 첫 줄에 # Title 형태로 반환)
+function extractTitleFromMarkdown(markdown) {
+  const m = markdown.match(/^#\s+(.+)$/m);
   return m ? m[1].trim().slice(0, 100) : '';
 }
 
@@ -95,23 +90,12 @@ export default async function handler(req, res) {
   const existing = await getKnowledge(account);
   const alreadyLearned = existing.find(i => i.url === url);
 
-  // 1. URL 크롤
+  // 1. URL 크롤 (Jina AI Reader — JS 렌더링 포함, 가입 불필요)
   let rawText = '';
   let title = '';
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; MilliliBot/1.0; +https://mine-ai-team.vercel.app)',
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
-      },
-      signal: AbortSignal.timeout(12000),
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const html = await response.text();
-    rawText = extractText(html);
-    title = extractTitle(html);
-    if (!rawText || rawText.length < 100) throw new Error('페이지 내용을 읽을 수 없습니다');
+    rawText = await fetchWithJina(url);
+    title = extractTitleFromMarkdown(rawText);
   } catch (e) {
     return res.status(400).json({ error: `URL 접근 실패: ${e.message}` });
   }
@@ -144,7 +128,7 @@ export default async function handler(req, res) {
   "faq": ["자주묻는Q: 답변", ...],
   "keyFacts": ["기타 중요 사실 1", ...]
 }`,
-        messages: [{ role: 'user', content: `웹페이지 내용:\n${rawText}` }],
+        messages: [{ role: 'user', content: `웹페이지 내용 (마크다운 형식):\n${rawText}` }],
       }),
     });
     const data = await claudeRes.json();
