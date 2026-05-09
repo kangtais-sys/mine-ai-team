@@ -13,6 +13,7 @@
     { "path": "/api/cron/promo-calendar", "schedule": "0 2 * * 1" },
     { "path": "/api/cron/ad-optimize", "schedule": "0 4 * * *" },
     { "path": "/api/cron/chief-report", "schedule": "0 23 * * *" },
+    { "path": "/api/cron/inbox", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/channel-report", "schedule": "0 23 * * *" },
     { "path": "/api/cron/drive-upload", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/sisuru-trend", "schedule": "0 14 * * *" },
