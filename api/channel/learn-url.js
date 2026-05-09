@@ -86,20 +86,49 @@ async function getScreenshots(startUrl) {
 }
 
 // ────────────────────────────────────────────────
-// 2단계: Claude Vision으로 스크린샷 읽기
+// 2단계: Microlink 스크린샷 → base64 변환
+// ────────────────────────────────────────────────
+async function screenshotToBase64(imgUrl) {
+  try {
+    const res = await fetch(imgUrl, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return null;
+    const buf = await res.arrayBuffer();
+    // 5MB 초과 시 스킵 (Claude 제한)
+    if (buf.byteLength > 5 * 1024 * 1024) {
+      console.log('[LearnURL] 스크린샷 너무 큼, 스킵:', buf.byteLength);
+      return null;
+    }
+    const b64 = Buffer.from(buf).toString('base64');
+    const ct = res.headers.get('content-type') || 'image/png';
+    return { b64, mediaType: ct.split(';')[0] || 'image/png' };
+  } catch (e) {
+    console.log('[LearnURL] 스크린샷 다운로드 실패:', e.message);
+    return null;
+  }
+}
+
+// ────────────────────────────────────────────────
+// 3단계: Claude Vision으로 스크린샷 읽기
 // ────────────────────────────────────────────────
 async function analyzeWithVision(screenshots, textContent, accountName) {
   if (screenshots.length === 0 && !textContent) return null;
 
   const content = [];
 
-  // 스크린샷 이미지 추가 (URL 방식 — Microlink CDN이므로 차단 없음)
-  for (const s of screenshots.slice(0, 4)) {
+  // 스크린샷 → base64 변환 (병렬, 최대 3개)
+  const b64Jobs = screenshots.slice(0, 3).map(s => screenshotToBase64(s.imgUrl));
+  const b64Results = await Promise.all(b64Jobs);
+
+  let imgCount = 0;
+  for (const r of b64Results) {
+    if (!r) continue;
     content.push({
       type: 'image',
-      source: { type: 'url', url: s.imgUrl },
+      source: { type: 'base64', media_type: r.mediaType, data: r.b64 },
     });
+    imgCount++;
   }
+  console.log(`[LearnURL] Vision에 이미지 ${imgCount}개 전송`);
 
   // 텍스트 내용도 함께 전달
   const textPart = textContent
@@ -138,12 +167,57 @@ async function analyzeWithVision(screenshots, textContent, accountName) {
   const data = await res.json();
   if (data.error) {
     console.error('[LearnURL] Claude 에러:', JSON.stringify(data.error));
+    // 이미지 없이 텍스트만으로 재시도
+    if (textContent) {
+      console.log('[LearnURL] 텍스트만으로 재시도');
+      return analyzeTextOnly(textContent, accountName);
+    }
     return null;
   }
 
   const raw = data.content?.[0]?.text?.trim() || '';
-  console.log('[LearnURL] Claude 응답:', raw.slice(0, 100));
+  console.log('[LearnURL] Claude 응답:', raw.slice(0, 150));
 
+  try {
+    return JSON.parse(raw.replace(/```json\n?|```\n?/g, '').trim());
+  } catch {
+    return { keyFacts: [raw.slice(0, 500)] };
+  }
+}
+
+// 이미지 없이 텍스트만으로 분석 (fallback)
+async function analyzeTextOnly(textContent, accountName) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-20250514',
+      max_tokens: 1000,
+      messages: [{
+        role: 'user',
+        content: `당신은 ${accountName}의 SNS 응대 AI입니다.
+아래 쇼핑몰 텍스트에서 고객 응대에 필요한 정보를 추출하세요.
+반드시 JSON만 반환. 마크다운 없이.
+{
+  "products": ["제품명 — 특징/성분/효능/가격", ...],
+  "brand": "브랜드 핵심 메시지",
+  "channels": "구매처 정보",
+  "faq": ["Q: 답변", ...],
+  "keyFacts": ["중요 사실", ...]
+}
+
+[텍스트]
+${textContent.slice(0, 4000)}`,
+      }],
+    }),
+  });
+  const data = await res.json();
+  if (data.error) return null;
+  const raw = data.content?.[0]?.text?.trim() || '';
   try {
     return JSON.parse(raw.replace(/```json\n?|```\n?/g, '').trim());
   } catch {
