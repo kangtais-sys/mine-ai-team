@@ -124,7 +124,7 @@ export default async function handler(req, res) {
     for (const ag of agentDefs) {
       try {
         const resp = await anthropic.messages.create({
-          model: 'claude-3-5-haiku-20241022',
+          model: 'claude-sonnet-4-20250514',
           max_tokens: 200,
           messages: [{ role: 'user', content: ag.prompt }],
         });
