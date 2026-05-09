@@ -1,8 +1,16 @@
 import { create } from 'zustand';
 
+// Parse initial agent from URL hash (e.g. #chat/channel → 'channel')
+function parseInitialAgent() {
+  const hash = window.location.hash.replace(/^#\/?/, '');
+  const [page, agentId] = hash.split('/');
+  if (page === 'chat' && agentId) return agentId;
+  return 'channel'; // fallback to first valid agent
+}
+
 const useChatStore = create((set, get) => ({
   conversations: {},
-  activeAgent: 'chief',
+  activeAgent: parseInitialAgent(),
   isLoading: false,
 
   setActiveAgent: (agentId) => set({ activeAgent: agentId }),

@@ -1167,6 +1167,9 @@ export default function ChatView() {
   const agent = getAgent(activeAgent);
   const messages = conversations[activeAgent] || [];
 
+  // Guard: agent not found (e.g. 'chief' default before URL sync)
+  if (!agent) return null;
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
