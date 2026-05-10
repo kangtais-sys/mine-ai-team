@@ -10,15 +10,19 @@ import {
 export const config = { maxDuration: 60 };
 
 const ZERNIO = 'https://zernio.com/api/v1';
-const zFetch = (path, opts = {}) =>
-  fetch(`${ZERNIO}${path}`, {
+const zFetch = async (path, opts = {}) => {
+  const r = await fetch(`${ZERNIO}${path}`, {
     ...opts,
     headers: {
       'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`,
       'Content-Type': 'application/json',
       ...opts.headers,
     },
-  }).then(r => r.json());
+  });
+  const text = await r.text();
+  try { return JSON.parse(text); }
+  catch { return { error: `HTTP ${r.status}`, raw: text.slice(0, 200) }; }
+};
 
 // Zernio 프로필 ID → 계정 (웹훅 실측값 기준)
 const PROFILE_TO_ACCOUNT = {
@@ -64,12 +68,18 @@ export default async function handler(req, res) {
 
   try {
     const [commentsData, messagesData] = await Promise.all([
-      zFetch('/inbox/comments?status=unanswered&limit=30'),
-      zFetch('/inbox/messages?status=unanswered&limit=15'),
+      zFetch('/inbox/comments?limit=50'),
+      zFetch('/inbox/messages?limit=20'),
     ]);
+
+    if (commentsData.error) console.warn('[Inbox Cron] comments API 오류:', commentsData.error, commentsData.raw?.slice(0,100));
+    if (messagesData.error) console.warn('[Inbox Cron] messages API 오류:', messagesData.error, messagesData.raw?.slice(0,100));
 
     const comments = Array.isArray(commentsData.comments || commentsData) ? (commentsData.comments || commentsData) : [];
     const messages = Array.isArray(messagesData.messages || messagesData) ? (messagesData.messages || messagesData) : [];
+
+    // 구조 디버그 (처음 한 번)
+    if (comments[0]) console.log('[Inbox Cron] 댓글 샘플 키:', Object.keys(comments[0]).join(','), '| id:', comments[0].id, '| _id:', comments[0]._id);
 
     // ── 댓글 처리 ──
     for (const c of comments) {
