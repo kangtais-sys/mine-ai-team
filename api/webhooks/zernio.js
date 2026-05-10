@@ -93,48 +93,22 @@ async function processItem({ type, itemId, text, author, account, accountUsernam
   const reply = await callClaude(systemPrompt, `${type === 'comment' ? '댓글' : 'DM'}: "${text}"`);
   if (!reply || reply === 'SKIP') return { skipped: true, reason: 'skip' };
 
-  // Zernio 인박스는 "게시물 목록"을 반환 (팔로워 개별 댓글 X)
-  // → platformPostId로 인박스 게시물 찾아서 해당 게시물 ID로 reply 엔드포인트 호출
-  // → 답변 텍스트에 @{author} 멘션 포함해 팔로워에게 알림 전송
-  const inboxPath = type === 'comment' ? 'comments' : 'messages';
-  let zernioId = itemId;
-  let inboxDebug = '';
-  try {
-    const inbox = await zFetch(`/inbox/${inboxPath}?limit=200`);
-    const items = Array.isArray(inbox?.data) ? inbox.data
-      : Array.isArray(inbox) ? inbox
-      : (inbox[inboxPath] || inbox.items || []);
-    inboxDebug = `items:${items.length}`;
-    if (items.length > 0) {
-      // 1순위: platformPostId로 게시물 매칭 (가장 정확)
-      // 2순위: itemId 직접 매칭
-      // 3순위: 텍스트 부분 매칭
-      const textNorm = text.trim().slice(0, 50);
-      const found = (platformPostId && items.find(i => String(i.id) === String(platformPostId)))
-        || items.find(i => String(i.id) === String(itemId))
-        || items.find(i =>
-            (i.content || i.text || '').trim().startsWith(textNorm) &&
-            (!i.accountUsername || !accountUsername || i.accountUsername === accountUsername)
-          );
-      if (found?.id) zernioId = String(found.id);
-      inboxDebug += ` found:${!!found} matchBy:${found ? (platformPostId && String(found.id) === String(platformPostId) ? 'postId' : 'other') : 'none'} zernioId:${String(zernioId).slice(0,12)}`;
-    }
-  } catch (e) { inboxDebug = `error:${e.message}`; }
-
-  // 댓글의 경우 @멘션으로 팔로워에게 알림 (게시물 댓글로 등록됨)
+  // 댓글의 경우 @멘션으로 팔로워에게 알림
   const replyText = (type === 'comment' && author) ? `@${author} ${reply}` : reply;
 
-  // Zernio 댓글 reply API: POST /inbox/comments/{postId}
-  // body: { accountId (Zernio 프로필 ID), commentId (팔로워 댓글 ID), message }
-  // ref: https://docs.zernio.com
+  // Zernio API 정확한 엔드포인트:
+  // 댓글: POST /comments/{commentId}/reply  body: { text }
+  // DM:   POST /messages/conversations/{conversationId}/messages  body: { text }
+  // ref: https://docs.zernio.com/api/openapi
   let result;
+  let inboxDebug = 'direct';
   if (type === 'comment') {
-    result = await zFetch(`/inbox/comments/${zernioId}`, {
+    result = await zFetch(`/comments/${itemId}/reply`, {
       method: 'POST',
-      body: JSON.stringify({ accountId: profileId, commentId: itemId, message: replyText }),
+      body: JSON.stringify({ text: replyText }),
     });
   } else {
-    result = await zFetch(`/inbox/messages/${zernioId}/reply`, {
+    result = await zFetch(`/inbox/messages/${itemId}/reply`, {
       method: 'POST',
       body: JSON.stringify({ text: replyText }),
     });
