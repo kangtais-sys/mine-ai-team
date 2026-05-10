@@ -93,23 +93,27 @@ async function processItem({ type, itemId, text, author, account, accountUsernam
   const reply = await callClaude(systemPrompt, `${type === 'comment' ? '댓글' : 'DM'}: "${text}"`);
   if (!reply || reply === 'SKIP') return { skipped: true, reason: 'skip' };
 
-  // 웹훅 itemId는 Instagram platform ID → Zernio 내부 _id 조회
+  // 웹훅 itemId로 Zernio reply 시도
+  // Zernio inbox의 id가 Instagram platform ID와 동일할 수 있음 → 직접 사용
   const inboxPath = type === 'comment' ? 'comments' : 'messages';
   let zernioId = itemId;
   let inboxDebug = '';
   try {
-    // limit 200 + accountUsername으로 필터
     const inbox = await zFetch(`/inbox/${inboxPath}?limit=200`);
-    const items = Array.isArray(inbox) ? inbox : (inbox[inboxPath] || inbox.data || inbox.items || []);
+    const items = Array.isArray(inbox?.data) ? inbox.data
+      : Array.isArray(inbox) ? inbox
+      : (inbox[inboxPath] || inbox.items || []);
     inboxDebug = `items:${items.length}`;
     if (items.length > 0) {
-      const textNorm = text.trim();
-      const found = items.find(i =>
-        (i.content || i.text || '').trim() === textNorm &&
-        (!i.accountUsername || i.accountUsername === accountUsername)
-      );
-      if (found?.id) zernioId = found.id;
-      inboxDebug += ` found:${!!found} zernioId:${zernioId.slice(0,12)}`;
+      const textNorm = text.trim().slice(0, 50); // 앞 50자로 부분 매칭
+      // 1순위: ID 직접 매칭, 2순위: 텍스트 부분 매칭
+      const found = items.find(i => String(i.id) === String(itemId))
+        || items.find(i =>
+            (i.content || i.text || '').trim().startsWith(textNorm) &&
+            (!i.accountUsername || !accountUsername || i.accountUsername === accountUsername)
+          );
+      if (found?.id) zernioId = String(found.id);
+      inboxDebug += ` found:${!!found} zernioId:${String(zernioId).slice(0,12)}`;
     }
   } catch (e) { inboxDebug = `error:${e.message}`; }
 

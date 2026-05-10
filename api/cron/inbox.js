@@ -76,8 +76,13 @@ export default async function handler(req, res) {
     if (commentsData.error) console.warn('[Inbox Cron] comments API 오류:', commentsData.error, commentsData.raw?.slice(0,100));
     if (messagesData.error) console.warn('[Inbox Cron] messages API 오류:', messagesData.error, messagesData.raw?.slice(0,100));
 
-    const comments = Array.isArray(commentsData.comments || commentsData) ? (commentsData.comments || commentsData) : [];
-    const messages = Array.isArray(messagesData.messages || messagesData) ? (messagesData.messages || messagesData) : [];
+    // Zernio inbox API: { data: [...] } 구조
+    const comments = Array.isArray(commentsData?.data) ? commentsData.data
+      : Array.isArray(commentsData?.comments) ? commentsData.comments
+      : Array.isArray(commentsData) ? commentsData : [];
+    const messages = Array.isArray(messagesData?.data) ? messagesData.data
+      : Array.isArray(messagesData?.messages) ? messagesData.messages
+      : Array.isArray(messagesData) ? messagesData : [];
 
     // 구조 디버그 (처음 한 번)
     if (comments[0]) console.log('[Inbox Cron] 댓글 샘플 키:', Object.keys(comments[0]).join(','), '| id:', comments[0].id, '| _id:', comments[0]._id);
