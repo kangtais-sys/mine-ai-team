@@ -86,10 +86,16 @@ export default async function handler(req, res) {
       : Array.isArray(messagesData) ? messagesData : [];
 
     // 구조 디버그 (처음 한 번)
-    if (comments[0]) console.log('[Inbox Cron] 댓글 샘플 키:', Object.keys(comments[0]).join(','), '| id:', comments[0].id, '| _id:', comments[0]._id);
+    if (comments[0]) console.log('[Inbox Cron] 댓글 샘플 키:', Object.keys(comments[0]).join(','), '| id:', comments[0].id);
 
-    // ── 댓글 처리 ──
-    for (const c of comments) {
+    // ⚠️ Zernio /inbox/comments는 팔로워 댓글이 아닌 "게시물" 목록을 반환함.
+    // 각 item의 content = 게시물 캡션(계정 본인 글). 팔로워 댓글 자동응대에 쓰면 안 됨.
+    // 팔로워 댓글 응대는 webhook(/api/webhooks/zernio)이 실시간으로 처리.
+    // cron은 댓글 처리 스킵, DM만 처리.
+    const SKIP_COMMENT_CRON = true;
+
+    // ── 댓글 처리 (비활성화) ──
+    if (!SKIP_COMMENT_CRON) for (const c of comments) {
       try {
         const profileId = c.profileId || c.profile?._id;
         const username = c.accountUsername || c.account?.username || '';
