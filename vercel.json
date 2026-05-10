@@ -75,6 +75,10 @@
     {
       "path": "/api/sales/amazon",
       "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/sales/cafe24",
+      "schedule": "0 1 * * *"
     }
   ],
   "rewrites": [
