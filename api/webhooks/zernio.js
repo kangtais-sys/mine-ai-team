@@ -8,15 +8,19 @@ import {
 export const config = { maxDuration: 30 };
 
 const ZERNIO = 'https://zernio.com/api/v1';
-const zFetch = (path, opts = {}) =>
-  fetch(`${ZERNIO}${path}`, {
+const zFetch = async (path, opts = {}) => {
+  const r = await fetch(`${ZERNIO}${path}`, {
     ...opts,
     headers: {
       'Authorization': `Bearer ${process.env.ZERNIO_API_KEY}`,
       'Content-Type': 'application/json',
       ...opts.headers,
     },
-  }).then(r => r.json());
+  });
+  const text = await r.text();
+  try { return JSON.parse(text); }
+  catch { return { error: `HTTP ${r.status}`, raw: text.slice(0, 200) }; }
+};
 
 // ────────────────────────────────────────────────
 // Zernio 프로필 ID → 계정 키 (웹훅 실측값 기준)
@@ -89,16 +93,26 @@ async function processItem({ type, itemId, text, author, account, settings }) {
   const reply = await callClaude(systemPrompt, `${type === 'comment' ? '댓글' : 'DM'}: "${text}"`);
   if (!reply || reply === 'SKIP') return { skipped: true, reason: 'skip' };
 
-  const result = await zFetch(`/inbox/${type === 'comment' ? 'comments' : 'messages'}/${itemId}/reply`, {
+  // 웹훅 itemId는 Instagram ID → Zernio 내부 _id 조회
+  const inboxPath = type === 'comment' ? 'comments' : 'messages';
+  let zernioId = itemId;
+  try {
+    const inbox = await zFetch(`/inbox/${inboxPath}?limit=50&status=unanswered`);
+    const items = inbox[inboxPath] || inbox || [];
+    const found = items.find(i => (i.id === itemId || i.platformCommentId === itemId || i.platformId === itemId));
+    if (found?._id) zernioId = found._id;
+  } catch {}
+
+  const result = await zFetch(`/inbox/${inboxPath}/${zernioId}/reply`, {
     method: 'POST',
     body: JSON.stringify({ text: reply }),
   });
 
   const success = !result.error;
-  await logAction(type, account, { itemId, author, text: text.slice(0, 100), reply, success });
+  await logAction(type, account, { itemId, zernioId, author, text: text.slice(0, 100), reply, success, resultRaw: result.raw });
   if (success) await recordUsage(type, account, settings);
-  console.log(`[Zernio][${account}] ${type} 답장: "${reply.slice(0, 40)}"`);
-  return { success, reply };
+  console.log(`[Zernio][${account}] ${type} 답장 (${success ? '성공' : '실패'}): "${reply.slice(0, 40)}"`);
+  return { success, reply, zernioId };
 }
 
 // ────────────────────────────────────────────────
