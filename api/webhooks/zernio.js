@@ -93,15 +93,29 @@ async function processItem({ type, itemId, text, author, account, settings }) {
   const reply = await callClaude(systemPrompt, `${type === 'comment' ? '댓글' : 'DM'}: "${text}"`);
   if (!reply || reply === 'SKIP') return { skipped: true, reason: 'skip' };
 
-  // 웹훅 itemId는 Instagram ID → Zernio 내부 _id 조회
+  // 웹훅 itemId는 Instagram platform ID → Zernio 내부 _id 조회
   const inboxPath = type === 'comment' ? 'comments' : 'messages';
   let zernioId = itemId;
+  let inboxDebug = '';
   try {
-    const inbox = await zFetch(`/inbox/${inboxPath}?limit=50&status=unanswered`);
-    const items = inbox[inboxPath] || inbox || [];
-    const found = items.find(i => (i.id === itemId || i.platformCommentId === itemId || i.platformId === itemId));
-    if (found?._id) zernioId = found._id;
-  } catch {}
+    // status 필터 없이 최근 50개 조회
+    const inbox = await zFetch(`/inbox/${inboxPath}?limit=50`);
+    const items = Array.isArray(inbox) ? inbox : (inbox[inboxPath] || inbox.data || inbox.items || []);
+    inboxDebug = `items:${items.length}`;
+    if (items.length > 0) {
+      // 첫 아이템 구조 로깅 (디버그)
+      const sample = items[0];
+      inboxDebug += ` keys:${Object.keys(sample).join(',')}`;
+      const found = items.find(i =>
+        i.id === itemId || i._id === itemId ||
+        i.platformCommentId === itemId || i.platformId === itemId ||
+        i.commentId === itemId || i.instagramId === itemId ||
+        String(i.id) === String(itemId)
+      );
+      if (found?._id) zernioId = found._id;
+      inboxDebug += ` found:${!!found} zernioId:${zernioId.slice(0,8)}`;
+    }
+  } catch (e) { inboxDebug = `error:${e.message}`; }
 
   const result = await zFetch(`/inbox/${inboxPath}/${zernioId}/reply`, {
     method: 'POST',
@@ -109,7 +123,7 @@ async function processItem({ type, itemId, text, author, account, settings }) {
   });
 
   const success = !result.error;
-  await logAction(type, account, { itemId, zernioId, author, text: text.slice(0, 100), reply, success, resultRaw: result.raw });
+  await logAction(type, account, { itemId, zernioId, author, text: text.slice(0, 100), reply, success, inboxDebug, resultRaw: result.raw?.slice(0,100) });
   if (success) await recordUsage(type, account, settings);
   console.log(`[Zernio][${account}] ${type} 답장 (${success ? '성공' : '실패'}): "${reply.slice(0, 40)}"`);
   return { success, reply, zernioId };
