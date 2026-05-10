@@ -48,7 +48,7 @@ function detectAccount(profileId, username) {
 // ────────────────────────────────────────────────
 // 댓글/DM 처리 공통 함수
 // ────────────────────────────────────────────────
-async function processItem({ type, itemId, text, author, account, settings }) {
+async function processItem({ type, itemId, text, author, account, accountUsername, settings }) {
   // 활성 시간대 체크 (dupe key 설정 전 — 비활성 시간엔 dupe key 안 씀)
   if (!isActiveHour(settings)) {
     const kstH = new Date(Date.now() + 9 * 3600000).getUTCHours();
@@ -98,14 +98,15 @@ async function processItem({ type, itemId, text, author, account, settings }) {
   let zernioId = itemId;
   let inboxDebug = '';
   try {
-    const inbox = await zFetch(`/inbox/${inboxPath}?limit=50`);
+    // limit 200 + accountUsername으로 필터
+    const inbox = await zFetch(`/inbox/${inboxPath}?limit=200`);
     const items = Array.isArray(inbox) ? inbox : (inbox[inboxPath] || inbox.data || inbox.items || []);
     inboxDebug = `items:${items.length}`;
     if (items.length > 0) {
-      // Zernio 인박스: id=Zernio고유ID, content=댓글텍스트 → 텍스트+시간으로 매칭
-      const now = Date.now();
+      const textNorm = text.trim();
       const found = items.find(i =>
-        (i.content || i.text || '').trim() === text.trim()
+        (i.content || i.text || '').trim() === textNorm &&
+        (!i.accountUsername || i.accountUsername === accountUsername)
       );
       if (found?.id) zernioId = found.id;
       inboxDebug += ` found:${!!found} zernioId:${zernioId.slice(0,12)}`;
@@ -170,7 +171,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ received: true, skipped: 'is_reply' });
     }
     try {
-      const result = await processItem({ type: 'comment', itemId, text, author, account, settings });
+      const result = await processItem({ type: 'comment', itemId, text, author, account, accountUsername, settings });
       return res.status(200).json({ received: true, ...result });
     } catch (e) {
       console.error(`[Zernio][${account}] 댓글 오류:`, e.message);
