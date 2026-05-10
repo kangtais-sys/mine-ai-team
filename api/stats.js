@@ -369,7 +369,9 @@ export default async function handler(req, res) {
 
     // === G3. Agent last report timestamps from Redis ===
     const agentReportKeys = Object.keys(agentConnections);
-    const todayStr = now.toISOString().slice(0, 10);
+    // KST 날짜 사용 (UTC+9) — daily-report cron이 KST 기준으로 보고서 키를 생성하기 때문
+    const kstToday = new Date(now.getTime() + 9 * 3600000);
+    const todayStr = kstToday.toISOString().slice(0, 10);
     const agentReports = {};
     await Promise.all(agentReportKeys.map(async (id) => {
       const r = await redis.get(`agent:report:${id}:${todayStr}`);
