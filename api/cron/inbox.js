@@ -54,6 +54,7 @@ export default async function handler(req, res) {
   }
 
   const stats = { replied: 0, skipped: 0, queued: 0, noAccount: 0, errors: 0 };
+  let commentsData = null, messagesData = null;
 
   // 계정별 설정 미리 로드
   const [ymSettings, mmSettings] = await Promise.all([
@@ -67,7 +68,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const [commentsData, messagesData] = await Promise.all([
+    [commentsData, messagesData] = await Promise.all([
       zFetch('/inbox/comments?limit=50'),
       zFetch('/inbox/messages?limit=20'),
     ]);
