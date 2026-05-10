@@ -54,6 +54,7 @@ export default async function handler(req, res) {
   }
 
   const stats = { replied: 0, skipped: 0, queued: 0, noAccount: 0, errors: 0 };
+  const skipReasons = {};
   let commentsData = null, messagesData = null;
 
   // 계정별 설정 미리 로드
@@ -96,21 +97,22 @@ export default async function handler(req, res) {
         if (!account) { stats.noAccount++; continue; }
 
         const settings = account === 'yuminhye' ? ymSettings : mmSettings;
-        if (!settings.autoComment) { stats.skipped++; continue; }
-        if (!isActiveHour(settings)) { stats.skipped++; continue; }
+        const skip = (r) => { stats.skipped++; skipReasons[r] = (skipReasons[r]||0)+1; };
+        if (!settings.autoComment) { skip('autoComment_off'); continue; }
+        if (!isActiveHour(settings)) { skip('inactive_hour'); continue; }
 
         const itemId = c._id || c.id;
         const text = c.text || c.content || '';
         const author = c.author?.username || c.username || '';
-        if (!itemId || !text) { stats.skipped++; continue; }
+        if (!itemId || !text) { skip('no_content'); continue; }
 
         // 일일 한도·쿨다운
         const rateCheck = await checkRateLimit('comment', account, settings);
-        if (rateCheck.blocked) { stats.skipped++; continue; }
+        if (rateCheck.blocked) { skip('rate_limit'); continue; }
 
         // 중복 방지
         const dupeKey = `zernio:replied:comment:${itemId}`;
-        if (await redis.get(dupeKey)) { stats.skipped++; continue; }
+        if (await redis.get(dupeKey)) { skip('duplicate'); continue; }
         await redis.set(dupeKey, true, { ex: 86400 });
 
         const [extraRules, learned, urlKnowledge] = await Promise.all([
@@ -201,12 +203,16 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: e.message });
   }
 
-  console.log('[Inbox Cron] 완료:', stats);
+  const kstH = new Date(Date.now() + 9*3600000).getUTCHours();
+  console.log('[Inbox Cron] 완료:', stats, 'skipReasons:', skipReasons);
   return res.status(200).json({
-    success: true, ...stats,
+    success: true, ...stats, skipReasons,
     debug: {
+      kstHour: kstH,
+      ymAutoComment: ymSettings.autoComment,
+      mmAutoComment: mmSettings.autoComment,
+      commentsCount: (commentsData?.data || []).length,
       commentsRaw: JSON.stringify(commentsData).slice(0, 300),
-      messagesRaw: JSON.stringify(messagesData).slice(0, 200),
     }
   });
 }
