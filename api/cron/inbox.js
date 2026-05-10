@@ -196,5 +196,11 @@ export default async function handler(req, res) {
   }
 
   console.log('[Inbox Cron] 완료:', stats);
-  return res.status(200).json({ success: true, ...stats });
+  return res.status(200).json({
+    success: true, ...stats,
+    debug: {
+      commentsRaw: JSON.stringify(commentsData).slice(0, 300),
+      messagesRaw: JSON.stringify(messagesData).slice(0, 200),
+    }
+  });
 }
