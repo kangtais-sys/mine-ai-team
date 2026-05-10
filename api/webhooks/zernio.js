@@ -48,7 +48,7 @@ function detectAccount(profileId, username) {
 // ────────────────────────────────────────────────
 // 댓글/DM 처리 공통 함수
 // ────────────────────────────────────────────────
-async function processItem({ type, itemId, text, author, account, accountUsername, platformPostId, settings }) {
+async function processItem({ type, itemId, text, author, account, accountUsername, platformPostId, profileId, settings }) {
   // 활성 시간대 체크 (dupe key 설정 전 — 비활성 시간엔 dupe key 안 씀)
   if (!isActiveHour(settings)) {
     const kstH = new Date(Date.now() + 9 * 3600000).getUTCHours();
@@ -124,10 +124,21 @@ async function processItem({ type, itemId, text, author, account, accountUsernam
   // 댓글의 경우 @멘션으로 팔로워에게 알림 (게시물 댓글로 등록됨)
   const replyText = (type === 'comment' && author) ? `@${author} ${reply}` : reply;
 
-  const result = await zFetch(`/inbox/${inboxPath}/${zernioId}/reply`, {
-    method: 'POST',
-    body: JSON.stringify({ text: replyText }),
-  });
+  // Zernio 댓글 reply API: POST /inbox/comments/{postId}
+  // body: { accountId (Zernio 프로필 ID), commentId (팔로워 댓글 ID), message }
+  // ref: https://docs.zernio.com
+  let result;
+  if (type === 'comment') {
+    result = await zFetch(`/inbox/comments/${zernioId}`, {
+      method: 'POST',
+      body: JSON.stringify({ accountId: profileId, commentId: itemId, message: replyText }),
+    });
+  } else {
+    result = await zFetch(`/inbox/messages/${zernioId}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ text: replyText }),
+    });
+  }
 
   const success = !result.error;
   await logAction(type, account, { itemId, zernioId, author, text: text.slice(0, 100), reply: replyText, success, inboxDebug, resultRaw: result.raw?.slice(0,100) });
@@ -183,7 +194,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ received: true, skipped: 'is_reply' });
     }
     try {
-      const result = await processItem({ type: 'comment', itemId, text, author, account, accountUsername, platformPostId, settings });
+      const result = await processItem({ type: 'comment', itemId, text, author, account, accountUsername, platformPostId, profileId, settings });
       return res.status(200).json({ received: true, ...result });
     } catch (e) {
       console.error(`[Zernio][${account}] 댓글 오류:`, e.message);
