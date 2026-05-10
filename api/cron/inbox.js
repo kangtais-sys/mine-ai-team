@@ -204,6 +204,11 @@ export default async function handler(req, res) {
   }
 
   const kstH = new Date(Date.now() + 9*3600000).getUTCHours();
+  const today = new Date(Date.now() + 9*3600000).toISOString().slice(0, 10);
+  const [mmDailyCount, mmCooldown] = await Promise.all([
+    redis.get(`channel:rate:daily:comment:millimilli:${today}`),
+    redis.get(`channel:rate:cooldown:comment:millimilli`),
+  ]);
   console.log('[Inbox Cron] 완료:', stats, 'skipReasons:', skipReasons);
   return res.status(200).json({
     success: true, ...stats, skipReasons,
@@ -211,8 +216,9 @@ export default async function handler(req, res) {
       kstHour: kstH,
       ymAutoComment: ymSettings.autoComment,
       mmAutoComment: mmSettings.autoComment,
+      mmCommentDailyLimit: mmSettings.commentDailyLimit,
+      mmDailyCount, mmCooldown,
       commentsCount: (commentsData?.data || []).length,
-      commentsRaw: JSON.stringify(commentsData).slice(0, 300),
     }
   });
 }
