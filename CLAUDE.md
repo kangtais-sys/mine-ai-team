@@ -6,11 +6,63 @@
 - **GitHub**: kangtais-sys/mine-ai-team
 - **오너**: 유민혜 (MINE) — MILLIMILLI 브랜드 대표, 0.8L 인플루언서 마케팅 플랫폼 대표
 
-## ⚠️ 자동응대 플랫폼 — ZERNIO 전용
+## ⚠️ 자동응대 플랫폼 — ZERNIO 전용 (절대 규칙)
+
+### 파일 규칙
 - **인스타그램 댓글/DM 자동응대는 100% Zernio 경유** — Meta(Instagram) 직접 API 연동 없음
-- `api/webhooks/instagram.js`와 `api/cron/instagram.js`는 미사용 파일임 (수정하지 말 것)
-- 자동응대 관련 코드는 반드시 `api/webhooks/zernio.js`와 `api/cron/inbox.js`에만 적용
-- Zernio 계정 ID 매핑 (웹훅 실측): lala_lounge_=69fca4b192b3d8e85f8cfea6(yuminhye), millimilli.kr=69fbfc1992b3d8e85f86d277, millimilli.us=69fbfd0692b3d8e85f86d882
+- `api/webhooks/instagram.js`와 `api/cron/instagram.js`는 **미사용 파일 — 절대 수정 금지**
+- 자동응대 코드는 반드시 `api/webhooks/zernio.js`와 `api/cron/inbox.js`에만 적용
+
+### Zernio 계정 ID 매핑 (웹훅 실측값)
+| Zernio 프로필 ID | 계정 | 핸들 |
+|---|---|---|
+| 69fca4b192b3d8e85f8cfea6 | yuminhye | lala_lounge_ |
+| 69d08807986d57bb8f72f7e6 | yuminhye | (원래 ID) |
+| 69fbfc1992b3d8e85f86d277 | millimilli | millimilli.kr |
+| 69fbfd0692b3d8e85f86d882 | millimilli | millimilli.us |
+| 69d08cc1986d57bb8f733102 | millimilli | (원래 ID) |
+
+### Zernio API 스펙 (검증 완료 — 추측 금지)
+```
+베이스: https://zernio.com/api/v1
+
+# 댓글 목록 (게시물 단위, 팔로워 댓글 아님)
+GET  /inbox/comments?limit=50      → { data: [...] }  ← .comments 아님, .data 임
+  item 구조: { id, accountId, accountUsername, platform, content(게시물캡션), commentCount, likeCount }
+
+# 팔로워 댓글에 대댓글 달기 ← 이게 진짜 reply 엔드포인트
+POST /comments/{commentId}/reply   → body: { text: "..." }
+  commentId = 웹훅 body.comment.id 그대로 사용
+
+# DM (미검증, 엔드포인트 추후 확인 필요)
+GET  /messages/conversations
+POST /messages/conversations/{conversationId}/messages  → body: { text: "..." }
+```
+
+### Zernio 웹훅 body 구조 (실측)
+```json
+{
+  "event": "comment.received",
+  "comment": {
+    "id": "...",           ← commentId (reply 엔드포인트에 사용)
+    "text": "...",         ← 팔로워가 쓴 댓글 내용
+    "platformPostId": "...", ← Instagram 게시물 ID
+    "author": { "username": "..." },
+    "isReply": false
+  },
+  "account": {
+    "id": "69fbfc1992b3d8e85f86d277",  ← Zernio 프로필 ID
+    "username": "millimilli.kr"
+  }
+}
+```
+
+### 반드시 지킬 작업 원칙
+1. **Zernio 관련 코드 작업 전 이 섹션 먼저 읽기**
+2. **API 엔드포인트는 추측하지 말 것** — 모르면 `docs.zernio.com/api/openapi` 확인
+3. **`/inbox/comments`는 게시물 목록이지 팔로워 댓글 아님** — 혼동 금지
+4. **발송 성공 여부는 반드시 Redis 로그(`channel:auto:comment:logs:*`)로 확인 후 보고**
+5. **"완료" 보고 전 `success: true` + `resultRaw` 비어있음 확인 필수**
 
 ## 핵심 인프라
 - **배포**: Vercel (Pro, 5분 cron 지원)
