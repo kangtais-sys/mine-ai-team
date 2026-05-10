@@ -104,17 +104,9 @@ async function processItem({ type, itemId, text, author, account, settings }) {
     if (items.length > 0) {
       // Zernio 인박스: id=Zernio고유ID, content=댓글텍스트 → 텍스트+시간으로 매칭
       const now = Date.now();
-      const found = items.find(i => {
-        const iText = (i.content || i.text || '').trim();
-        const tText = text.trim();
-        if (iText !== tText) return false;
-        // 10분 이내 생성
-        if (i.createdTime) {
-          const diff = now - new Date(i.createdTime).getTime();
-          return diff < 10 * 60 * 1000;
-        }
-        return true;
-      });
+      const found = items.find(i =>
+        (i.content || i.text || '').trim() === text.trim()
+      );
       if (found?.id) zernioId = found.id;
       inboxDebug += ` found:${!!found} zernioId:${zernioId.slice(0,12)}`;
     }
