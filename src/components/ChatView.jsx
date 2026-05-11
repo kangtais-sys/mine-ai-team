@@ -568,7 +568,7 @@ const AGENT_DASHBOARDS = {
           {(() => {
             const s = acctSettings;
             const isOn = s.autoComment || s.autoDm;
-            const [open, setOpen] = React.useState(false);
+            const [open, setOpen] = useState(false);
             const saveSetting = async (field, value) => {
               setSettings(prev => ({ ...prev, [tab]: { ...prev[tab], [field]: value } }));
               await fetch('/api/channel/settings', {
