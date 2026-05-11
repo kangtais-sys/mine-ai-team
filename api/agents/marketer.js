@@ -75,6 +75,10 @@ export default async function handler(req, res) {
         ...(errorMsg ? { message: errorMsg } : {}),
       };
       result.totalSpend += totalSpendMonth;
+      // Redis에 캐시 저장 (daily-report cron이 HTTP 호출 없이 읽을 수 있도록)
+      try {
+        await redis.set('marketer:meta:cache', JSON.stringify(result.meta), { ex: 3600 });
+      } catch {}
     } catch (e) { result.meta = { status: 'error', error: e.message }; }
   } else {
     result.meta = { status: 'disconnected', message: 'META_ACCESS_TOKEN 또는 INSTAGRAM_ACCESS_TOKEN 필요' };

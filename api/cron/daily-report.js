@@ -22,18 +22,30 @@ export default async function handler(req, res) {
   try {
     const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://mine-ai-team.vercel.app';
 
-    const [naverDaily, cafe24Daily, publishLog, inboxLog, commentTotal, dmTotal, marketerData, exportData] = await Promise.all([
+    const [naverDaily, cafe24Daily, publishLog, inboxLog, commentTotal, dmTotal, metaCache, exportData] = await Promise.all([
       redis.get('sales:naver:daily'),
       redis.get('sales:cafe24:daily'),
       redis.get(`publish-log:${today}`),
       redis.get(`inbox-log:${today}`),
       redis.get('stat:comment:total'),
       redis.get('stat:dm:total'),
-      // 실제 마케터 API 호출 — 실시간 Meta 광고 데이터
-      fetch(`${baseUrl}/api/agents/marketer`).then(r => r.json()).catch(() => null),
+      // Redis 캐시에서 Meta 데이터 읽기 (marketer.js가 매 조회 시 캐시 갱신)
+      redis.get('marketer:meta:cache'),
       // 수출 API — B2B 바이어 데이터
       fetch(`${baseUrl}/api/agents/export`).then(r => r.json()).catch(() => null),
     ]);
+
+    // marketerData 구성: Redis 캐시 우선, 없으면 HTTP 호출 fallback
+    let marketerData = null;
+    if (metaCache) {
+      const meta = typeof metaCache === 'string' ? JSON.parse(metaCache) : metaCache;
+      marketerData = { meta };
+    } else {
+      // 캐시 없을 때만 HTTP 호출 시도
+      try {
+        marketerData = await fetch(`${baseUrl}/api/agents/marketer`).then(r => r.json());
+      } catch {}
+    }
 
     const thisMonth = kstNow.toISOString().slice(0, 7);
     const thisYear = String(kstNow.getUTCFullYear());
