@@ -32,13 +32,14 @@ export default async function handler(req, res) {
   const parseList = (arr) => (arr || []).map(parse).filter(Boolean);
 
   if (account) {
+    const commentCount = account === 'yuminhye' ? (ymCC || 0) : (mmCC || 0);
+    const dmCount = account === 'yuminhye' ? (ymDC || 0) : (mmDC || 0);
     return res.status(200).json({
       comments: parseList(account === 'yuminhye' ? ymComments : mmComments),
       dms: parseList(account === 'yuminhye' ? ymDms : mmDms),
-      counts: {
-        comment: account === 'yuminhye' ? (ymCC || 0) : (mmCC || 0),
-        dm: account === 'yuminhye' ? (ymDC || 0) : (mmDC || 0),
-      },
+      counts: { comment: commentCount, dm: dmCount },
+      commentCount,
+      dmCount,
     });
   }
 
