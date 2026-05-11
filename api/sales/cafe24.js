@@ -125,10 +125,20 @@ export default async function handler(req, res) {
     };
 
     await redis.set(cacheKey, result, { ex: 3600 });
-    await redis.set('sales:cafe24:daily', result, { ex: 90000 });
+    // 7일 TTL — 토큰 만료돼도 대시보드에 직전 데이터 유지
+    await redis.set('sales:cafe24:daily', result, { ex: 604800 });
     res.status(200).json(result);
   } catch (e) {
     if (e.message === 'NOT_CONNECTED') return res.status(200).json({ connected: false });
+    // 토큰 오류면 이전 캐시라도 반환 (대시보드 공백 방지)
+    if (e.message?.includes('Token refresh failed') || e.message?.includes('invalid_grant')) {
+      console.error('[Cafe24 Sales] 토큰 만료 — 재인증 필요:', e.message);
+      const fallback = await redis.get('sales:cafe24:daily');
+      if (fallback) {
+        return res.status(200).json({ ...fallback, stale: true, tokenError: 'Cafe24 재인증 필요 (/api/auth/cafe24)' });
+      }
+      return res.status(200).json({ connected: false, tokenError: 'Cafe24 재인증 필요' });
+    }
     console.error('[Cafe24 Sales]', e.message);
     res.status(500).json({ error: e.message });
   }

@@ -5,36 +5,88 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-async function getToken() {
-  // env var 우선 — Redis에 저장된 구버전 토큰이 있어도 env var로 덮어씀
-  return process.env.INSTAGRAM_ACCESS_TOKEN || (await redis.get('instagram_access_token').catch(() => null));
+const ZERNIO = 'https://zernio.com/api/v1';
+
+// Zernio 프로필 ID → 계정 매핑 (CLAUDE.md 기준)
+const MILLIMILLI_IDS = new Set([
+  '69fbfc1992b3d8e85f86d277', // millimilli.kr
+  '69fbfd0692b3d8e85f86d882', // millimilli.us
+  '69d08cc1986d57bb8f733102', // 원래 millimilli ID
+]);
+const YUMINHYE_IDS = new Set([
+  '69fca4b192b3d8e85f8cfea6', // lala_lounge_
+  '69d08807986d57bb8f72f7e6', // 원래 yuminhye ID
+]);
+
+function belongsToAccount(item, account) {
+  const id = item.accountId || item.profileId || item.profile?._id || '';
+  const username = (item.accountUsername || '').toLowerCase();
+  if (account === 'millimilli') {
+    return MILLIMILLI_IDS.has(id)
+      || username.includes('millimilli');
+  }
+  if (account === 'yuminhye') {
+    return YUMINHYE_IDS.has(id)
+      || ['lala_lounge_', 'yuminhye', 'peerstory'].includes(username);
+  }
+  return false;
 }
 
-// Map account → IG Business Account User ID (set these in Vercel env)
-function getIgUserId(account) {
-  if (account === 'yuminhye') return process.env.IG_USER_ID_YUMINHYE || process.env.IG_USER_ID;
-  if (account === 'millimilli') return process.env.IG_USER_ID_MILLIMILLI || process.env.IG_USER_ID;
-  return process.env.IG_USER_ID;
-}
+// Zernio /inbox/comments → 게시물 목록 (commentCount, likeCount 포함)
+async function fetchZernioPosts(account) {
+  const key = process.env.ZERNIO_API_KEY;
+  if (!key) return null;
 
-// 토큰으로 IG 비즈니스 계정 ID 자동 탐색
-async function discoverIgUserId(token, targetUsername) {
   try {
-    // 1. Instagram Basic Display API: /me로 직접 ID 조회
-    const meRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${token}`);
-    const me = await meRes.json();
-    if (me.id && !me.error) return me.id;
+    const res = await fetch(`${ZERNIO}/inbox/comments?limit=50`, {
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    });
+    const data = await res.json();
+    const items = Array.isArray(data?.data) ? data.data
+      : Array.isArray(data?.items) ? data.items
+      : Array.isArray(data) ? data : [];
 
-    // 2. Facebook Graph API: /me/accounts → 페이지 → IG 비즈니스 계정
-    const pagesRes = await fetch(`https://graph.facebook.com/v19.0/me/accounts?fields=instagram_business_account,name,username&access_token=${token}`);
-    const pages = await pagesRes.json();
-    if (pages.data) {
-      for (const page of pages.data) {
-        if (page.instagram_business_account?.id) return page.instagram_business_account.id;
-      }
-    }
-  } catch {}
-  return null;
+    // 계정 필터링
+    const filtered = items.filter(item => belongsToAccount(item, account));
+
+    // Instagram Graph API 호환 구조로 변환
+    return filtered.map(item => ({
+      id: item.id || item._id,
+      caption: item.content || '',
+      comments_count: item.commentCount || 0,
+      like_count: item.likeCount || 0,
+      timestamp: item.createdAt || item.timestamp || null,
+      media_type: 'IMAGE',
+      source: 'zernio',
+    }));
+  } catch (e) {
+    console.warn('[Channel Posts] Zernio fetch failed:', e.message);
+    return null;
+  }
+}
+
+// Instagram Graph API fallback (yuminhye 계정 등 직접 연결된 경우)
+async function fetchIgPosts(account) {
+  const token = process.env.INSTAGRAM_ACCESS_TOKEN
+    || (await redis.get('instagram_access_token').catch(() => null));
+  if (!token) return null;
+
+  const userId = account === 'yuminhye'
+    ? (process.env.IG_USER_ID_YUMINHYE || process.env.IG_USER_ID)
+    : (process.env.IG_USER_ID_MILLIMILLI || process.env.IG_USER_ID);
+  if (!userId) return null;
+
+  try {
+    const fields = 'id,caption,timestamp,like_count,comments_count,media_type,permalink';
+    const url = `https://graph.facebook.com/v21.0/${userId}/media?fields=${fields}&limit=10&access_token=${token}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return (data.data || []).slice(0, 10).map(p => ({ ...p, source: 'instagram' }));
+  } catch (e) {
+    console.warn('[Channel Posts] Instagram fetch failed:', e.message);
+    return null;
+  }
 }
 
 export default async function handler(req, res) {
@@ -43,43 +95,30 @@ export default async function handler(req, res) {
   const { account = 'millimilli', refresh } = req.query;
   const cacheKey = `channel:posts:${account}`;
 
-  // Serve cache unless refresh=1
+  // 캐시 서빙 (refresh=1이면 스킵)
   if (refresh !== '1') {
     const cached = await redis.get(cacheKey);
     if (cached) return res.status(200).json({ posts: cached, cached: true });
   }
 
-  const token = await getToken();
-  const userId = getIgUserId(account);
+  // 1차: Zernio (밀리밀리 포함 모든 계정 지원)
+  let posts = await fetchZernioPosts(account);
 
-  if (!token || !userId) {
-    const cached = await redis.get(cacheKey);
-    return res.status(200).json({
-      posts: cached || [],
-      cached: true,
-      warning: 'IG token or user ID not configured. Set IG_USER_ID / INSTAGRAM_ACCESS_TOKEN env vars.',
-    });
+  // 2차: Instagram Graph API fallback
+  if (!posts || posts.length === 0) {
+    posts = await fetchIgPosts(account);
   }
 
-  try {
-    // instagram_basic + instagram_manage_insights 권한 — Business API 엔드포인트
-    const fields = 'id,caption,timestamp,like_count,comments_count,media_type,permalink';
-    // userId가 있으면 /{userId}/media, 없으면 /me/media fallback
-    const baseUrl = userId
-      ? `https://graph.facebook.com/v21.0/${userId}/media`
-      : `https://graph.instagram.com/me/media`;
-    const url = `${baseUrl}?fields=${fields}&limit=10&access_token=${token}`;
-    const igRes = await fetch(url);
-    const data = await igRes.json();
-
-    if (data.error) throw new Error(data.error.message);
-
-    const posts = (data.data || []).slice(0, 10);
-    await redis.set(cacheKey, posts, { ex: 3600 }); // 1h cache
+  if (posts && posts.length > 0) {
+    await redis.set(cacheKey, posts, { ex: 7200 }); // 2h cache
     return res.status(200).json({ posts, cached: false });
-  } catch (e) {
-    console.error('[Channel Posts]', e.message);
-    const cached = await redis.get(cacheKey);
-    return res.status(200).json({ posts: cached || [], cached: true, error: e.message });
   }
+
+  // 캐시 fallback
+  const cached = await redis.get(cacheKey);
+  return res.status(200).json({
+    posts: cached || [],
+    cached: !!cached,
+    warning: 'Could not fetch fresh posts from Zernio or Instagram',
+  });
 }
