@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 
   // ?raw=1 — 최근 웹훅 raw 로그 반환 (디버그용)
   if (raw === '1') {
-    const logs = await redis.lrange('zernio:webhook:raw', 0, 9);
+    const logs = await redis.lrange('zernio:webhook:raw', 0, 49);
     const parsed = logs.map(l => { try { return typeof l === 'string' ? JSON.parse(l) : l; } catch { return l; } });
     return res.status(200).json({ rawLogs: parsed });
   }

@@ -180,7 +180,7 @@ export default async function handler(req, res) {
   // 원시 로그 저장 (디버그용)
   try {
     await redis.lpush('zernio:webhook:raw', JSON.stringify({ timestamp: new Date().toISOString(), body }));
-    await redis.ltrim('zernio:webhook:raw', 0, 19);
+    await redis.ltrim('zernio:webhook:raw', 0, 49);
   } catch {}
 
   const eventType = body.type || body.event;
