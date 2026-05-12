@@ -15,10 +15,14 @@ export default async function handler(req, res) {
   const { account, raw } = req.query;
 
   // ?raw=1 — 최근 웹훅 raw 로그 반환 (디버그용)
+  // account 파라미터 있으면 계정별, 없으면 통합
   if (raw === '1') {
-    const logs = await redis.lrange('zernio:webhook:raw', 0, 49);
+    const key = account
+      ? `zernio:webhook:raw:${account}`
+      : 'zernio:webhook:raw';
+    const logs = await redis.lrange(key, 0, 49);
     const parsed = logs.map(l => { try { return typeof l === 'string' ? JSON.parse(l) : l; } catch { return l; } });
-    return res.status(200).json({ rawLogs: parsed });
+    return res.status(200).json({ key, rawLogs: parsed });
   }
 
   // Fetch logs for specific account or all

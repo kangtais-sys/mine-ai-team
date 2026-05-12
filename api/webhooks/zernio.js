@@ -177,10 +177,16 @@ export default async function handler(req, res) {
 
   const body = req.body;
 
-  // 원시 로그 저장 (디버그용)
+  // 원시 로그 저장 — 계정별 분리 + 통합 (디버그용)
   try {
-    await redis.lpush('zernio:webhook:raw', JSON.stringify({ timestamp: new Date().toISOString(), body }));
-    await redis.ltrim('zernio:webhook:raw', 0, 49);
+    const rawEntry = JSON.stringify({ timestamp: new Date().toISOString(), body });
+    const acctKey = body.account?.username
+      ? `zernio:webhook:raw:${body.account.username}`
+      : null;
+    await Promise.all([
+      redis.lpush('zernio:webhook:raw', rawEntry).then(() => redis.ltrim('zernio:webhook:raw', 0, 49)),
+      acctKey && redis.lpush(acctKey, rawEntry).then(() => redis.ltrim(acctKey, 0, 29)),
+    ].filter(Boolean));
   } catch {}
 
   const eventType = body.type || body.event;
