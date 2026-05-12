@@ -49,6 +49,8 @@ function detectAccount(profileId, username) {
 // platformPostId → Zernio 내부 postId 조회 (캐시 활용)
 // Zernio 웹훅은 post.id = null 이므로 inbox 목록에서 매칭
 // ────────────────────────────────────────────────
+// platformPostId → Zernio 내부 postId 조회 (캐시 활용)
+// 실측: Zernio inbox item.id == Instagram platformPostId (같은 ID 체계)
 async function lookupZernioPostId(platformPostId) {
   if (!platformPostId) return null;
   const cacheKey = `zernio:postid:${platformPostId}`;
@@ -60,17 +62,22 @@ async function lookupZernioPostId(platformPostId) {
     const posts = resp?.data || [];
     for (const post of posts) {
       if (!post.id) continue;
-      // 가능한 모든 필드로 platformPostId 매칭 시도
-      const candidates = [post.platformPostId, post.platformId, post.externalId, post.instagramId, post.mediaId];
-      for (const c of candidates) {
-        if (c) await redis.set(`zernio:postid:${c}`, post.id, { ex: 3600 }).catch(() => {});
+      // Zernio post.id == Instagram post ID (동일 체계 확인됨)
+      await redis.set(`zernio:postid:${post.id}`, post.id, { ex: 3600 }).catch(() => {});
+      const altFields = [post.platformPostId, post.platformId, post.externalId, post.instagramId, post.mediaId];
+      for (const f of altFields) {
+        if (f) await redis.set(`zernio:postid:${f}`, post.id, { ex: 3600 }).catch(() => {});
       }
-      if (candidates.some(c => c && c === platformPostId)) return post.id;
+      if (post.id === platformPostId || altFields.some(f => f && f === platformPostId)) {
+        return post.id;
+      }
     }
-    return null;
+    // inbox 50개 내 미발견 → platformPostId를 직접 사용 (Zernio가 Instagram ID 그대로 사용)
+    console.warn(`[lookupZernioPostId] inbox 미발견, platformPostId 직접 사용: ${platformPostId}`);
+    return platformPostId;
   } catch (e) {
     console.error('[lookupZernioPostId]', e.message);
-    return null;
+    return platformPostId; // fallback
   }
 }
 
