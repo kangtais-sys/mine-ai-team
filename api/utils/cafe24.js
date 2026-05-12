@@ -58,11 +58,12 @@ async function cafe24Api(path) {
   return res.json();
 }
 
-export async function getOrders(startDate, endDate, limit = 50) {
+export async function getOrders(startDate, endDate, limit = 50, offset = 0) {
   const params = new URLSearchParams({
     start_date: startDate,
     end_date: endDate,
     limit: String(limit),
+    ...(offset > 0 ? { offset: String(offset) } : {}),
   });
   return cafe24Api(`/admin/orders?${params}`);
 }

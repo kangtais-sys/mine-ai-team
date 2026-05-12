@@ -35,16 +35,24 @@ export default async function handler(req, res) {
       fetch(`${baseUrl}/api/agents/export`).then(r => r.json()).catch(() => null),
     ]);
 
-    // marketerData 구성: Redis 캐시 우선, 없으면 HTTP 호출 fallback
+    // marketerData 구성: 캐시 신선도 체크 → 2시간 이상 됐거나 오류 상태면 fresh call
     let marketerData = null;
-    if (metaCache) {
-      const meta = typeof metaCache === 'string' ? JSON.parse(metaCache) : metaCache;
-      marketerData = { meta };
+    const parsedMetaCache = metaCache ? (typeof metaCache === 'string' ? JSON.parse(metaCache) : metaCache) : null;
+    const cacheAgeMs = parsedMetaCache?.cachedAt ? Date.now() - new Date(parsedMetaCache.cachedAt).getTime() : Infinity;
+    const cacheStale = cacheAgeMs > 2 * 3600 * 1000; // 2시간 초과
+    const cacheError = parsedMetaCache?.status === 'disconnected' || parsedMetaCache?.status === 'error';
+
+    if (parsedMetaCache && !cacheStale && !cacheError) {
+      // 신선하고 정상 캐시 사용
+      marketerData = { meta: parsedMetaCache };
     } else {
-      // 캐시 없을 때만 HTTP 호출 시도
+      // 캐시 없음 / 오래됨 / 오류 → 실시간 조회
       try {
         marketerData = await fetch(`${baseUrl}/api/agents/marketer`).then(r => r.json());
-      } catch {}
+      } catch {
+        // 실시간 조회도 실패 → 캐시라도 사용 (오류 명시)
+        if (parsedMetaCache) marketerData = { meta: { ...parsedMetaCache, _stale: true } };
+      }
     }
 
     const thisMonth = kstNow.toISOString().slice(0, 7);
@@ -94,7 +102,9 @@ export default async function handler(req, res) {
         } else if (metaConnected) {
           marketerPrompt = `오늘(${today}) AI 마케터 일일 보고를 2-3줄로 작성. Meta 광고 연결됨. 전일 실적 데이터 없음(캠페인 미집행 또는 집계 대기). 당월 누적: 광고비 ${fmt(meta?.totalSpendMonth || 0)}원.`;
         } else {
-          marketerPrompt = `오늘(${today}) AI 마케터 일일 보고를 2-3줄로 작성. Meta 광고 API 연결 오류 발생. 원인 파악 및 재연결 필요. ROAS 모니터링 중단 상태.`;
+          // 오류 상태일 때 — 오래된 캐시인지 실제 오류인지 구분해서 보고
+          const staleNote = meta?._stale ? '(캐시 기준, 실시간 조회 실패)' : '';
+          marketerPrompt = `오늘(${today}) AI 마케터 일일 보고를 2-3줄로 작성. Meta 광고 API 상태 확인 필요${staleNote}. 전일 데이터 미수신. 토큰 만료 또는 API 이슈 가능성 있음 — 직접 Meta 대시보드에서 실적 확인 권장. 재연결 방법: Vercel 환경변수 META_ACCESS_TOKEN 갱신.`;
         }
         return { id: 'marketer', name: 'AI 마케터', prompt: marketerPrompt, data: { metaConnected, spend: meta?.totalSpendYesterday, revenue: meta?.totalRevenueYesterday } };
       })(),

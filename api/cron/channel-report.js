@@ -23,11 +23,20 @@ function categorizeReplies(logs) {
 
     if (log.type === 'dm') {
       cats.dm.push(entry);
-    } else if (['가격', '성분', '효능', '어디서', '구매', '살 수', '파는', '할인', '링크', '문의'].some(k => t.includes(k))) {
+    } else if ([
+      // 재입고·출시 문의 (불만 키워드 '언제'보다 먼저 체크)
+      '재입고', '입고', '출시', '언제 나', '언제 출', '언제 오', '언제 생',
+      // 기존 제품문의
+      '가격', '성분', '효능', '어디서', '구매', '살 수', '파는', '할인', '링크', '문의',
+    ].some(k => t.includes(k))) {
       cats.product.push(entry);
     } else if (['감사', '좋아요', '최고', '최애', '사랑', '예뻐', '잘봤', '팔로', '대박', '짱'].some(k => t.includes(k))) {
       cats.praise.push(entry);
-    } else if (['불만', '별로', '아쉽', '실망', '왜', '환불', '교환', '느려', '안와', '언제'].some(k => t.includes(k))) {
+    } else if ([
+      // 실제 불만 키워드만 (과도하게 넓은 '언제', '왜' 제거)
+      '불만', '별로', '아쉽', '실망', '환불', '교환', '느려', '안와',
+      '왜 안', '왜 이렇', '왜 아직', '불량', '파손', '잘못',
+    ].some(k => t.includes(k))) {
       cats.complaint.push(entry);
     } else {
       cats.general.push(entry);

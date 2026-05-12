@@ -60,21 +60,59 @@ export default async function handler(req, res) {
     ? { status: 'connected', message: '스마트스토어 연결됨' }
     : { status: 'disconnected', message: '스마트���토어 연결 필요' };
 
-  // C. Cafe24 (OAuth - real data)
+  // C. Cafe24 (OAuth - real data, 전체 주문 집계 후 Redis 캐시)
   if (process.env.CAFE24_CLIENT_ID && process.env.CAFE24_MALL_ID) {
     try {
       const now = new Date();
-      const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+      const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const startDate = `${monthKey}-01`;
       const endDate = now.toISOString().slice(0, 10);
+      const yesterdayDate = new Date(now - 86400000).toISOString().slice(0, 10);
+
+      // 주문 수 조회
       const countData = await getOrderCount(startDate, endDate);
-      const ordersData = await getOrders(startDate, endDate, 10);
-      const orders = ordersData.orders || [];
-      const totalAmount = orders.reduce((s, o) => s + (Number(o.order_price_amount) || 0), 0);
+      const orderCount = countData.count || 0;
+
+      // 전체 주문 집계 (페이지네이션, 최대 500개 → ~500만원 이상 규모면 충분)
+      let allOrders = [];
+      const PAGE = 100;
+      for (let offset = 0; offset < Math.min(orderCount, 500); offset += PAGE) {
+        try {
+          const pageData = await getOrders(startDate, endDate, PAGE, offset);
+          const pageOrders = pageData.orders || [];
+          allOrders = allOrders.concat(pageOrders);
+          if (pageOrders.length < PAGE) break;
+        } catch { break; }
+      }
+
+      // 실제 월매출 합산 (order_price_amount = 결제금액)
+      const totalRevenue = allOrders.reduce((s, o) =>
+        s + (Number(o.order_price_amount) || Number(o.actual_order_amount) || 0), 0);
+
+      // 전일 매출 (어제 날짜 주문만 필터)
+      const yesterdayRevenue = allOrders
+        .filter(o => (o.order_date || '').startsWith(yesterdayDate))
+        .reduce((s, o) => s + (Number(o.order_price_amount) || 0), 0);
+
+      // stats.js / daily-report.js가 읽는 Redis 키에 저장
+      const cached = await redis.get('sales:cafe24:daily').catch(() => null);
+      const existing = cached ? (typeof cached === 'string' ? JSON.parse(cached) : cached) : {};
+      const monthly = existing.monthly || {};
+      const daily = existing.daily || {};
+      monthly[monthKey] = { revenue: totalRevenue, orders: orderCount, updatedAt: new Date().toISOString() };
+      if (yesterdayRevenue > 0) daily[yesterdayDate] = { revenue: yesterdayRevenue };
+      await redis.set('sales:cafe24:daily', JSON.stringify({ monthly, daily }), { ex: 86400 * 7 }).catch(() => {});
+
       result.cafe24 = {
         status: 'connected',
         mallId: process.env.CAFE24_MALL_ID,
-        thisMonth: { orders: countData.count || orders.length, sampleAmount: totalAmount },
-        recent: orders.slice(0, 5).map(o => ({ orderId: o.order_id, date: o.order_date, amount: o.order_price_amount })),
+        thisMonth: {
+          orders: orderCount,
+          revenue: totalRevenue,          // 실제 집계 금액
+          sampledOrders: allOrders.length, // 집계에 사용한 주문 수
+          isPartial: allOrders.length < orderCount, // 500개 초과면 부분 집계
+        },
+        recent: allOrders.slice(0, 5).map(o => ({ orderId: o.order_id, date: o.order_date, amount: o.order_price_amount })),
       };
     } catch (e) {
       result.cafe24 = e.message.includes('인증 필요')

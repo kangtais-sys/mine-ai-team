@@ -77,7 +77,7 @@ export default async function handler(req, res) {
       result.totalSpend += totalSpendMonth;
       // Redis에 캐시 저장 — TTL 25h (daily-report KST 8시 전 만료 방지)
       try {
-        await redis.set('marketer:meta:cache', JSON.stringify(result.meta), { ex: 90000 });
+        await redis.set('marketer:meta:cache', JSON.stringify({ ...result.meta, cachedAt: new Date().toISOString() }), { ex: 90000 });
       } catch {}
     } catch (e) { result.meta = { status: 'error', error: e.message }; }
   } else {
