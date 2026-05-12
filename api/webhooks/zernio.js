@@ -84,7 +84,7 @@ async function lookupZernioPostId(platformPostId) {
 // ────────────────────────────────────────────────
 // 댓글/DM 처리 공통 함수
 // ────────────────────────────────────────────────
-async function processItem({ type, itemId, text, author, account, accountUsername, platformPostId, profileId, settings }) {
+async function processItem({ type, itemId, conversationId, text, author, account, accountUsername, platformPostId, profileId, settings }) {
   // 활성 시간대 체크 (dupe key 설정 전 — 비활성 시간엔 dupe key 안 씀)
   if (!isActiveHour(settings)) {
     const kstH = new Date(Date.now() + 9 * 3600000).getUTCHours();
@@ -150,9 +150,11 @@ async function processItem({ type, itemId, text, author, account, accountUsernam
       body: JSON.stringify({ accountId: profileId, message: replyText, commentId: itemId }),
     });
   } else {
-    result = await zFetch(`/inbox/messages/${itemId}/reply`, {
+    // DM: POST /inbox/conversations/{conversationId}/messages (docs 실측)
+    // body: { accountId, message }
+    result = await zFetch(`/inbox/conversations/${conversationId}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ text: replyText }),
+      body: JSON.stringify({ accountId: profileId, message: replyText }),
     });
   }
 
@@ -227,9 +229,16 @@ export default async function handler(req, res) {
     const d = body.data || body.message || body;
     const itemId = d.id || d._id;
     const text = d.text || d.content || '';
+    // conversationId: 웹훅에서 가능한 모든 위치 탐색
+    const conversationId = body.conversation?.id || body.conversationId || d.conversationId || d.conversation_id || '';
+    const author = d.author?.username || d.sender?.username || d.from?.username || '';
     if (!itemId || !text) return res.status(200).json({ received: true, skipped: 'no_content' });
+    if (!conversationId) {
+      console.warn(`[Zernio][${account}] DM conversationId 없음 — 스킵`);
+      return res.status(200).json({ received: true, skipped: 'no_conversationId' });
+    }
     try {
-      const result = await processItem({ type: 'dm', itemId, text, author: '', account, settings });
+      const result = await processItem({ type: 'dm', itemId, conversationId, text, author, account, profileId, settings });
       return res.status(200).json({ received: true, ...result });
     } catch (e) {
       console.error(`[Zernio][${account}] DM 오류:`, e.message);

@@ -39,8 +39,10 @@ POST /inbox/comments/{postId}      → body: { accountId*, message*, commentId(�
   ⚠️ 웹훅 body.post.id = null → platformPostId로 Zernio postId 역조회 필요
   ⚠️ 구엔드포인트 POST /comments/{id}/reply { text } → HTML 반환 (동작 안함)
 
-# DM (미검증, 엔드포인트 추후 확인 필요)
-POST /inbox/messages/{itemId}/reply → body: { text: "..." }
+# DM (docs 확인 완료 — 2025-05)
+POST /inbox/conversations/{conversationId}/messages → body: { accountId*, message }
+  conversationId = 웹훅 body.conversation?.id || body.conversationId
+  ⚠️ conversationId 없으면 스킵 (no_conversationId)
 ```
 
 ### Zernio 웹훅 body 구조 (실측)
