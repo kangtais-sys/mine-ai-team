@@ -75,9 +75,9 @@ export default async function handler(req, res) {
         ...(errorMsg ? { message: errorMsg } : {}),
       };
       result.totalSpend += totalSpendMonth;
-      // Redis에 캐시 저장 (daily-report cron이 HTTP 호출 없이 읽을 수 있도록)
+      // Redis에 캐시 저장 — TTL 25h (daily-report KST 8시 전 만료 방지)
       try {
-        await redis.set('marketer:meta:cache', JSON.stringify(result.meta), { ex: 3600 });
+        await redis.set('marketer:meta:cache', JSON.stringify(result.meta), { ex: 90000 });
       } catch {}
     } catch (e) { result.meta = { status: 'error', error: e.message }; }
   } else {

@@ -7,7 +7,17 @@ const redis = new Redis({
 
 export const config = { maxDuration: 30 };
 
-// 매월 1일: Instagram 장기 토큰 갱신
+// 대시보드 알림 저장 (에러 시)
+async function saveHealthAlert(key, message) {
+  try {
+    await redis.set(`health:alert:${key}`, { message, at: new Date().toISOString() }, { ex: 86400 * 3 });
+  } catch {}
+}
+async function clearHealthAlert(key) {
+  try { await redis.del(`health:alert:${key}`); } catch {}
+}
+
+// 매일 UTC 15:00 (KST 00:00): Instagram 장기 토큰 갱신
 export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -31,6 +41,7 @@ export default async function handler(req, res) {
     if (refreshData.access_token) {
       // KV에 새 토큰 저장
       await redis.set('instagram_access_token', refreshData.access_token);
+      await clearHealthAlert('instagram'); // 성공 시 알림 제거
       console.log(`[Token Refresh] Success, expires_in: ${refreshData.expires_in}s`);
 
       // Vercel 환경변수도 업데이트 (선택)
@@ -64,9 +75,12 @@ export default async function handler(req, res) {
       });
     }
 
+    const errMsg = refreshData.error?.message || 'Refresh failed';
+    await saveHealthAlert('instagram', `Instagram 토큰 갱신 실패: ${errMsg}`);
     console.error('[Token Refresh] Failed:', refreshData);
-    return res.status(500).json({ error: refreshData.error?.message || 'Refresh failed' });
+    return res.status(500).json({ error: errMsg });
   } catch (error) {
+    await saveHealthAlert('instagram', `Instagram 토큰 갱신 오류: ${error.message}`);
     console.error('[Token Refresh]', error.message);
     return res.status(500).json({ error: error.message });
   }

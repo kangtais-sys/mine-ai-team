@@ -1,9 +1,43 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Component } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import Dashboard from './components/Dashboard';
 import ChannelView from './components/ChannelView';
 import useChatStore from './store/chatStore';
+
+// 에러 바운더리 — 컴포넌트 크래시 시 검정 화면 대신 오류 메시지 표시
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error('[ErrorBoundary]', error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, padding: 32 }}>
+          <div style={{ fontSize: 28 }}>⚠️</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#1D1D1F' }}>화면 로딩 중 오류가 발생했습니다</div>
+          <div style={{ fontSize: 12, color: '#6E6E73', maxWidth: 400, textAlign: 'center', wordBreak: 'break-all' }}>
+            {this.state.error?.message || '알 수 없는 오류'}
+          </div>
+          <button
+            onClick={() => { this.setState({ hasError: false, error: null }); }}
+            style={{ marginTop: 8, padding: '8px 20px', borderRadius: 8, border: '1px solid #E5E5EA', background: '#FFF', fontSize: 13, cursor: 'pointer' }}
+          >
+            다시 시도
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Parse hash → { page, agentId }
 // #           → dashboard
@@ -75,9 +109,9 @@ export default function App() {
         <Sidebar route={route} onNavigate={navigate} urgentCount={urgentCount} />
       </div>
       <div style={{ marginLeft: 240, width: 'calc(100vw - 240px)', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#F5F5F7' }}>
-        {page === 'dashboard' && <Dashboard urgentCount={urgentCount} />}
-        {page === 'channel' && <ChannelView />}
-        {page === 'chat' && <ChatView />}
+        {page === 'dashboard' && <ErrorBoundary><Dashboard urgentCount={urgentCount} /></ErrorBoundary>}
+        {page === 'channel' && <ErrorBoundary><ChannelView /></ErrorBoundary>}
+        {page === 'chat' && <ErrorBoundary><ChatView /></ErrorBoundary>}
       </div>
     </div>
   );

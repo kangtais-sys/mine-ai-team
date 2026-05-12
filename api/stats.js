@@ -446,6 +446,20 @@ export default async function handler(req, res) {
       return { month: name, oliveyoung: oy, smartstore: ss, cafe24: c24, total: oy + ss + c24 };
     }).filter((_, i) => i < new Date().getMonth() + 1);
 
+    // === I. Health alerts (토큰 만료 등 — dashboard banner용) ===
+    const ALERT_KEYS = ['cafe24', 'instagram', 'meta'];
+    const healthAlertResults = await Promise.all(
+      ALERT_KEYS.map(k => redis.get(`health:alert:${k}`).catch(() => null))
+    );
+    const healthAlerts = ALERT_KEYS
+      .map((k, i) => {
+        const v = healthAlertResults[i];
+        if (!v) return null;
+        const obj = typeof v === 'string' ? JSON.parse(v) : v;
+        return { key: k, message: obj.message, at: obj.at };
+      })
+      .filter(Boolean);
+
     // Parse chiefReport if string
     const chiefData = typeof chiefReport === 'string' ? JSON.parse(chiefReport) : chiefReport;
 
@@ -484,6 +498,7 @@ export default async function handler(req, res) {
       agentConnections,
       agentReports,
       chiefReport: chiefData,
+      healthAlerts,
     });
   } catch (error) {
     return res.status(200).json({ error: error.message });

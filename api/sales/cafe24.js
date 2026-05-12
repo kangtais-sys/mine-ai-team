@@ -133,9 +133,14 @@ export default async function handler(req, res) {
     // 토큰 오류면 이전 캐시라도 반환 (대시보드 공백 방지)
     if (e.message?.includes('Token refresh failed') || e.message?.includes('invalid_grant')) {
       console.error('[Cafe24 Sales] 토큰 만료 — 재인증 필요:', e.message);
+      // 대시보드 알림 저장
+      await redis.set('health:alert:cafe24', {
+        message: 'Cafe24 토큰 만료 — 재인증 필요 (대시보드 → 설정 또는 /api/auth/cafe24)',
+        at: new Date().toISOString(),
+      }, { ex: 86400 * 3 }).catch(() => {});
       const fallback = await redis.get('sales:cafe24:daily');
       if (fallback) {
-        return res.status(200).json({ ...fallback, stale: true, tokenError: 'Cafe24 재인증 필요 (/api/auth/cafe24)' });
+        return res.status(200).json({ ...fallback, stale: true, tokenError: 'Cafe24 재인증 필요' });
       }
       return res.status(200).json({ connected: false, tokenError: 'Cafe24 재인증 필요' });
     }

@@ -232,7 +232,18 @@ export default function Dashboard({ urgentCount = 0 }) {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden', minHeight: 0 }}>
       <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px 40px', minWidth: 0 }}>
 
-        {/* ── 0. 긴급 승인 알림 배너 (있을 때만) ── */}
+        {/* ── 0a. 시스템 헬스 알림 배너 (토큰 만료 등) ── */}
+        {(stats?.healthAlerts?.length > 0) && stats.healthAlerts.map(alert => (
+          <div key={alert.key} style={{ marginBottom: 10, background: '#FFFBEA', border: '1px solid #F59E0B', borderRadius: 10, padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ fontSize: 16, flexShrink: 0 }}>⚠️</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: '#92400E' }}>{alert.message}</div>
+              {alert.at && <div style={{ fontSize: 10.5, color: '#B45309', marginTop: 2 }}>{new Date(alert.at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</div>}
+            </div>
+          </div>
+        ))}
+
+        {/* ── 0b. 긴급 승인 알림 배너 (있을 때만) ── */}
         {urgentCount > 0 && (
           <div style={{ marginBottom: 14, background: '#FFF5F5', border: '1px solid #FF3B30', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#FF3B30', flexShrink: 0, boxShadow: '0 0 0 3px rgba(255,59,48,0.2)' }} />
