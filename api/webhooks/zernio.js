@@ -46,6 +46,35 @@ function detectAccount(profileId, username) {
 }
 
 // ────────────────────────────────────────────────
+// platformPostId → Zernio 내부 postId 조회 (캐시 활용)
+// Zernio 웹훅은 post.id = null 이므로 inbox 목록에서 매칭
+// ────────────────────────────────────────────────
+async function lookupZernioPostId(platformPostId) {
+  if (!platformPostId) return null;
+  const cacheKey = `zernio:postid:${platformPostId}`;
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) return cached;
+
+    const resp = await zFetch('/inbox/comments?limit=50');
+    const posts = resp?.data || [];
+    for (const post of posts) {
+      if (!post.id) continue;
+      // 가능한 모든 필드로 platformPostId 매칭 시도
+      const candidates = [post.platformPostId, post.platformId, post.externalId, post.instagramId, post.mediaId];
+      for (const c of candidates) {
+        if (c) await redis.set(`zernio:postid:${c}`, post.id, { ex: 3600 }).catch(() => {});
+      }
+      if (candidates.some(c => c && c === platformPostId)) return post.id;
+    }
+    return null;
+  } catch (e) {
+    console.error('[lookupZernioPostId]', e.message);
+    return null;
+  }
+}
+
+// ────────────────────────────────────────────────
 // 댓글/DM 처리 공통 함수
 // ────────────────────────────────────────────────
 async function processItem({ type, itemId, text, author, account, accountUsername, platformPostId, profileId, settings }) {
@@ -96,16 +125,22 @@ async function processItem({ type, itemId, text, author, account, accountUsernam
   // 댓글의 경우 @멘션으로 팔로워에게 알림
   const replyText = (type === 'comment' && author) ? `@${author} ${reply}` : reply;
 
-  // Zernio API 정확한 엔드포인트:
-  // 댓글: POST /comments/{commentId}/reply  body: { text }
-  // DM:   POST /messages/conversations/{conversationId}/messages  body: { text }
-  // ref: https://docs.zernio.com/api/openapi
+  // Zernio API 정확한 엔드포인트 (docs.zernio.com 실측):
+  // 댓글: POST /inbox/comments/{postId}  body: { accountId, message, commentId }
+  // DM:   POST /inbox/messages/{itemId}/reply  body: { text }
   let result;
-  let inboxDebug = 'direct';
+  let zernioPostId = null;
   if (type === 'comment') {
-    result = await zFetch(`/comments/${itemId}/reply`, {
+    // post.id가 null이므로 platformPostId로 Zernio 내부 postId 조회
+    zernioPostId = await lookupZernioPostId(platformPostId);
+    if (!zernioPostId) {
+      console.warn(`[Zernio][${account}] postId 조회 실패 (platformPostId: ${platformPostId}) — 댓글 답장 스킵`);
+      await logAction(type, account, { itemId, author, text: text.slice(0, 100), reply: replyText, success: false, resultRaw: 'postId_lookup_failed' });
+      return { skipped: true, reason: 'postId_lookup_failed' };
+    }
+    result = await zFetch(`/inbox/comments/${zernioPostId}`, {
       method: 'POST',
-      body: JSON.stringify({ text: replyText }),
+      body: JSON.stringify({ accountId: profileId, message: replyText, commentId: itemId }),
     });
   } else {
     result = await zFetch(`/inbox/messages/${itemId}/reply`, {
@@ -114,11 +149,11 @@ async function processItem({ type, itemId, text, author, account, accountUsernam
     });
   }
 
-  const success = !result.error;
-  await logAction(type, account, { itemId, zernioId, author, text: text.slice(0, 100), reply: replyText, success, inboxDebug, resultRaw: result.raw?.slice(0,100) });
+  const success = result?.success === true || (!result.error && !result.raw);
+  await logAction(type, account, { itemId, zernioPostId, author, text: text.slice(0, 100), reply: replyText, success, resultRaw: result.raw?.slice(0, 100) });
   if (success) await recordUsage(type, account, settings);
   console.log(`[Zernio][${account}] ${type} 답장 (${success ? '성공' : '실패'}): "${reply.slice(0, 40)}"`);
-  return { success, reply, zernioId };
+  return { success, reply };
 }
 
 // ────────────────────────────────────────────────

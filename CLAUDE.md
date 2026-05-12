@@ -30,13 +30,17 @@
 GET  /inbox/comments?limit=50      → { data: [...] }  ← .comments 아님, .data 임
   item 구조: { id, accountId, accountUsername, platform, content(게시물캡션), commentCount, likeCount }
 
-# 팔로워 댓글에 대댓글 달기 ← 이게 진짜 reply 엔드포인트
-POST /comments/{commentId}/reply   → body: { text: "..." }
-  commentId = 웹훅 body.comment.id 그대로 사용
+# 팔로워 댓글에 대댓글 달기 ← 실제 docs 확인 (2025-05 검증)
+POST /inbox/comments/{postId}      → body: { accountId*, message*, commentId(선택) }
+  postId    = Zernio 내부 게시물 ID (GET /inbox/comments 결과의 .id)
+  accountId = Zernio 프로필 ID (웹훅 body.account.id)
+  message   = 답장 텍스트
+  commentId = 웹훅 body.comment.id (특정 댓글에 달 때)
+  ⚠️ 웹훅 body.post.id = null → platformPostId로 Zernio postId 역조회 필요
+  ⚠️ 구엔드포인트 POST /comments/{id}/reply { text } → HTML 반환 (동작 안함)
 
 # DM (미검증, 엔드포인트 추후 확인 필요)
-GET  /messages/conversations
-POST /messages/conversations/{conversationId}/messages  → body: { text: "..." }
+POST /inbox/messages/{itemId}/reply → body: { text: "..." }
 ```
 
 ### Zernio 웹훅 body 구조 (실측)
