@@ -1,5 +1,5 @@
 import { agents } from '../lib/agents';
-import { LayoutDashboard } from 'lucide-react';
+import { LayoutDashboard, Sparkles } from 'lucide-react';
 
 export default function Sidebar({ route, onNavigate, urgentCount = 0 }) {
   const { page, agentId } = route || {};
@@ -64,13 +64,20 @@ export default function Sidebar({ route, onNavigate, urgentCount = 0 }) {
         </div>
       </div>
 
-      {/* Top nav: Dashboard */}
+      {/* Top nav: Dashboard + AI 크리에이터 */}
       <div style={{ padding: '8px 8px 0', flexShrink: 0 }}>
         {menuItem(
           page === 'dashboard',
           <LayoutDashboard size={15} strokeWidth={1.8} />,
           '대시보드',
           () => onNavigate('dashboard'),
+          0
+        )}
+        {menuItem(
+          page === 'creator',
+          <Sparkles size={15} strokeWidth={1.8} />,
+          'AI 크리에이터',
+          () => onNavigate('creator'),
           0
         )}
       </div>

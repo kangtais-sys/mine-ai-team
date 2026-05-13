@@ -79,6 +79,10 @@
     {
       "path": "/api/sales/cafe24",
       "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/creator-schedule",
+      "schedule": "*/5 * * * *"
     }
   ],
   "rewrites": [
@@ -353,6 +357,30 @@
     {
       "source": "/api/naver-debug",
       "destination": "/api/naver-debug"
+    },
+    {
+      "source": "/api/creator/generate",
+      "destination": "/api/creator/generate"
+    },
+    {
+      "source": "/api/creator/list",
+      "destination": "/api/creator/list"
+    },
+    {
+      "source": "/api/creator/draft",
+      "destination": "/api/creator/draft"
+    },
+    {
+      "source": "/api/creator/media",
+      "destination": "/api/creator/media"
+    },
+    {
+      "source": "/api/creator/publish",
+      "destination": "/api/creator/publish"
+    },
+    {
+      "source": "/api/cron/creator-schedule",
+      "destination": "/api/cron/creator-schedule"
     },
     {
       "source": "/((?!api/).*)",
