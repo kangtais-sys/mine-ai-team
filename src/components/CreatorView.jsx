@@ -222,13 +222,25 @@ function ImageUrlList({ items, onChange }) {
   );
 }
 
-// 각도별 이미지 생성 레이블 옵션
+// 각도/씬별 이미지 생성 옵션
 const IMAGE_ANGLE_OPTIONS = [
-  { key: '정면',       extraPrompt: 'front view, facing camera directly' },
-  { key: '측면',       extraPrompt: 'slight 3/4 angle view, natural pose' },
-  { key: '연구실',     extraPrompt: 'laboratory background, holding beaker or skincare product, white lab coat' },
-  { key: '제품 착용',  extraPrompt: 'holding skincare product bottle, demonstrating product, elegant hand gesture' },
-  { key: '야외',       extraPrompt: 'outdoor natural light, casual style, warm daylight' },
+  // 카메라 앵글
+  { group: '📐 앵글', key: '정면',       extraPrompt: 'front view portrait, facing camera directly, symmetrical composition' },
+  { group: '📐 앵글', key: '측면 45°',   extraPrompt: '3/4 angle view, slight turn, natural elegant pose' },
+  { group: '📐 앵글', key: '위에서',     extraPrompt: 'bird\'s eye view angle, camera looking down, flatlay-inspired portrait' },
+  { group: '📐 앵글', key: '아래에서',   extraPrompt: 'low angle, camera looking up slightly, powerful confident pose' },
+  { group: '📐 앵글', key: '뒷모습',     extraPrompt: 'back view, looking over shoulder, hair visible, mysterious mood' },
+  // 바디 샷
+  { group: '🖼 구도', key: '얼굴 클로즈업', extraPrompt: 'extreme close-up face portrait, eyes sharp, glowing skin detail' },
+  { group: '🖼 구도', key: '상반신',     extraPrompt: 'upper body shot, waist up, confident pose, arms visible' },
+  { group: '🖼 구도', key: '전신 서있는', extraPrompt: 'full body shot, standing, full length from head to toe' },
+  { group: '🖼 구도', key: '전신 앉은',  extraPrompt: 'full body sitting pose, seated elegantly, lifestyle feel' },
+  // 씬 / 컨셉
+  { group: '🎬 씬',  key: '연구실',      extraPrompt: 'laboratory setting, white lab coat, holding beaker or microscope, scientific atmosphere' },
+  { group: '🎬 씬',  key: '제품 착용',   extraPrompt: 'holding skincare product bottle close to face, demonstrating product, soft focus background' },
+  { group: '🎬 씬',  key: '홈 스튜디오', extraPrompt: 'clean home studio, minimal white background, ring light reflection in eyes' },
+  { group: '🎬 씬',  key: '야외 자연광', extraPrompt: 'outdoor golden hour natural light, bokeh background, warm sunlight' },
+  { group: '🎬 씬',  key: '카페 캐주얼', extraPrompt: 'cafe setting, casual lifestyle, warm interior, coffee cup, relaxed mood' },
 ];
 
 // ─── Persona Setup Page ──────────────────────────────────────
@@ -575,20 +587,24 @@ function PersonaSetup({ onGoCreate }) {
             </div>
           )}
 
-          {/* 각도 선택 */}
+          {/* 각도 선택 — 그룹별 */}
           <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 600, marginBottom: 5 }}>각도 / 씬</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {IMAGE_ANGLE_OPTIONS.map(a => (
-                <button key={a.key} onClick={() => setSelectedAngle(a.key)} style={{
-                  padding: '3px 8px', borderRadius: 10, fontSize: 10.5, cursor: 'pointer',
-                  border: `1px solid ${selectedAngle === a.key ? '#5E6AD2' : '#E5E5EA'}`,
-                  background: selectedAngle === a.key ? '#F0F0FF' : '#FFF',
-                  color: selectedAngle === a.key ? '#5E6AD2' : '#6E6E73',
-                  fontWeight: selectedAngle === a.key ? 600 : 400,
-                }}>{a.key}</button>
-              ))}
-            </div>
+            {['📐 앵글', '🖼 구도', '🎬 씬'].map(group => (
+              <div key={group} style={{ marginBottom: 6 }}>
+                <div style={{ fontSize: 9.5, color: '#AEAEB2', fontWeight: 700, marginBottom: 4 }}>{group}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                  {IMAGE_ANGLE_OPTIONS.filter(a => a.group === group).map(a => (
+                    <button key={a.key} onClick={() => setSelectedAngle(a.key)} style={{
+                      padding: '3px 7px', borderRadius: 10, fontSize: 10, cursor: 'pointer',
+                      border: `1px solid ${selectedAngle === a.key ? '#5E6AD2' : '#E5E5EA'}`,
+                      background: selectedAngle === a.key ? '#F0F0FF' : '#FFF',
+                      color: selectedAngle === a.key ? '#5E6AD2' : '#6E6E73',
+                      fontWeight: selectedAngle === a.key ? 600 : 400,
+                    }}>{a.key}</button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
 
           {imageError && (
