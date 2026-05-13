@@ -255,6 +255,7 @@ function PersonaSetup({ onGoCreate }) {
   const [selectedAngle, setSelectedAngle] = useState('정면');
   const [generatingImage, setGeneratingImage] = useState(false);
   const [imageError, setImageError] = useState('');
+  const [lightbox, setLightbox] = useState(null);   // { url, label }
 
   // Right panel — content preview
   const [previewPillar, setPreviewPillar] = useState('ingredient');
@@ -370,6 +371,39 @@ function PersonaSetup({ onGoCreate }) {
 
   return (
     <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', maxWidth: 734 }}>
+
+      {/* ── Lightbox Modal ── */}
+      {lightbox && (
+        <div
+          onClick={() => setLightbox(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.82)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            cursor: 'zoom-out',
+          }}
+        >
+          <img
+            src={lightbox.url}
+            alt={lightbox.label || ''}
+            style={{ maxHeight: '82vh', maxWidth: '90vw', borderRadius: 14, objectFit: 'contain', boxShadow: '0 8px 48px rgba(0,0,0,0.5)' }}
+            onClick={e => e.stopPropagation()}
+          />
+          <div style={{ display: 'flex', gap: 10, marginTop: 16, alignItems: 'center' }}>
+            {lightbox.label && <span style={{ color: '#FFF', fontSize: 13, opacity: 0.7 }}>{lightbox.label}</span>}
+            {lightbox.id && (
+              <button
+                onClick={e => { e.stopPropagation(); handleSetPrimary(lightbox.id); setLightbox(null); }}
+                style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: '#5E6AD2', color: '#FFF', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}
+              >대표로 설정</button>
+            )}
+            <button
+              onClick={() => setLightbox(null)}
+              style={{ padding: '7px 16px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.3)', background: 'transparent', color: '#FFF', fontSize: 12.5, cursor: 'pointer' }}
+            >닫기</button>
+          </div>
+        </div>
+      )}
 
       {/* ── Left: Form ── */}
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -543,13 +577,14 @@ function PersonaSetup({ onGoCreate }) {
 
           {/* 대표 이미지 */}
           {images.length > 0 ? (
-            <div style={{ marginBottom: 10, position: 'relative' }}>
+            <div style={{ marginBottom: 10, position: 'relative', cursor: 'zoom-in' }} onClick={() => { const img = images.find(i => i.isPrimary) || images[0]; setLightbox({ url: img.url, label: img.label }); }}>
               <img
                 src={images.find(i => i.isPrimary)?.url || images[0].url}
                 alt="대표 이미지"
                 style={{ width: '100%', borderRadius: 10, objectFit: 'cover', aspectRatio: '3/4', background: '#F2F2F7', display: 'block' }}
               />
               <div style={{ position: 'absolute', top: 7, left: 7, background: '#5E6AD2', color: '#FFF', fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 5 }}>대표</div>
+              <div style={{ position: 'absolute', bottom: 7, right: 7, background: 'rgba(0,0,0,0.45)', color: '#FFF', fontSize: 9, padding: '2px 6px', borderRadius: 4 }}>🔍 크게보기</div>
             </div>
           ) : (
             <div style={{
@@ -570,15 +605,15 @@ function PersonaSetup({ onGoCreate }) {
                   <img
                     src={img.url}
                     alt={img.label || ''}
-                    onClick={() => handleSetPrimary(img.id)}
+                    onClick={() => setLightbox({ url: img.url, label: img.label, id: img.id })}
                     style={{
-                      width: 48, height: 60, borderRadius: 6, objectFit: 'cover', cursor: 'pointer',
+                      width: 48, height: 60, borderRadius: 6, objectFit: 'cover', cursor: 'zoom-in',
                       border: img.isPrimary ? '2px solid #5E6AD2' : '1.5px solid #E5E5EA',
                       opacity: img.isPrimary ? 1 : 0.75,
                     }}
                   />
                   <button
-                    onClick={() => handleDeleteImage(img.id)}
+                    onClick={e => { e.stopPropagation(); handleDeleteImage(img.id); }}
                     style={{ position: 'absolute', top: -4, right: -4, width: 14, height: 14, borderRadius: '50%', border: 'none', background: '#FF3B30', color: '#FFF', fontSize: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
                   >×</button>
                   {img.label && <div style={{ fontSize: 7.5, color: '#6E6E73', textAlign: 'center', marginTop: 2, lineHeight: 1 }}>{img.label}</div>}
