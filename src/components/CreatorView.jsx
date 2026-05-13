@@ -481,7 +481,7 @@ function PersonaSetup({ onGoCreate }) {
       </div>
 
       {/* ── Right: Sticky Panel ── */}
-      <div style={{ width: 220, flexShrink: 0, position: 'sticky', top: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ width: 220, flexShrink: 0, position: 'sticky', top: 0, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', paddingRight: 2 }}>
 
         {/* Character Image */}
         <div style={{ ...CARD, padding: '16px' }}>
