@@ -367,6 +367,10 @@
       "destination": "/api/creator/persona-image"
     },
     {
+      "source": "/api/creator/persona-images",
+      "destination": "/api/creator/persona-images"
+    },
+    {
       "source": "/api/creator/preview",
       "destination": "/api/creator/preview"
     },

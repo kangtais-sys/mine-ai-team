@@ -222,6 +222,15 @@ function ImageUrlList({ items, onChange }) {
   );
 }
 
+// 각도별 이미지 생성 레이블 옵션
+const IMAGE_ANGLE_OPTIONS = [
+  { key: '정면',       extraPrompt: 'front view, facing camera directly' },
+  { key: '측면',       extraPrompt: 'slight 3/4 angle view, natural pose' },
+  { key: '연구실',     extraPrompt: 'laboratory background, holding beaker or skincare product, white lab coat' },
+  { key: '제품 착용',  extraPrompt: 'holding skincare product bottle, demonstrating product, elegant hand gesture' },
+  { key: '야외',       extraPrompt: 'outdoor natural light, casual style, warm daylight' },
+];
+
 // ─── Persona Setup Page ──────────────────────────────────────
 function PersonaSetup({ onGoCreate }) {
   const [persona, setPersona] = useState(null);
@@ -229,8 +238,9 @@ function PersonaSetup({ onGoCreate }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Right panel — character image
-  const [charImage, setCharImage] = useState(null);
+  // Right panel — image gallery
+  const [images, setImages] = useState([]);          // 저장된 이미지 목록
+  const [selectedAngle, setSelectedAngle] = useState('정면');
   const [generatingImage, setGeneratingImage] = useState(false);
   const [imageError, setImageError] = useState('');
 
@@ -241,11 +251,14 @@ function PersonaSetup({ onGoCreate }) {
   const [generatingPreview, setGeneratingPreview] = useState(false);
 
   useEffect(() => {
-    fetch('/api/creator/persona')
-      .then(r => r.json())
-      .then(d => { if (d.persona) setPersona(d.persona); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    // 페르소나 + 저장된 이미지 동시 로드
+    Promise.all([
+      fetch('/api/creator/persona').then(r => r.json()).catch(() => ({})),
+      fetch('/api/creator/persona-images').then(r => r.json()).catch(() => ({ images: [] })),
+    ]).then(([personaData, imgData]) => {
+      if (personaData.persona) setPersona(personaData.persona);
+      if (imgData.images) setImages(imgData.images);
+    }).finally(() => setLoading(false));
   }, []);
 
   const set = (field, value) => setPersona(prev => ({ ...prev, [field]: value }));
@@ -269,15 +282,18 @@ function PersonaSetup({ onGoCreate }) {
   const handleGenerateImage = async () => {
     setGeneratingImage(true);
     setImageError('');
+    const angleOpt = IMAGE_ANGLE_OPTIONS.find(a => a.key === selectedAngle) || IMAGE_ANGLE_OPTIONS[0];
     try {
       const res = await fetch('/api/creator/persona-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ persona }),
+        body: JSON.stringify({ persona, extraPrompt: angleOpt.extraPrompt, label: selectedAngle }),
       });
       const data = await res.json();
       if (data.imageUrl) {
-        setCharImage(data.imageUrl);
+        // 갤러리에 추가 (savedImage가 있으면 그걸 쓰고, 없으면 임시 객체)
+        const newImg = data.savedImage || { id: Date.now(), url: data.imageUrl, label: selectedAngle, isPrimary: images.length === 0, savedAt: new Date().toISOString() };
+        setImages(prev => [newImg, ...prev].slice(0, 10));
       } else {
         setImageError(data.error || '이미지 생성 실패');
       }
@@ -285,6 +301,24 @@ function PersonaSetup({ onGoCreate }) {
       setImageError(e.message);
     }
     setGeneratingImage(false);
+  };
+
+  const handleSetPrimary = async (id) => {
+    setImages(prev => prev.map(img => ({ ...img, isPrimary: img.id === id })));
+    await fetch('/api/creator/persona-images', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    }).catch(() => {});
+  };
+
+  const handleDeleteImage = async (id) => {
+    setImages(prev => {
+      const filtered = prev.filter(img => img.id !== id);
+      if (filtered.length > 0 && !filtered.some(img => img.isPrimary)) filtered[0].isPrimary = true;
+      return filtered;
+    });
+    await fetch(`/api/creator/persona-images?id=${id}`, { method: 'DELETE' }).catch(() => {});
   };
 
   const handleGeneratePreview = async () => {
@@ -331,8 +365,8 @@ function PersonaSetup({ onGoCreate }) {
         <div style={{ ...CARD, marginBottom: 20, background: 'linear-gradient(135deg, #F5F5FF 0%, #EEF0FF 100%)', borderColor: '#D4D7FF' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{ width: 60, height: 60, borderRadius: '50%', background: '#5E6AD2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, flexShrink: 0, overflow: 'hidden' }}>
-              {charImage
-                ? <img src={charImage} alt="캐릭터" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              {images.length > 0
+                ? <img src={images.find(i => i.isPrimary)?.url || images[0].url} alt="캐릭터" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 : '🧬'}
             </div>
             <div style={{ flex: 1 }}>
@@ -491,16 +525,19 @@ function PersonaSetup({ onGoCreate }) {
       {/* ── Right: Sticky Panel ── */}
       <div style={{ width: 220, flexShrink: 0, position: 'sticky', top: 0, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', paddingRight: 2 }}>
 
-        {/* Character Image */}
+        {/* Character Image Gallery */}
         <div style={{ ...CARD, padding: '16px' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#6E6E73', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>AI 캐릭터 이미지</div>
-          {charImage ? (
-            <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#6E6E73', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>AI 캐릭터 이미지</div>
+
+          {/* 대표 이미지 */}
+          {images.length > 0 ? (
+            <div style={{ marginBottom: 10, position: 'relative' }}>
               <img
-                src={charImage}
-                alt="AI 캐릭터"
-                style={{ width: '100%', borderRadius: 10, objectFit: 'cover', aspectRatio: '3/4', background: '#F2F2F7' }}
+                src={images.find(i => i.isPrimary)?.url || images[0].url}
+                alt="대표 이미지"
+                style={{ width: '100%', borderRadius: 10, objectFit: 'cover', aspectRatio: '3/4', background: '#F2F2F7', display: 'block' }}
               />
+              <div style={{ position: 'absolute', top: 7, left: 7, background: '#5E6AD2', color: '#FFF', fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 5 }}>대표</div>
             </div>
           ) : (
             <div style={{
@@ -508,13 +545,56 @@ function PersonaSetup({ onGoCreate }) {
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
               marginBottom: 10, border: '1px dashed #D4D7FF',
             }}>
-              <div style={{ fontSize: 40, marginBottom: 8 }}>🧬</div>
-              <div style={{ fontSize: 11.5, color: '#AEAEB2', textAlign: 'center', padding: '0 16px' }}>외모 정보를 입력하고<br />AI로 캐릭터를 생성하세요</div>
+              <div style={{ fontSize: 36, marginBottom: 6 }}>🧬</div>
+              <div style={{ fontSize: 11, color: '#AEAEB2', textAlign: 'center', padding: '0 12px', lineHeight: 1.5 }}>외모 정보 입력 후<br/>AI로 생성하세요</div>
             </div>
           )}
-          {imageError && (
-            <div style={{ fontSize: 11, color: '#FF3B30', marginBottom: 8, padding: '6px 10px', background: '#FFF5F5', borderRadius: 6 }}>{imageError}</div>
+
+          {/* 갤러리 썸네일 */}
+          {images.length > 1 && (
+            <div style={{ display: 'flex', gap: 5, overflowX: 'auto', marginBottom: 10, paddingBottom: 2 }}>
+              {images.map(img => (
+                <div key={img.id} style={{ position: 'relative', flexShrink: 0 }}>
+                  <img
+                    src={img.url}
+                    alt={img.label || ''}
+                    onClick={() => handleSetPrimary(img.id)}
+                    style={{
+                      width: 48, height: 60, borderRadius: 6, objectFit: 'cover', cursor: 'pointer',
+                      border: img.isPrimary ? '2px solid #5E6AD2' : '1.5px solid #E5E5EA',
+                      opacity: img.isPrimary ? 1 : 0.75,
+                    }}
+                  />
+                  <button
+                    onClick={() => handleDeleteImage(img.id)}
+                    style={{ position: 'absolute', top: -4, right: -4, width: 14, height: 14, borderRadius: '50%', border: 'none', background: '#FF3B30', color: '#FFF', fontSize: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                  >×</button>
+                  {img.label && <div style={{ fontSize: 7.5, color: '#6E6E73', textAlign: 'center', marginTop: 2, lineHeight: 1 }}>{img.label}</div>}
+                </div>
+              ))}
+            </div>
           )}
+
+          {/* 각도 선택 */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 600, marginBottom: 5 }}>각도 / 씬</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {IMAGE_ANGLE_OPTIONS.map(a => (
+                <button key={a.key} onClick={() => setSelectedAngle(a.key)} style={{
+                  padding: '3px 8px', borderRadius: 10, fontSize: 10.5, cursor: 'pointer',
+                  border: `1px solid ${selectedAngle === a.key ? '#5E6AD2' : '#E5E5EA'}`,
+                  background: selectedAngle === a.key ? '#F0F0FF' : '#FFF',
+                  color: selectedAngle === a.key ? '#5E6AD2' : '#6E6E73',
+                  fontWeight: selectedAngle === a.key ? 600 : 400,
+                }}>{a.key}</button>
+              ))}
+            </div>
+          </div>
+
+          {imageError && (
+            <div style={{ fontSize: 10.5, color: '#FF3B30', marginBottom: 8, padding: '6px 10px', background: '#FFF5F5', borderRadius: 6, lineHeight: 1.4 }}>{imageError}</div>
+          )}
+
           <button
             onClick={handleGenerateImage}
             disabled={generatingImage}
@@ -522,15 +602,17 @@ function PersonaSetup({ onGoCreate }) {
               width: '100%', padding: '9px', borderRadius: 8, border: 'none',
               background: generatingImage ? '#E5E5EA' : '#5E6AD2',
               color: generatingImage ? '#AEAEB2' : '#FFF',
-              fontSize: 12.5, fontWeight: 600, cursor: generatingImage ? 'default' : 'pointer',
+              fontSize: 12, fontWeight: 600, cursor: generatingImage ? 'default' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             }}
           >
             {generatingImage
-              ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> 생성 중 (20-30초)...</>
-              : <><Sparkles size={13} /> {charImage ? '다시 생성' : 'AI 캐릭터 생성'}</>}
+              ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> 생성 중...</>
+              : <><Sparkles size={12} /> {selectedAngle} 컷 생성</>}
           </button>
-          <div style={{ fontSize: 10.5, color: '#AEAEB2', marginTop: 6, textAlign: 'center' }}>Gemini Imagen 3 · 외모 섹션 기반</div>
+          <div style={{ fontSize: 10, color: '#AEAEB2', marginTop: 5, textAlign: 'center' }}>
+            {images.length > 0 ? `${images.length}장 저장됨 · 클릭하면 대표 변경` : 'Gemini Imagen 3 · 새로고침해도 유지'}
+          </div>
         </div>
 
         {/* Content Preview */}

@@ -2,7 +2,43 @@
 // 1차: Imagen 3 (고품질, 빌링 필요)
 // 2차 fallback: gemini-2.0-flash-preview-image-generation
 // 3차 fallback: gemini-3.1-flash-image-preview
+// 생성 성공 시 persona-images API로 자동 저장
 // env: GOOGLE_API_KEY 또는 GEMINI_API_KEY
+
+import { Redis } from '@upstash/redis';
+import { randomUUID } from 'crypto';
+
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
+const IMAGES_KEY = 'creator:persona:millimilli:images';
+const MAX_IMAGES = 10;
+
+async function saveImageToGallery(imageUrl, prompt, via, label) {
+  try {
+    const raw = await redis.get(IMAGES_KEY).catch(() => null);
+    let images = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
+
+    const newImage = {
+      id: randomUUID(),
+      url: imageUrl,
+      prompt,
+      via,
+      label: label || '',
+      isPrimary: images.length === 0,
+      savedAt: new Date().toISOString(),
+    };
+
+    images = [newImage, ...images].slice(0, MAX_IMAGES);
+    await redis.set(IMAGES_KEY, images, { ex: 86400 * 90 });
+    return newImage;
+  } catch (e) {
+    console.warn('[Persona Image] 갤러리 저장 실패 (무시):', e.message);
+    return null;
+  }
+}
 
 const IMAGEN_ENDPOINT =
   'https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict';
@@ -57,7 +93,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const { persona = {}, extraPrompt = '' } = req.body || {};
+  const { persona = {}, extraPrompt = '', label = '' } = req.body || {};
   const prompt = buildImagePrompt(persona) + (extraPrompt ? `, ${extraPrompt}` : '');
 
   const errors = [];
@@ -83,11 +119,14 @@ export default async function handler(req, res) {
         const data = await safeJson(imagenRes);
         const prediction = data.predictions?.[0];
         if (prediction?.bytesBase64Encoded) {
+          const imageUrl = `data:${prediction.mimeType || 'image/png'};base64,${prediction.bytesBase64Encoded}`;
+          const saved = await saveImageToGallery(imageUrl, prompt, 'imagen3', label);
           return res.status(200).json({
             success: true,
-            imageUrl: `data:${prediction.mimeType || 'image/png'};base64,${prediction.bytesBase64Encoded}`,
+            imageUrl,
             prompt,
             via: 'imagen3',
+            savedImage: saved,
           });
         }
       } else {
@@ -118,11 +157,14 @@ export default async function handler(req, res) {
         const inlineData = geminiData.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData;
 
         if (inlineData?.data) {
+          const imageUrl = `data:${inlineData.mimeType || 'image/png'};base64,${inlineData.data}`;
+          const saved = await saveImageToGallery(imageUrl, prompt, model, label);
           return res.status(200).json({
             success: true,
-            imageUrl: `data:${inlineData.mimeType || 'image/png'};base64,${inlineData.data}`,
+            imageUrl,
             prompt,
             via: model,
+            savedImage: saved,
           });
         }
 
