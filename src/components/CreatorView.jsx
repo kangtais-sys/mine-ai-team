@@ -27,6 +27,14 @@ const PLATFORMS = [
   { key: 'youtube',   label: 'YouTube',   color: '#FF0000' },
 ];
 
+// Ssobi 카드뉴스 템플릿 4종 (clean/bold/mag/noir)
+const CARD_TEMPLATES = [
+  { key: 'clean', label: '클린',   bg: '#FFFFFF', text: '#1A1A1A', accent: '#1A1A1A', border: '#E0E0E0', emoji: '⬜' },
+  { key: 'bold',  label: '팝',     bg: '#D55A35', text: '#1A1A1A', accent: '#0E1B2C', border: '#D55A35', emoji: '🟧' },
+  { key: 'mag',   label: '매거진', bg: '#F5EDE0', text: '#1A1A1A', accent: '#E8FF4D', border: '#DDD0BC', emoji: '🟫' },
+  { key: 'noir',  label: '감성',   bg: '#1A1A1A', text: '#FFFFFF', accent: '#FFFFFF', border: '#333333', emoji: '⬛' },
+];
+
 const STATUS_LABELS = {
   draft:      { label: '초안',       color: '#AEAEB2', bg: '#F2F2F7' },
   generating: { label: '영상 생성 중', color: '#FF9500', bg: '#FFF5E6' },
@@ -728,6 +736,32 @@ function DraftCard({ draft, onUpdate, onPublish, onDelete }) {
         </div>
       )}
 
+      {/* 카드뉴스 슬라이드 템플릿 썸네일 (미디어 이미지 없을 때) */}
+      {draft.format === 'cardnews' && !draft.mediaUrls?.length && draft.slides?.length > 0 && (() => {
+        const tpl = CARD_TEMPLATES.find(t => t.key === draft.cardnewsTemplate) || CARD_TEMPLATES[0];
+        return (
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 8, paddingBottom: 4 }}>
+            {draft.slides.slice(0, 5).map((s, i) => (
+              <div key={i} style={{
+                flexShrink: 0, width: 64, height: 80, borderRadius: 6,
+                background: tpl.bg, border: `1px solid ${tpl.border}`,
+                padding: '7px 6px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+              }}>
+                <div style={{ width: 12, height: 1.5, background: tpl.accent, borderRadius: 1, marginBottom: 4, opacity: 0.8 }} />
+                <div style={{ fontSize: 8, fontWeight: 700, color: tpl.text, lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+                  {s.title}
+                </div>
+              </div>
+            ))}
+            {draft.slides.length > 5 && (
+              <div style={{ flexShrink: 0, width: 64, height: 80, borderRadius: 6, background: '#F2F2F7', border: '1px solid #E5E5EA', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 600 }}>+{draft.slides.length - 5}</span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Expanded content */}
       {expanded && (
         <div style={{ marginTop: 10 }}>
@@ -739,18 +773,27 @@ function DraftCard({ draft, onUpdate, onPublish, onDelete }) {
               </div>
             </div>
           )}
-          {draft.slides?.length > 0 && !draft.mediaUrls?.length && (
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#AEAEB2', display: 'block', marginBottom: 4 }}>슬라이드 ({draft.slides.length}장)</label>
-              {draft.slides.map((s, i) => (
-                <div key={i} style={{ background: '#F8F8FA', borderRadius: 8, padding: '8px 12px', marginBottom: 6 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#5E6AD2' }}>#{s.num || i + 1}</span>
-                  <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F', marginTop: 2 }}>{s.title}</div>
-                  <div style={{ fontSize: 12, color: '#6E6E73', marginTop: 2 }}>{s.body}</div>
+          {draft.slides?.length > 0 && !draft.mediaUrls?.length && (() => {
+            const tpl = CARD_TEMPLATES.find(t => t.key === draft.cardnewsTemplate) || CARD_TEMPLATES[0];
+            return (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#AEAEB2' }}>슬라이드 ({draft.slides.length}장)</label>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: tpl.key === 'noir' ? '#FFF' : '#1D1D1F', background: tpl.bg, border: `1px solid ${tpl.border}`, padding: '1px 7px', borderRadius: 4 }}>{tpl.label}</span>
                 </div>
-              ))}
-            </div>
-          )}
+                {draft.slides.map((s, i) => (
+                  <div key={i} style={{ background: tpl.bg, border: `1px solid ${tpl.border}`, borderRadius: 8, padding: '10px 14px', marginBottom: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <div style={{ width: 16, height: 2, background: tpl.accent, borderRadius: 1 }} />
+                      <span style={{ fontSize: 9.5, fontWeight: 700, color: tpl.text, opacity: 0.45 }}>#{s.num || i + 1}</span>
+                    </div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: tpl.text, lineHeight: 1.4 }}>{s.title}</div>
+                    <div style={{ fontSize: 11.5, color: tpl.text, opacity: 0.65, marginTop: 4, lineHeight: 1.5 }}>{s.body}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
           <div style={{ marginBottom: 10 }}>
             <label style={{ fontSize: 11, fontWeight: 600, color: '#AEAEB2', display: 'block', marginBottom: 4 }}>캡션</label>
             <textarea value={caption} onChange={e => setCaption(e.target.value)} rows={4}
@@ -808,6 +851,7 @@ function CreateForm({ onGenerated }) {
   const [format, setFormat] = useState('reel');
   const [platforms, setPlatforms] = useState(['instagram', 'tiktok']);
   const [notes, setNotes] = useState('');
+  const [cardnewsTemplate, setCardnewsTemplate] = useState('clean');
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState('idle');
   const [error, setError] = useState('');
@@ -828,7 +872,7 @@ function CreateForm({ onGenerated }) {
       const genRes = await fetch('/api/creator/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pillar, format, platforms, notes }),
+        body: JSON.stringify({ pillar, format, platforms, notes, cardnewsTemplate }),
       });
       const genData = await genRes.json();
       if (!genData.success) throw new Error(genData.error || '생성 실패');
@@ -927,6 +971,31 @@ function CreateForm({ onGenerated }) {
         </div>
       </div>
 
+      {/* 2.5. 카드뉴스 템플릿 */}
+      {format === 'cardnews' && (
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#6E6E73', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>카드뉴스 템플릿</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {CARD_TEMPLATES.map(t => {
+              const active = cardnewsTemplate === t.key;
+              return (
+                <button key={t.key} onClick={() => setCardnewsTemplate(t.key)} style={{
+                  flex: 1, padding: '12px 8px', borderRadius: 10, cursor: 'pointer', textAlign: 'center',
+                  background: t.bg,
+                  border: active ? `2px solid ${t.key === 'noir' ? '#AEAEB2' : '#5E6AD2'}` : `1.5px solid ${t.border}`,
+                  boxShadow: active ? `0 0 0 3px ${t.key === 'noir' ? '#33333340' : '#5E6AD220'}` : 'none',
+                  transition: 'all 0.15s',
+                }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: t.text, marginBottom: 4 }}>{t.label}</div>
+                  <div style={{ width: '60%', height: 2, background: t.accent, margin: '0 auto', borderRadius: 1, opacity: 0.8 }} />
+                  {active && <div style={{ fontSize: 9, color: t.text, opacity: 0.5, marginTop: 4 }}>선택됨</div>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* 3. 플랫폼 */}
       <div style={{ marginBottom: 20 }}>
         <label style={{ fontSize: 12, fontWeight: 600, color: '#6E6E73', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>발행 플랫폼</label>
@@ -957,7 +1026,7 @@ function CreateForm({ onGenerated }) {
       <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
         <input type="checkbox" id="gen-media" checked={generateMedia} onChange={e => setGenerateMedia(e.target.checked)} style={{ cursor: 'pointer' }} />
         <label htmlFor="gen-media" style={{ fontSize: 13, color: '#6E6E73', cursor: 'pointer' }}>
-          {format === 'cardnews' ? '카드뉴스 이미지 자동 생성 (Bannerbear)' : '영상 자동 생성 (Higgsfield)'}
+          {format === 'cardnews' ? `카드뉴스 이미지 자동 생성 (${CARD_TEMPLATES.find(t => t.key === cardnewsTemplate)?.label || '클린'} 템플릿)` : '영상 자동 생성 (Higgsfield)'}
         </label>
       </div>
 

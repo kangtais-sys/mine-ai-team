@@ -29,7 +29,7 @@ function buildCatchphrasesHint(persona) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { pillar, format, platforms = ['instagram'], notes = '' } = req.body || {};
+  const { pillar, format, platforms = ['instagram'], notes = '', cardnewsTemplate = 'clean' } = req.body || {};
   if (!pillar || !format) return res.status(400).json({ error: 'pillar, format 필수' });
 
   // 상세 페르소나 로드 (Redis → persona API 저장값 우선)
@@ -182,6 +182,7 @@ ${pillarInfo.label}: ${pillarInfo.desc}
       hashtags: parsed.hashtags || '',
       visualPrompt: parsed.visualPrompt || '',
       slides: parsed.slides || [],
+      cardnewsTemplate: format === 'cardnews' ? (cardnewsTemplate || 'clean') : null,
       higgsfieldJobId: null,
       mediaUrl: null,
       mediaUrls: [],
