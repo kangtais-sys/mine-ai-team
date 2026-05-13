@@ -38,8 +38,18 @@ export default async function handler(req, res) {
     });
   }
 
-  // 요청 body에서 페르소나 정보 받기
-  const { persona = {}, extraPrompt = '' } = req.body || {};
+  // 진단 모드: 이미지 생성 지원 모델 목록 반환
+  const { persona = {}, extraPrompt = '', diagnose = false } = req.body || {};
+  if (diagnose) {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    const d = await r.json();
+    const imgModels = (d.models || [])
+      .filter(m => (m.supportedGenerationMethods || []).includes('generateContent') &&
+        (m.name?.includes('flash') || m.name?.includes('imagen')))
+      .map(m => ({ name: m.name, methods: m.supportedGenerationMethods }));
+    return res.status(200).json({ models: imgModels });
+  }
+
   const prompt = buildImagePrompt(persona) + (extraPrompt ? `, ${extraPrompt}` : '');
 
   try {
