@@ -221,6 +221,17 @@ function PersonaSetup({ onGoCreate }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // Right panel — character image
+  const [charImage, setCharImage] = useState(null);
+  const [generatingImage, setGeneratingImage] = useState(false);
+  const [imageError, setImageError] = useState('');
+
+  // Right panel — content preview
+  const [previewPillar, setPreviewPillar] = useState('ingredient');
+  const [previewFormat, setPreviewFormat] = useState('reel');
+  const [preview, setPreview] = useState(null);
+  const [generatingPreview, setGeneratingPreview] = useState(false);
+
   useEffect(() => {
     fetch('/api/creator/persona')
       .then(r => r.json())
@@ -247,6 +258,42 @@ function PersonaSetup({ onGoCreate }) {
     setSaving(false);
   };
 
+  const handleGenerateImage = async () => {
+    setGeneratingImage(true);
+    setImageError('');
+    try {
+      const res = await fetch('/api/creator/persona-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ persona }),
+      });
+      const data = await res.json();
+      if (data.imageUrl) {
+        setCharImage(data.imageUrl);
+      } else {
+        setImageError(data.error || '이미지 생성 실패');
+      }
+    } catch (e) {
+      setImageError(e.message);
+    }
+    setGeneratingImage(false);
+  };
+
+  const handleGeneratePreview = async () => {
+    setGeneratingPreview(true);
+    setPreview(null);
+    try {
+      const res = await fetch('/api/creator/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pillar: previewPillar, format: previewFormat }),
+      });
+      const data = await res.json();
+      if (data.success) setPreview(data);
+    } catch {}
+    setGeneratingPreview(false);
+  };
+
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}>
       <Loader2 size={22} color="#AEAEB2" style={{ animation: 'spin 1s linear infinite' }} />
@@ -255,165 +302,303 @@ function PersonaSetup({ onGoCreate }) {
 
   if (!persona) return null;
 
+  const PREVIEW_PILLARS = [
+    { key: 'ingredient', label: '🧪 성분' },
+    { key: 'treatment', label: '💉 시술' },
+    { key: 'behind', label: '🔬 비하인드' },
+    { key: 'trend', label: '✨ 트렌드' },
+  ];
+  const PREVIEW_FORMATS = [
+    { key: 'reel', label: 'Reels' },
+    { key: 'shorts', label: 'Shorts' },
+    { key: 'cardnews', label: '카드뉴스' },
+  ];
+
   return (
-    <div style={{ maxWidth: 700 }}>
-      {/* Persona Preview Card */}
-      <div style={{ ...CARD, marginBottom: 20, background: 'linear-gradient(135deg, #F5F5FF 0%, #EEF0FF 100%)', borderColor: '#D4D7FF' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 60, height: 60, borderRadius: '50%', background: '#5E6AD2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, flexShrink: 0 }}>
-            🧬
+    <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+
+      {/* ── Left: Form ── */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {/* Persona Preview Card */}
+        <div style={{ ...CARD, marginBottom: 20, background: 'linear-gradient(135deg, #F5F5FF 0%, #EEF0FF 100%)', borderColor: '#D4D7FF' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ width: 60, height: 60, borderRadius: '50%', background: '#5E6AD2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, flexShrink: 0, overflow: 'hidden' }}>
+              {charImage
+                ? <img src={charImage} alt="캐릭터" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : '🧬'}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#1D1D1F' }}>{persona.name}</div>
+              <div style={{ fontSize: 12.5, color: '#5E6AD2', fontWeight: 500, marginTop: 2 }}>@{persona.handle}</div>
+              <div style={{ fontSize: 12, color: '#6E6E73', marginTop: 4, lineHeight: 1.4 }}>{persona.occupation} · {persona.age}</div>
+            </div>
+            <button
+              onClick={onGoCreate}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', borderRadius: 9, border: 'none', background: '#5E6AD2', color: '#FFF', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}
+            >
+              콘텐츠 만들기 <ArrowRight size={14} />
+            </button>
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#1D1D1F' }}>{persona.name}</div>
-            <div style={{ fontSize: 12.5, color: '#5E6AD2', fontWeight: 500, marginTop: 2 }}>@{persona.handle}</div>
-            <div style={{ fontSize: 12, color: '#6E6E73', marginTop: 4, lineHeight: 1.4 }}>{persona.occupation} · {persona.age}</div>
+          {persona.bio && (
+            <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(255,255,255,0.6)', borderRadius: 8, fontSize: 12.5, color: '#1D1D1F', lineHeight: 1.5, fontStyle: 'italic' }}>
+              "{persona.bio}"
+            </div>
+          )}
+        </div>
+
+        {/* Section 1: 기본 프로필 */}
+        <div style={{ ...CARD, marginBottom: 16 }}>
+          <SectionHeader icon={User} title="기본 프로필" subtitle="페르소나의 정체성을 정의하는 핵심 정보" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+            <div>
+              <FieldLabel>이름</FieldLabel>
+              <TextInput value={persona.name || ''} onChange={v => set('name', v)} placeholder="밀리 (Milli)" />
+            </div>
+            <div>
+              <FieldLabel>SNS 핸들</FieldLabel>
+              <TextInput value={persona.handle || ''} onChange={v => set('handle', v)} placeholder="millimilli.kr" />
+            </div>
+            <div>
+              <FieldLabel>나이</FieldLabel>
+              <TextInput value={persona.age || ''} onChange={v => set('age', v)} placeholder="29세" />
+            </div>
+            <div>
+              <FieldLabel>직업</FieldLabel>
+              <TextInput value={persona.occupation || ''} onChange={v => set('occupation', v)} placeholder="화장품 연구원 / 창업자" />
+            </div>
           </div>
+          <div style={{ marginBottom: 12 }}>
+            <FieldLabel>배경 스토리</FieldLabel>
+            <TextArea value={persona.background || ''} onChange={v => set('background', v)} placeholder="어떻게 이 페르소나가 만들어졌나요? 학력, 경력, 창업 계기 등" rows={3} />
+          </div>
+          <div>
+            <FieldLabel>한 줄 자기소개 (콘텐츠 바이오)</FieldLabel>
+            <TextInput value={persona.bio || ''} onChange={v => set('bio', v)} placeholder="팔로워에게 가장 인상적으로 남는 한 문장" />
+          </div>
+        </div>
+
+        {/* Section 2: 외모 & 스타일 */}
+        <div style={{ ...CARD, marginBottom: 16 }}>
+          <SectionHeader icon={BookImage} title="외모 & 스타일" subtitle="AI 영상·이미지 생성 시 비주얼 프롬프트로 활용" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+            <div>
+              <FieldLabel>피부 타입 & 특징</FieldLabel>
+              <TextInput value={persona.skinType || ''} onChange={v => set('skinType', v)} placeholder="건성 민감성, 약간 어두운 톤" />
+            </div>
+            <div>
+              <FieldLabel>헤어스타일</FieldLabel>
+              <TextInput value={persona.hairStyle || ''} onChange={v => set('hairStyle', v)} placeholder="자연스러운 단발, 연구 중엔 번" />
+            </div>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <FieldLabel>시그니처 룩 (AI 이미지 생성 기준 설명)</FieldLabel>
+            <TextArea value={persona.signatureLook || ''} onChange={v => set('signatureLook', v)} placeholder="흰 가운, 내추럴 피부, 최소한의 메이크업 — AI 비주얼 프롬프트에 그대로 반영됩니다" rows={2} />
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <FieldLabel>평소 착장</FieldLabel>
+            <TextArea value={persona.typicalOutfit || ''} onChange={v => set('typicalOutfit', v)} placeholder="연구실: 흰 가운 / 촬영: 오프화이트·베이지 니트 + 슬랙스" rows={2} />
+          </div>
+          <div>
+            <FieldLabel>시그니처 소품 & 액세서리</FieldLabel>
+            <TextInput value={persona.accessories || ''} onChange={v => set('accessories', v)} placeholder="얇은 금 귀걸이, 항상 스킨케어 제품을 손에" />
+          </div>
+        </div>
+
+        {/* Section 3: 성격 & 커뮤니케이션 */}
+        <div style={{ ...CARD, marginBottom: 16 }}>
+          <SectionHeader icon={User} title="성격 & 커뮤니케이션 스타일" subtitle="콘텐츠 톤·댓글 응대·캡션 스타일에 자동 반영" />
+          <div style={{ marginBottom: 14 }}>
+            <FieldLabel>성격 특성 (복수 선택)</FieldLabel>
+            <ChipToggle options={PERSONALITY_OPTIONS} selected={persona.personality || []} onChange={v => set('personality', v)} />
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <FieldLabel>핵심 가치관 / 철학</FieldLabel>
+            <TextArea value={Array.isArray(persona.values) ? persona.values.join(', ') : (persona.values || '')} onChange={v => set('values', v.split(',').map(s => s.trim()).filter(Boolean))} placeholder="과학 근거 기반, 소비자 솔직 정보, 커뮤니티 신뢰" rows={2} />
+          </div>
+          <div>
+            <FieldLabel>커뮤니케이션 톤</FieldLabel>
+            <TextArea value={persona.communicationTone || ''} onChange={v => set('communicationTone', v)} placeholder="전문적이되 쉽게. 강의 말고 대화. 어려운 성분도 비유로 설명." rows={2} />
+          </div>
+        </div>
+
+        {/* Section 4: 시그니처 행동 패턴 */}
+        <div style={{ ...CARD, marginBottom: 16 }}>
+          <SectionHeader icon={FlaskConical} title="시그니처 행동 패턴" subtitle="영상 연출 방향·스크립트 생성에 활용" />
+          <div style={{ marginBottom: 14 }}>
+            <FieldLabel>반복 행동 패턴 (줄바꿈으로 구분)</FieldLabel>
+            <TextArea value={persona.signatureActions || ''} onChange={v => set('signatureActions', v)} placeholder={"성분 이름 들으면 분자 구조부터 찾아봄\n신제품 받으면 성분표 먼저 스캔\n손가락으로 가리키며 설명하는 버릇"} rows={4} />
+          </div>
+          <div>
+            <FieldLabel>시그니처 콘텐츠 시나리오 (자주 찍는 상황)</FieldLabel>
+            <ChipToggle options={SCENARIO_OPTIONS} selected={persona.scenarios || []} onChange={v => set('scenarios', v)} />
+          </div>
+        </div>
+
+        {/* Section 5: 후킹 문구 */}
+        <div style={{ ...CARD, marginBottom: 16 }}>
+          <SectionHeader icon={MessageSquareQuote} title="후킹 문구 & 캐치프레이즈" subtitle="오프닝 후킹·캡션 생성 시 우선 참고" />
+          <FieldLabel>자주 쓰는 표현 (한 줄씩 입력)</FieldLabel>
+          <TagList
+            items={typeof persona.catchphrases === 'string'
+              ? persona.catchphrases.split('\n').filter(Boolean)
+              : (persona.catchphrases || [])}
+            onChange={v => set('catchphrases', v)}
+            placeholder="예: 이거 진짜 아무도 안 알려줘요 — Enter로 추가"
+          />
+        </div>
+
+        {/* Section 6: 레퍼런스 이미지 */}
+        <div style={{ ...CARD, marginBottom: 20 }}>
+          <SectionHeader icon={Camera} title="비주얼 레퍼런스 이미지" subtitle="AI 영상·카드뉴스 스타일 가이드로 활용 (URL 입력)" />
+          <ImageUrlList
+            items={persona.referenceImages || []}
+            onChange={v => set('referenceImages', v)}
+          />
+        </div>
+
+        {/* Save + CTA */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', paddingBottom: 40 }}>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '12px 22px', borderRadius: 10, border: 'none', background: saving ? '#E5E5EA' : '#1D1D1F', color: saving ? '#AEAEB2' : '#FFF', fontSize: 14, fontWeight: 600, cursor: saving ? 'default' : 'pointer' }}
+          >
+            {saving ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={15} />}
+            {saving ? '저장 중...' : '페르소나 저장'}
+          </button>
+          {saved && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#34C759' }}>
+              <CheckCircle2 size={14} /> 저장 완료
+            </div>
+          )}
           <button
             onClick={onGoCreate}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', borderRadius: 9, border: 'none', background: '#5E6AD2', color: '#FFF', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '12px 20px', borderRadius: 10, border: '1.5px solid #5E6AD2', background: '#F0F0FF', color: '#5E6AD2', fontSize: 14, fontWeight: 600, cursor: 'pointer', marginLeft: 'auto' }}
           >
             콘텐츠 만들기 <ArrowRight size={14} />
           </button>
         </div>
-        {persona.bio && (
-          <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(255,255,255,0.6)', borderRadius: 8, fontSize: 12.5, color: '#1D1D1F', lineHeight: 1.5, fontStyle: 'italic' }}>
-            "{persona.bio}"
-          </div>
-        )}
       </div>
 
-      {/* Section 1: 기본 프로필 */}
-      <div style={{ ...CARD, marginBottom: 16 }}>
-        <SectionHeader icon={User} title="기본 프로필" subtitle="페르소나의 정체성을 정의하는 핵심 정보" />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-          <div>
-            <FieldLabel>이름</FieldLabel>
-            <TextInput value={persona.name || ''} onChange={v => set('name', v)} placeholder="밀리 (Milli)" />
-          </div>
-          <div>
-            <FieldLabel>SNS 핸들</FieldLabel>
-            <TextInput value={persona.handle || ''} onChange={v => set('handle', v)} placeholder="millimilli.kr" />
-          </div>
-          <div>
-            <FieldLabel>나이</FieldLabel>
-            <TextInput value={persona.age || ''} onChange={v => set('age', v)} placeholder="29세" />
-          </div>
-          <div>
-            <FieldLabel>직업</FieldLabel>
-            <TextInput value={persona.occupation || ''} onChange={v => set('occupation', v)} placeholder="화장품 연구원 / 창업자" />
-          </div>
+      {/* ── Right: Sticky Panel ── */}
+      <div style={{ width: 284, flexShrink: 0, position: 'sticky', top: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+        {/* Character Image */}
+        <div style={{ ...CARD, padding: '16px' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#6E6E73', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>AI 캐릭터 이미지</div>
+          {charImage ? (
+            <div style={{ marginBottom: 10 }}>
+              <img
+                src={charImage}
+                alt="AI 캐릭터"
+                style={{ width: '100%', borderRadius: 10, objectFit: 'cover', aspectRatio: '3/4', background: '#F2F2F7' }}
+              />
+            </div>
+          ) : (
+            <div style={{
+              width: '100%', aspectRatio: '3/4', borderRadius: 10, background: 'linear-gradient(135deg, #F0F0FF 0%, #E8E8FF 100%)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              marginBottom: 10, border: '1px dashed #D4D7FF',
+            }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>🧬</div>
+              <div style={{ fontSize: 11.5, color: '#AEAEB2', textAlign: 'center', padding: '0 16px' }}>외모 정보를 입력하고<br />AI로 캐릭터를 생성하세요</div>
+            </div>
+          )}
+          {imageError && (
+            <div style={{ fontSize: 11, color: '#FF3B30', marginBottom: 8, padding: '6px 10px', background: '#FFF5F5', borderRadius: 6 }}>{imageError}</div>
+          )}
+          <button
+            onClick={handleGenerateImage}
+            disabled={generatingImage}
+            style={{
+              width: '100%', padding: '9px', borderRadius: 8, border: 'none',
+              background: generatingImage ? '#E5E5EA' : '#5E6AD2',
+              color: generatingImage ? '#AEAEB2' : '#FFF',
+              fontSize: 12.5, fontWeight: 600, cursor: generatingImage ? 'default' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            {generatingImage
+              ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> 생성 중 (20-30초)...</>
+              : <><Sparkles size={13} /> {charImage ? '다시 생성' : 'AI 캐릭터 생성'}</>}
+          </button>
+          <div style={{ fontSize: 10.5, color: '#AEAEB2', marginTop: 6, textAlign: 'center' }}>Gemini Imagen 3 · 외모 섹션 기반</div>
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <FieldLabel>배경 스토리</FieldLabel>
-          <TextArea value={persona.background || ''} onChange={v => set('background', v)} placeholder="어떻게 이 페르소나가 만들어졌나요? 학력, 경력, 창업 계기 등" rows={3} />
-        </div>
-        <div>
-          <FieldLabel>한 줄 자기소개 (콘텐츠 바이오)</FieldLabel>
-          <TextInput value={persona.bio || ''} onChange={v => set('bio', v)} placeholder="팔로워에게 가장 인상적으로 남는 한 문장" />
+
+        {/* Content Preview */}
+        <div style={{ ...CARD, padding: '16px' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#6E6E73', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>콘텐츠 샘플 미리보기</div>
+
+          {/* Pillar chips */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 10.5, color: '#AEAEB2', fontWeight: 600, marginBottom: 5 }}>기둥</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {PREVIEW_PILLARS.map(p => (
+                <button key={p.key} onClick={() => { setPreviewPillar(p.key); setPreview(null); }} style={{
+                  padding: '4px 8px', borderRadius: 12, border: `1px solid ${previewPillar === p.key ? '#5E6AD2' : '#E5E5EA'}`,
+                  background: previewPillar === p.key ? '#F0F0FF' : '#FFF',
+                  fontSize: 11, fontWeight: previewPillar === p.key ? 600 : 400,
+                  color: previewPillar === p.key ? '#5E6AD2' : '#6E6E73', cursor: 'pointer',
+                }}>{p.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Format chips */}
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 10.5, color: '#AEAEB2', fontWeight: 600, marginBottom: 5 }}>포맷</div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {PREVIEW_FORMATS.map(f => (
+                <button key={f.key} onClick={() => { setPreviewFormat(f.key); setPreview(null); }} style={{
+                  padding: '4px 8px', borderRadius: 12, border: `1px solid ${previewFormat === f.key ? '#1D1D1F' : '#E5E5EA'}`,
+                  background: previewFormat === f.key ? '#F2F2F7' : '#FFF',
+                  fontSize: 11, fontWeight: previewFormat === f.key ? 600 : 400,
+                  color: previewFormat === f.key ? '#1D1D1F' : '#6E6E73', cursor: 'pointer',
+                }}>{f.label}</button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            onClick={handleGeneratePreview}
+            disabled={generatingPreview}
+            style={{
+              width: '100%', padding: '8px', borderRadius: 8, border: 'none',
+              background: generatingPreview ? '#E5E5EA' : '#1D1D1F',
+              color: generatingPreview ? '#AEAEB2' : '#FFF',
+              fontSize: 12.5, fontWeight: 600, cursor: generatingPreview ? 'default' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 10,
+            }}
+          >
+            {generatingPreview
+              ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> 생성 중...</>
+              : <><Sparkles size={12} /> 샘플 생성</>}
+          </button>
+
+          {preview && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ background: '#F8F8FA', borderRadius: 8, padding: '8px 10px' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#5E6AD2', marginBottom: 4 }}>HOOK</div>
+                <div style={{ fontSize: 11.5, color: '#1D1D1F', lineHeight: 1.55 }}>{preview.hook}</div>
+              </div>
+              {preview.script && (
+                <div style={{ background: '#F8F8FA', borderRadius: 8, padding: '8px 10px', maxHeight: 160, overflowY: 'auto' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#AEAEB2', marginBottom: 4 }}>SCRIPT</div>
+                  <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{preview.script}</div>
+                </div>
+              )}
+              {preview.caption && (
+                <div style={{ background: '#FFF9EE', borderRadius: 8, padding: '7px 10px', border: '1px solid #FDEDB0' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#FF9500', marginBottom: 3 }}>CAPTION</div>
+                  <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.5 }}>{preview.caption}</div>
+                </div>
+              )}
+            </div>
+          )}
+          <div style={{ fontSize: 10.5, color: '#AEAEB2', marginTop: preview ? 8 : 0, textAlign: 'center' }}>Claude Haiku · 저장 없이 빠른 미리보기</div>
         </div>
       </div>
 
-      {/* Section 2: 외모 & 스타일 */}
-      <div style={{ ...CARD, marginBottom: 16 }}>
-        <SectionHeader icon={BookImage} title="외모 & 스타일" subtitle="AI 영상·이미지 생성 시 비주얼 프롬프트로 활용" />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-          <div>
-            <FieldLabel>피부 타입 & 특징</FieldLabel>
-            <TextInput value={persona.skinType || ''} onChange={v => set('skinType', v)} placeholder="건성 민감성, 약간 어두운 톤" />
-          </div>
-          <div>
-            <FieldLabel>헤어스타일</FieldLabel>
-            <TextInput value={persona.hairStyle || ''} onChange={v => set('hairStyle', v)} placeholder="자연스러운 단발, 연구 중엔 번" />
-          </div>
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <FieldLabel>시그니처 룩 (AI 이미지 생성 기준 설명)</FieldLabel>
-          <TextArea value={persona.signatureLook || ''} onChange={v => set('signatureLook', v)} placeholder="흰 가운, 내추럴 피부, 최소한의 메이크업 — AI 비주얼 프롬프트에 그대로 반영됩니다" rows={2} />
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <FieldLabel>평소 착장</FieldLabel>
-          <TextArea value={persona.typicalOutfit || ''} onChange={v => set('typicalOutfit', v)} placeholder="연구실: 흰 가운 / 촬영: 오프화이트·베이지 니트 + 슬랙스" rows={2} />
-        </div>
-        <div>
-          <FieldLabel>시그니처 소품 & 액세서리</FieldLabel>
-          <TextInput value={persona.accessories || ''} onChange={v => set('accessories', v)} placeholder="얇은 금 귀걸이, 항상 스킨케어 제품을 손에" />
-        </div>
-      </div>
-
-      {/* Section 3: 성격 & 커뮤니케이션 */}
-      <div style={{ ...CARD, marginBottom: 16 }}>
-        <SectionHeader icon={User} title="성격 & 커뮤니케이션 스타일" subtitle="콘텐츠 톤·댓글 응대·캡션 스타일에 자동 반영" />
-        <div style={{ marginBottom: 14 }}>
-          <FieldLabel>성격 특성 (복수 선택)</FieldLabel>
-          <ChipToggle options={PERSONALITY_OPTIONS} selected={persona.personality || []} onChange={v => set('personality', v)} />
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <FieldLabel>핵심 가치관 / 철학</FieldLabel>
-          <TextArea value={Array.isArray(persona.values) ? persona.values.join(', ') : (persona.values || '')} onChange={v => set('values', v.split(',').map(s => s.trim()).filter(Boolean))} placeholder="과학 근거 기반, 소비자 솔직 정보, 커뮤니티 신뢰" rows={2} />
-        </div>
-        <div>
-          <FieldLabel>커뮤니케이션 톤</FieldLabel>
-          <TextArea value={persona.communicationTone || ''} onChange={v => set('communicationTone', v)} placeholder="전문적이되 쉽게. 강의 말고 대화. 어려운 성분도 비유로 설명." rows={2} />
-        </div>
-      </div>
-
-      {/* Section 4: 시그니처 행동 & 자주 쓰는 표현 */}
-      <div style={{ ...CARD, marginBottom: 16 }}>
-        <SectionHeader icon={FlaskConical} title="시그니처 행동 패턴" subtitle="영상 연출 방향·스크립트 생성에 활용" />
-        <div style={{ marginBottom: 14 }}>
-          <FieldLabel>반복 행동 패턴 (줄바꿈으로 구분)</FieldLabel>
-          <TextArea value={persona.signatureActions || ''} onChange={v => set('signatureActions', v)} placeholder={"성분 이름 들으면 분자 구조부터 찾아봄\n신제품 받으면 성분표 먼저 스캔\n손가락으로 가리키며 설명하는 버릇"} rows={4} />
-        </div>
-        <div>
-          <FieldLabel>시그니처 콘텐츠 시나리오 (자주 찍는 상황)</FieldLabel>
-          <ChipToggle options={SCENARIO_OPTIONS} selected={persona.scenarios || []} onChange={v => set('scenarios', v)} />
-        </div>
-      </div>
-
-      {/* Section 5: 자주 쓰는 표현 */}
-      <div style={{ ...CARD, marginBottom: 16 }}>
-        <SectionHeader icon={MessageSquareQuote} title="후킹 문구 & 캐치프레이즈" subtitle="오프닝 후킹·캡션 생성 시 우선 참고" />
-        <FieldLabel>자주 쓰는 표현 (한 줄씩 입력)</FieldLabel>
-        <TagList
-          items={typeof persona.catchphrases === 'string'
-            ? persona.catchphrases.split('\n').filter(Boolean)
-            : (persona.catchphrases || [])}
-          onChange={v => set('catchphrases', v)}
-          placeholder="예: 이거 진짜 아무도 안 알려줘요 — Enter로 추가"
-        />
-      </div>
-
-      {/* Section 6: 레퍼런스 이미지 */}
-      <div style={{ ...CARD, marginBottom: 20 }}>
-        <SectionHeader icon={Camera} title="비주얼 레퍼런스 이미지" subtitle="AI 영상·카드뉴스 스타일 가이드로 활용 (URL 입력)" />
-        <ImageUrlList
-          items={persona.referenceImages || []}
-          onChange={v => set('referenceImages', v)}
-        />
-      </div>
-
-      {/* Save + CTA */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', paddingBottom: 40 }}>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '12px 22px', borderRadius: 10, border: 'none', background: saving ? '#E5E5EA' : '#1D1D1F', color: saving ? '#AEAEB2' : '#FFF', fontSize: 14, fontWeight: 600, cursor: saving ? 'default' : 'pointer' }}
-        >
-          {saving ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={15} />}
-          {saving ? '저장 중...' : '페르소나 저장'}
-        </button>
-        {saved && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#34C759' }}>
-            <CheckCircle2 size={14} /> 저장 완료
-          </div>
-        )}
-        <button
-          onClick={onGoCreate}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '12px 20px', borderRadius: 10, border: '1.5px solid #5E6AD2', background: '#F0F0FF', color: '#5E6AD2', fontSize: 14, fontWeight: 600, cursor: 'pointer', marginLeft: 'auto' }}
-        >
-          콘텐츠 만들기 <ArrowRight size={14} />
-        </button>
-      </div>
     </div>
   );
 }

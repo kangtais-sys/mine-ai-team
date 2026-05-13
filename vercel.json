@@ -363,6 +363,14 @@
       "destination": "/api/creator/persona"
     },
     {
+      "source": "/api/creator/persona-image",
+      "destination": "/api/creator/persona-image"
+    },
+    {
+      "source": "/api/creator/preview",
+      "destination": "/api/creator/preview"
+    },
+    {
       "source": "/api/creator/generate",
       "destination": "/api/creator/generate"
     },
