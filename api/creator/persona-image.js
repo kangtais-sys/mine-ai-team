@@ -1,9 +1,13 @@
-// Gemini Imagen 3으로 페르소나 캐릭터 이미지 생성
+// Gemini 이미지 생성으로 페르소나 캐릭터 이미지 생성
+// 1차: Imagen 3 (고품질, 빌링 필요)
+// 2차 fallback: gemini-3.1-flash-image-preview (AI Studio 키로 사용 가능)
 // 결과는 base64 data URL로 반환 (세션 표시용, Redis 미저장)
 // env: GOOGLE_API_KEY (Google AI Studio에서 발급)
 
 const IMAGEN_ENDPOINT =
   'https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict';
+
+const GEMINI_IMAGE_MODEL = 'gemini-3.1-flash-image-preview';
 
 function buildImagePrompt(persona) {
   const parts = [
@@ -38,85 +42,71 @@ export default async function handler(req, res) {
     });
   }
 
-  // 진단 모드: 이미지 생성 지원 모델 목록 반환
-  const { persona = {}, extraPrompt = '', diagnose = false } = req.body || {};
-  if (diagnose) {
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-    const d = await r.json();
-    const imgModels = (d.models || [])
-      .filter(m => (m.supportedGenerationMethods || []).includes('generateContent') &&
-        (m.name?.includes('flash') || m.name?.includes('imagen')))
-      .map(m => ({ name: m.name, methods: m.supportedGenerationMethods }));
-    return res.status(200).json({ models: imgModels });
-  }
-
+  const { persona = {}, extraPrompt = '' } = req.body || {};
   const prompt = buildImagePrompt(persona) + (extraPrompt ? `, ${extraPrompt}` : '');
 
   try {
-    const response = await fetch(`${IMAGEN_ENDPOINT}?key=${apiKey}`, {
+    // 1차: Imagen 3
+    const imagenRes = await fetch(`${IMAGEN_ENDPOINT}?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         instances: [{ prompt }],
         parameters: {
           sampleCount: 1,
-          aspectRatio: '3:4',          // 세로 포트레이트
+          aspectRatio: '3:4',
           safetyFilterLevel: 'block_some',
           personGeneration: 'allow_adult',
         },
       }),
     });
 
-    if (!response.ok) {
-      // Imagen 3 실패 시 Gemini 2.0 Flash 이미지 생성으로 fallback
-      console.warn('[Persona Image] Imagen 3 failed, trying Gemini Flash...');
-      return await generateWithGeminiFlash(apiKey, prompt, res);
+    if (imagenRes.ok) {
+      const data = await imagenRes.json();
+      const prediction = data.predictions?.[0];
+      if (prediction?.bytesBase64Encoded) {
+        const mimeType = prediction.mimeType || 'image/png';
+        return res.status(200).json({
+          success: true,
+          imageUrl: `data:${mimeType};base64,${prediction.bytesBase64Encoded}`,
+          prompt,
+          via: 'imagen3',
+        });
+      }
     }
 
-    const data = await response.json();
-    const prediction = data.predictions?.[0];
-    if (!prediction?.bytesBase64Encoded) {
-      return await generateWithGeminiFlash(apiKey, prompt, res);
-    }
-
-    const mimeType = prediction.mimeType || 'image/png';
-    const dataUrl = `data:${mimeType};base64,${prediction.bytesBase64Encoded}`;
-
-    return res.status(200).json({ success: true, imageUrl: dataUrl, prompt });
-  } catch (e) {
-    console.error('[Persona Image]', e.message);
-    return res.status(500).json({ error: e.message });
-  }
-}
-
-// Fallback: Gemini 2.0 Flash (이미지 생성 모드)
-async function generateWithGeminiFlash(apiKey, prompt, res) {
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+    // 2차 fallback: gemini-3.1-flash-image-preview
+    console.warn('[Persona Image] Imagen 3 failed, fallback to', GEMINI_IMAGE_MODEL);
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+          generationConfig: { responseModalities: ['Image'] },
         }),
       }
     );
 
-    const data = await response.json();
-    const inlineData = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData;
+    const geminiData = await geminiRes.json();
+    const inlineData = geminiData.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData;
 
     if (!inlineData?.data) {
       return res.status(500).json({
-        error: 'Gemini 이미지 생성 실패 — GOOGLE_API_KEY를 확인해주세요.',
-        raw: JSON.stringify(data).substring(0, 300),
+        error: '이미지 생성 실패',
+        raw: JSON.stringify(geminiData).substring(0, 300),
       });
     }
 
-    const dataUrl = `data:${inlineData.mimeType || 'image/png'};base64,${inlineData.data}`;
-    return res.status(200).json({ success: true, imageUrl: dataUrl, prompt, via: 'gemini-flash' });
+    return res.status(200).json({
+      success: true,
+      imageUrl: `data:${inlineData.mimeType || 'image/png'};base64,${inlineData.data}`,
+      prompt,
+      via: 'gemini-flash',
+    });
   } catch (e) {
+    console.error('[Persona Image]', e.message);
     return res.status(500).json({ error: e.message });
   }
 }
