@@ -8,34 +8,23 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-// 밀리밀리 페르소나 (Redis 커스터마이징 가능, 없으면 기본값 사용)
-const DEFAULT_PERSONA = {
-  name: '밀리 (Milli)',
-  handle: 'millimilli.kr',
-  concept: '화장품 개발자 컨셉의 뷰티 인플루언서',
-  bio: '500달톤 프로틴 기술을 연구하는 화장품 개발자. 의사·약사와 함께 진짜 효과 있는 스킨케어를 만들어요. 복잡한 성분을 쉽게 풀어드립니다.',
-  tone: '전문적이되 쉽고 친근하게. 과학 근거 기반. 일방적 홍보 NO, 교육·커뮤니티 YES. 후킹 오프닝으로 시작.',
-  brand: {
-    name: 'MILLIMILLI (밀리밀리)',
-    hero: '500달톤 프로틴 미스트 · 앰플',
-    usp: '500달톤 이하 단백질이 피부 각질층 깊숙이 침투 — 일반 단백질은 분자가 커서 피부 표면에만 머묾',
-  },
-  pillars: {
-    ingredient: { label: '성분정보', desc: '원료 효능·주의사항·타 성분과의 조합을 쉽게 설명' },
-    treatment: { label: '시술정보', desc: '피부과 시술, 홈케어 트리트먼트, 루틴 정보' },
-    behind: { label: '제품개발 비하인드', desc: '밀리밀리 R&D 과정, 원료 선정, 테스트 에피소드' },
-    collab: { label: '전문가 콜라보', desc: '의사·약사와 함께하는 콘텐츠, Q&A, 인터뷰' },
-    trend: { label: '뷰티 트렌드', desc: '최신 뷰티 트렌드, 성분 트렌드, 글로벌 시장 동향' },
-  },
-  hashtags: {
-    base: ['#밀리밀리', '#MILLIMILLI', '#500달톤'],
-    ingredient: ['#성분덕후', '#화장품성분', '#코스메틱사이언스', '#스킨케어성분'],
-    treatment: ['#뷰티시술', '#피부과', '#스킨케어루틴', '#홈케어'],
-    behind: ['#화장품개발', '#R&D비하인드', '#코스메틱개발'],
-    collab: ['#피부과의사', '#약사추천', '#전문가픽'],
-    trend: ['#뷰티트렌드', '#K뷰티', '#스킨케어트렌드'],
-  },
-};
+// 페르소나에서 비주얼 프롬프트 빌드
+function buildVisualStyle(persona) {
+  const parts = [];
+  if (persona.signatureLook) parts.push(persona.signatureLook);
+  if (persona.typicalOutfit) parts.push(persona.typicalOutfit);
+  if (persona.skinType) parts.push(`skin: ${persona.skinType}`);
+  if (persona.hairStyle) parts.push(`hair: ${persona.hairStyle}`);
+  if (persona.referenceImages?.length) parts.push(`reference style images provided`);
+  return parts.join('. ');
+}
+
+function buildCatchphrasesHint(persona) {
+  const raw = persona.catchphrases;
+  if (!raw) return '';
+  const list = Array.isArray(raw) ? raw : raw.split('\n').filter(Boolean);
+  return list.slice(0, 4).map(p => `"${p}"`).join(', ');
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -43,38 +32,89 @@ export default async function handler(req, res) {
   const { pillar, format, platforms = ['instagram'], notes = '' } = req.body || {};
   if (!pillar || !format) return res.status(400).json({ error: 'pillar, format 필수' });
 
-  // 페르소나 로드 (커스터마이징 있으면 병합)
-  let persona = DEFAULT_PERSONA;
+  // 상세 페르소나 로드 (Redis → persona API 저장값 우선)
+  let persona = {};
   try {
-    const custom = await redis.get('creator:persona:millimilli');
-    if (custom) persona = { ...DEFAULT_PERSONA, ...(typeof custom === 'string' ? JSON.parse(custom) : custom) };
+    const raw = await redis.get('creator:persona:millimilli');
+    if (raw) persona = typeof raw === 'string' ? JSON.parse(raw) : raw;
   } catch {}
 
-  const pillarInfo = persona.pillars[pillar] || { label: pillar, desc: pillar };
+  // fallback 기본값 보완
+  const name = persona.name || '밀리 (Milli)';
+  const handle = persona.handle || 'millimilli.kr';
+  const age = persona.age || '29세';
+  const occupation = persona.occupation || '화장품 연구원';
+  const background = persona.background || '약학과 출신. 피부 트러블이 계기가 되어 성분 연구를 시작, 밀리밀리를 창업.';
+  const bio = persona.bio || '500달톤 프로틴 기술로 스킨케어를 바꾸는 화장품 연구원';
+  const personality = Array.isArray(persona.personality) ? persona.personality.join(', ') : (persona.personality || '호기심 왕성, 팩트충, 따뜻한 언니');
+  const communicationTone = persona.communicationTone || '전문적이되 쉽게. 강의 말고 대화. 후킹 오프닝으로 시작.';
+  const signatureActions = persona.signatureActions || '성분 이름 들으면 분자 구조부터 찾아봄\n손가락으로 가리키며 설명하는 버릇';
+  const catchphrasesHint = buildCatchphrasesHint(persona);
+  const visualStyle = buildVisualStyle(persona);
+  const scenarios = Array.isArray(persona.scenarios) ? persona.scenarios.join(', ') : '연구실, 피부과 콜라보, 홈 스튜디오';
+
+  const pillars = persona.pillars || {
+    ingredient: { label: '성분정보', desc: '원료 효능·주의사항 쉽게 설명' },
+    treatment:  { label: '시술정보', desc: '피부과 시술, 홈케어 루틴' },
+    behind:     { label: '제품개발 비하인드', desc: 'R&D 과정, 원료 선정 에피소드' },
+    collab:     { label: '전문가 콜라보', desc: '의사·약사와 함께하는 콘텐츠' },
+    trend:      { label: '뷰티 트렌드', desc: '최신 뷰티·성분 트렌드' },
+  };
+  const hashtags = persona.hashtags || {
+    base: ['#밀리밀리', '#MILLIMILLI', '#500달톤'],
+    ingredient: ['#성분덕후', '#화장품성분', '#코스메틱사이언스'],
+    treatment: ['#뷰티시술', '#피부과', '#스킨케어루틴'],
+    behind: ['#화장품개발', '#R&D비하인드'],
+    collab: ['#피부과의사', '#약사추천'],
+    trend: ['#뷰티트렌드', '#K뷰티'],
+  };
+  const brand = persona.brand || {
+    name: 'MILLIMILLI (밀리밀리)',
+    hero: '500달톤 프로틴 미스트 · 앰플',
+    usp: '500달톤 이하 단백질이 각질층 깊숙이 침투',
+  };
+
+  const pillarInfo = pillars[pillar] || { label: pillar, desc: pillar };
   const isVideo = format === 'reel' || format === 'shorts';
   const isCardNews = format === 'cardnews';
 
-  const systemPrompt = `당신은 밀리밀리(MILLIMILLI) 브랜드의 AI 크리에이터입니다.
+  const systemPrompt = `당신은 밀리밀리(MILLIMILLI) 브랜드의 가상 인플루언서 AI 크리에이터입니다.
 
-【페르소나】
-이름: ${persona.name}
-핸들: @${persona.handle}
-컨셉: ${persona.concept}
-소개: ${persona.bio}
-브랜드: ${persona.brand.name}
-히어로 제품: ${persona.brand.hero}
-USP: ${persona.brand.usp}
-톤: ${persona.tone}
+【페르소나 상세 정보】
+이름: ${name} | 핸들: @${handle} | 나이: ${age}
+직업: ${occupation}
+배경: ${background}
+한 줄 소개: ${bio}
+브랜드: ${brand.name} / 히어로 제품: ${brand.hero}
+USP: ${brand.usp}
+
+【성격 & 커뮤니케이션】
+성격 특성: ${personality}
+커뮤니케이션 톤: ${communicationTone}
+
+【시그니처 행동 패턴】
+${signatureActions}
+
+【자주 쓰는 표현 (후킹에 활용)】
+${catchphrasesHint || '이거 진짜 아무도 안 알려줘요, 성분표에 이게 몇 번째에 있는지 보세요'}
+
+【자주 촬영하는 시나리오】
+${scenarios}
+
+【외모 & 비주얼 스타일 (영상 프롬프트용)】
+${visualStyle || '흰 가운, 내추럴 피부, 최소한의 메이크업, 연구실 배경'}
 
 【콘텐츠 기둥】
 ${pillarInfo.label}: ${pillarInfo.desc}
 
 【출력 원칙】
-- 일방적 브랜드 홍보 금지 — 정보와 가치가 먼저
-- 후킹 오프닝: 첫 2초 안에 시청자가 멈출 이유를 줄 것
+- 일방적 브랜드 홍보 금지 — 정보와 가치를 먼저 제공
+- 후킹 오프닝: 위의 시그니처 표현을 참고해 첫 2초 안에 멈출 이유를 줄 것
+- 페르소나의 행동 패턴과 시나리오를 스크립트에 자연스럽게 녹여낼 것
 - 커뮤니티 반응 유도: "여러분은요?" "댓글로 알려주세요" 포함 권장
-- 과학적 근거 기반이되 용어는 쉽게 풀어서
-- 한국어로 작성 (영어는 visualPrompt만)`;
+- 과학적 근거 기반, 용어는 쉽게 풀어서
+- 한국어로 작성 (영어는 visualPrompt만)
+- visualPrompt에는 반드시 페르소나 외모 & 비주얼 스타일을 반영할 것`;
 
   const userPrompt = isVideo
     ? `콘텐츠 기둥: ${pillarInfo.label}
@@ -87,8 +127,8 @@ ${pillarInfo.label}: ${pillarInfo.desc}
   "hook": "영상 오프닝 후킹 문구 (1-2문장, 시청자가 스크롤 멈출 만한)",
   "script": "전체 스크립트 (후킹→본론→CTA 구조, 15-30초 분량, 자연스러운 구어체)",
   "caption": "인스타/틱톡 캡션 (이모지 포함, 200자 이내, 후킹 첫 줄 + 정보 + CTA)",
-  "hashtags": "${(persona.hashtags.base.join(' '))} ${(persona.hashtags[pillar] || persona.hashtags.base).join(' ')} (총 10-15개)",
-  "visualPrompt": "Higgsfield video generation prompt in English: cinematic vertical 9:16, Korean beauty aesthetics, [specific visual description matching the script], soft studio lighting, clean and modern"
+  "hashtags": "${(hashtags.base.join(' '))} ${((hashtags[pillar] || hashtags.base)).join(' ')} (총 10-15개)",
+  "visualPrompt": "Higgsfield video generation prompt in English: cinematic vertical 9:16, Korean beauty creator, ${visualStyle || 'white lab coat, natural minimal makeup, laboratory background'}, [specific visual description matching the script], soft studio lighting, clean modern aesthetic"
 }`
     : `콘텐츠 기둥: ${pillarInfo.label}
 포맷: 인스타 카드뉴스 (5-7장 슬라이드)
@@ -99,7 +139,7 @@ ${pillarInfo.label}: ${pillarInfo.desc}
 {
   "hook": "카드뉴스 첫 장 후킹 문구",
   "caption": "인스타 캡션 (이모지 포함, 200자 이내)",
-  "hashtags": "${(persona.hashtags.base.join(' '))} ${(persona.hashtags[pillar] || persona.hashtags.base).join(' ')} (총 10-15개)",
+  "hashtags": "${(hashtags.base.join(' '))} ${((hashtags[pillar] || hashtags.base)).join(' ')} (총 10-15개)",
   "slides": [
     {"num": 1, "title": "후킹 제목 (첫 장)", "body": "1-2줄 짧은 임팩트 문구", "visual": "슬라이드 비주얼 설명"},
     {"num": 2, "title": "소제목", "body": "본문 내용 (3-4줄)", "visual": "비주얼 설명"},

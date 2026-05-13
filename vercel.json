@@ -359,6 +359,10 @@
       "destination": "/api/naver-debug"
     },
     {
+      "source": "/api/creator/persona",
+      "destination": "/api/creator/persona"
+    },
+    {
       "source": "/api/creator/generate",
       "destination": "/api/creator/generate"
     },

@@ -1,6 +1,14 @@
 import { agents } from '../lib/agents';
 import { LayoutDashboard, Sparkles } from 'lucide-react';
 
+// AI 크리에이터는 에이전트 목록에서 AI 채널운영 바로 아래에 위치
+const CREATOR_MENU = {
+  id: 'creator',
+  name: 'AI 크리에이터',
+  icon: Sparkles,
+  insertAfter: 'channel', // 이 에이전트 ID 다음에 삽입
+};
+
 export default function Sidebar({ route, onNavigate, urgentCount = 0 }) {
   const { page, agentId } = route || {};
 
@@ -64,20 +72,13 @@ export default function Sidebar({ route, onNavigate, urgentCount = 0 }) {
         </div>
       </div>
 
-      {/* Top nav: Dashboard + AI 크리에이터 */}
+      {/* Top nav: Dashboard only */}
       <div style={{ padding: '8px 8px 0', flexShrink: 0 }}>
         {menuItem(
           page === 'dashboard',
           <LayoutDashboard size={15} strokeWidth={1.8} />,
           '대시보드',
           () => onNavigate('dashboard'),
-          0
-        )}
-        {menuItem(
-          page === 'creator',
-          <Sparkles size={15} strokeWidth={1.8} />,
-          'AI 크리에이터',
-          () => onNavigate('creator'),
           0
         )}
       </div>
@@ -92,7 +93,6 @@ export default function Sidebar({ route, onNavigate, urgentCount = 0 }) {
         {agents.map((agent) => {
           const Icon = agent.icon;
           const isActive = page === 'chat' && agentId === agent.id;
-          // AI 채널운영 에이전트에 긴급 배지
           const badge = agent.id === 'channel' ? urgentCount : 0;
           return (
             <div key={agent.id} style={{ marginBottom: 1 }}>
@@ -103,6 +103,21 @@ export default function Sidebar({ route, onNavigate, urgentCount = 0 }) {
                 () => onNavigate('chat', agent.id),
                 badge
               )}
+              {/* AI 크리에이터: 채널운영 바로 아래 삽입 */}
+              {agent.id === CREATOR_MENU.insertAfter && (() => {
+                const CIcon = CREATOR_MENU.icon;
+                return (
+                  <div style={{ marginBottom: 1 }}>
+                    {menuItem(
+                      page === 'creator',
+                      <CIcon size={15} strokeWidth={1.8} />,
+                      CREATOR_MENU.name,
+                      () => onNavigate('creator'),
+                      0
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
