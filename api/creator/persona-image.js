@@ -43,10 +43,11 @@ async function saveImageToGallery(imageUrl, prompt, via, label) {
 const IMAGEN_ENDPOINT =
   'https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict';
 
-// 시도할 Gemini 이미지 모델 순서 (최신 → 구버전)
+// 시도할 Gemini 이미지 모델 — 모델마다 responseModalities 케이스가 다름
 const GEMINI_IMAGE_MODELS = [
-  'gemini-2.0-flash-preview-image-generation',
-  'gemini-3.1-flash-image-preview',
+  { id: 'gemini-2.0-flash-preview-image-generation', modalities: ['IMAGE'] },
+  { id: 'gemini-3.1-flash-image-preview',            modalities: ['Image'] },
+  { id: 'gemini-2.0-flash-exp',                      modalities: ['IMAGE'] },
 ];
 
 function buildImagePrompt(persona) {
@@ -140,39 +141,45 @@ export default async function handler(req, res) {
     // ── 2차: Gemini 이미지 모델 순차 시도 ──
     for (const model of GEMINI_IMAGE_MODELS) {
       try {
-        console.log('[Persona Image] trying Gemini model:', model);
+        console.log('[Persona Image] trying Gemini model:', model.id);
         const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${model.id}:generateContent?key=${apiKey}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { responseModalities: ['IMAGE'] },
+              generationConfig: { responseModalities: model.modalities },
             }),
           }
         );
+
+        // 429 Rate limit 감지
+        if (geminiRes.status === 429) {
+          errors.push(`${model.id}: 요청 한도 초과 (잠시 후 다시 시도)`);
+          continue;
+        }
 
         const geminiData = await safeJson(geminiRes);
         const inlineData = geminiData.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData;
 
         if (inlineData?.data) {
           const imageUrl = `data:${inlineData.mimeType || 'image/png'};base64,${inlineData.data}`;
-          const saved = await saveImageToGallery(imageUrl, prompt, model, label);
+          const saved = await saveImageToGallery(imageUrl, prompt, model.id, label);
           return res.status(200).json({
             success: true,
             imageUrl,
             prompt,
-            via: model,
+            via: model.id,
             savedImage: saved,
           });
         }
 
         // 모델이 텍스트만 반환한 경우 (이미지 거부)
         const textPart = geminiData.candidates?.[0]?.content?.parts?.find(p => p.text)?.text;
-        errors.push(`${model}: 이미지 없음${textPart ? ` (${textPart.substring(0, 100)})` : ''}`);
+        errors.push(`${model.id}: 이미지 없음${textPart ? ` (${textPart.substring(0, 80)})` : ''}`);
       } catch (e) {
-        errors.push(`${model} error: ${e.message}`);
+        errors.push(`${model.id} error: ${e.message}`);
       }
     }
 
