@@ -1,6 +1,5 @@
 import { Redis } from '@upstash/redis';
 import { readPublicSheet } from './utils/sheets.js';
-import { getEcommerceData } from './utils/ga4.js';
 
 const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
@@ -245,13 +244,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // === E. GA4 자사몰 매출 ===
-    let ga4Revenue = null;
-    if (process.env.GA4_PROPERTY_ID) {
-      try {
-        ga4Revenue = { status: 'connected', ...(await getEcommerceData(process.env.GA4_PROPERTY_ID)) };
-      } catch (e) { ga4Revenue = { status: 'error', error: e.message }; }
-    }
+
 
     // === F. Follower growth (daily snapshots from KV) ===
     const followerHistory = [];
@@ -301,8 +294,9 @@ export default async function handler(req, res) {
       anthropic: { connected: !!process.env.ANTHROPIC_API_KEY, label: 'Anthropic', source: 'Claude AI' },
       instagram: { connected: !!process.env.INSTAGRAM_ACCESS_TOKEN, label: 'Instagram', source: 'Graph API' },
       oliveyoung: { connected: !!process.env.OLIVEYOUNG_SHEET_ID, label: '올리브영', source: 'Google Sheets CSV' },
-      naverAds: { connected: !!process.env.NAVER_AD_API_KEY, label: '네이버광고', source: 'Naver Ads API' },
-      googleAds: { connected: !!process.env.GOOGLE_ADS_CUSTOMER_ID, label: '구글광고', source: 'Google Ads API' },
+      naverAds: { connected: false, label: '네이버광고', source: '미연결 (API 키 없음)' },
+      googleAds: { connected: false, label: '구글광고', source: '미연결 (Customer ID 없음)' },
+      tiktokAds: { connected: false, label: '틱톡광고', source: '미연결 (Ad 전용 토큰 없음)' },
       amazon: { connected: !!(process.env.SP_API_REFRESH_TOKEN || process.env.AMAZON_REFRESH_TOKEN), label: 'Amazon US', source: 'SP-API (B2C)' },
       cafe24: { connected: cafe24HasData || !!process.env.CAFE24_CLIENT_ID, label: 'Cafe24', source: 'API' },
       smartstore: { connected: naverHasData, label: '스마트스토어', source: 'Naver (Redis 캐시)' },
@@ -472,7 +466,6 @@ export default async function handler(req, res) {
       amazonRevenue: exportRevenue,
       exportRevenue,
       b2bExportRevenue,
-      ga4Revenue,
       // 한국 채널
       channelSales,
       channelSalesYearly,

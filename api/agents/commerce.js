@@ -1,6 +1,5 @@
 import { readPublicSheet } from '../utils/sheets.js';
 import { getOrders, getOrderCount } from '../utils/cafe24.js';
-import { getEcommerceData } from '../utils/ga4.js';
 import { Redis } from '@upstash/redis';
 
 const redis = new Redis({
@@ -11,7 +10,7 @@ const redis = new Redis({
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  const result = { oliveyoung: null, ga4: null, smartstore: null, cafe24: null, amazon: null, shopee: null, qoo10: null, tiktokShop: null };
+  const result = { oliveyoung: null, smartstore: null, cafe24: null, amazon: null, shopee: null, qoo10: null, tiktokShop: null };
 
   // A. Olive Young (Google Sheets)
   // 시트: 스킨케어파트 [A:날짜, B:기간계코드, C:상품코드, D:상품명, E:올리브영매출(₩), F:판매량, G:납품가(₩)]
@@ -43,19 +42,7 @@ export default async function handler(req, res) {
     result.oliveyoung = { status: 'disconnected', message: '올리브영 시트 연결 필요' };
   }
 
-  // B. GA4 자사몰 매출 (Google Analytics Data API)
-  if (process.env.GA4_PROPERTY_ID) {
-    try {
-      const ecom = await getEcommerceData(process.env.GA4_PROPERTY_ID);
-      result.ga4 = { status: 'connected', propertyId: process.env.GA4_PROPERTY_ID, ...ecom };
-    } catch (e) {
-      result.ga4 = { status: 'error', error: e.message };
-    }
-  } else {
-    result.ga4 = { status: 'disconnected', message: 'GA4 Property ID 연결 필요 — /api/auth/google 재인증 후 GA4_PROPERTY_ID 환경변수 추가' };
-  }
-
-  // C-G. Channel connection status
+  // B. Channel connection status
   result.smartstore = process.env.NAVER_COMMERCE_CLIENT_ID && process.env.NAVER_COMMERCE_CLIENT_SECRET
     ? { status: 'connected', message: '스마트스토어 연결됨' }
     : { status: 'disconnected', message: '스마트���토어 연결 필요' };

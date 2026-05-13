@@ -102,7 +102,7 @@ export default async function handler(req, res) {
   result.naver = process.env.NAVER_AD_API_KEY ? { status: 'connected' } : { status: 'disconnected' };
   result.google = process.env.GOOGLE_ADS_CUSTOMER_ID ? { status: 'connected' } : { status: 'disconnected' };
   result.tiktok = process.env.TIKTOK_AD_ACCESS_TOKEN ? { status: 'connected' } : { status: 'disconnected' };
-  result.ga = process.env.GA4_PROPERTY_ID ? { status: 'connected' } : { status: 'disconnected' };
+  result.ga = { status: 'disconnected' }; // GA4 미사용
 
   // === Optimization suggestions (from KV) ===
   try {
