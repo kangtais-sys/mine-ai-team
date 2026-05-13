@@ -94,14 +94,14 @@ export default async function handler(req, res) {
         .filter(o => (o.order_date || '').startsWith(yesterdayDate))
         .reduce((s, o) => s + orderAmt(o), 0);
 
-      // stats.js / daily-report.js가 읽는 Redis 키에 저장
+      // stats.js / daily-report.js가 읽는 Redis 키에 저장 (객체 직접 저장 — JSON.stringify 금지)
       const cached = await redis.get('sales:cafe24:daily').catch(() => null);
       const existing = cached ? (typeof cached === 'string' ? JSON.parse(cached) : cached) : {};
       const monthly = existing.monthly || {};
       const daily = existing.daily || {};
       monthly[monthKey] = { revenue: totalRevenue, orders: orderCount, updatedAt: new Date().toISOString() };
       if (yesterdayRevenue > 0) daily[yesterdayDate] = { revenue: yesterdayRevenue };
-      await redis.set('sales:cafe24:daily', JSON.stringify({ monthly, daily }), { ex: 86400 * 7 }).catch(() => {});
+      await redis.set('sales:cafe24:daily', { monthly, daily }, { ex: 86400 * 7 }).catch(() => {});
 
       result.cafe24 = {
         status: 'connected',
