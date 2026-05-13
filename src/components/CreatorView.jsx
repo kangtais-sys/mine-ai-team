@@ -315,7 +315,7 @@ function PersonaSetup({ onGoCreate }) {
   ];
 
   return (
-    <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+    <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', maxWidth: 734 }}>
 
       {/* ── Left: Form ── */}
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -481,7 +481,7 @@ function PersonaSetup({ onGoCreate }) {
       </div>
 
       {/* ── Right: Sticky Panel ── */}
-      <div style={{ width: 284, flexShrink: 0, position: 'sticky', top: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ width: 220, flexShrink: 0, position: 'sticky', top: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
         {/* Character Image */}
         <div style={{ ...CARD, padding: '16px' }}>
