@@ -110,7 +110,7 @@ function TextInput({ value, onChange, placeholder, style = {} }) {
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
-      style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 8, border: '1px solid #E5E5EA', fontSize: 13, fontFamily: 'inherit', outline: 'none', ...style }}
+      style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 8, border: '1px solid #E5E5EA', fontSize: 13, fontFamily: 'inherit', outline: 'none', color: '#1D1D1F', ...style }}
     />
   );
 }
@@ -122,7 +122,7 @@ function TextArea({ value, onChange, placeholder, rows = 3 }) {
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
       rows={rows}
-      style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 8, border: '1px solid #E5E5EA', fontSize: 13, lineHeight: 1.55, resize: 'vertical', fontFamily: 'inherit', outline: 'none' }}
+      style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 8, border: '1px solid #E5E5EA', fontSize: 13, lineHeight: 1.55, resize: 'vertical', fontFamily: 'inherit', outline: 'none', color: '#1D1D1F' }}
     />
   );
 }
