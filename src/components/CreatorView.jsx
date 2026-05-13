@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Sparkles, Film, Layers, Instagram, Video, Clock, CheckCircle2,
+  Sparkles, Film, Layers, Video, Clock, CheckCircle2,
   Send, Loader2, RefreshCw, Trash2, Edit3, Calendar, ChevronDown,
-  ChevronUp, AlertCircle, Play, Image, Plus, X,
+  ChevronUp, AlertCircle, Play, Image as ImageIcon, Plus, X,
 } from 'lucide-react';
 
 // ─── Constants ──────────────────────────────────────────────
