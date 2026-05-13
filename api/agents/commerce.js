@@ -85,14 +85,14 @@ export default async function handler(req, res) {
         } catch { break; }
       }
 
-      // 실제 월매출 합산 (order_price_amount = 결제금액)
-      const totalRevenue = allOrders.reduce((s, o) =>
-        s + (Number(o.order_price_amount) || Number(o.actual_order_amount) || 0), 0);
+      // 실제 월매출 합산 (payment_amount = 실결제금액, fallback: total_price / actual_payment_amount)
+      const orderAmt = (o) => parseFloat(o.payment_amount || o.total_price || o.actual_payment_amount || o.order_price_amount || 0);
+      const totalRevenue = allOrders.reduce((s, o) => s + orderAmt(o), 0);
 
       // 전일 매출 (어제 날짜 주문만 필터)
       const yesterdayRevenue = allOrders
         .filter(o => (o.order_date || '').startsWith(yesterdayDate))
-        .reduce((s, o) => s + (Number(o.order_price_amount) || 0), 0);
+        .reduce((s, o) => s + orderAmt(o), 0);
 
       // stats.js / daily-report.js가 읽는 Redis 키에 저장
       const cached = await redis.get('sales:cafe24:daily').catch(() => null);
@@ -112,7 +112,7 @@ export default async function handler(req, res) {
           sampledOrders: allOrders.length, // 집계에 사용한 주문 수
           isPartial: allOrders.length < orderCount, // 500개 초과면 부분 집계
         },
-        recent: allOrders.slice(0, 5).map(o => ({ orderId: o.order_id, date: o.order_date, amount: o.order_price_amount })),
+        recent: allOrders.slice(0, 5).map(o => ({ orderId: o.order_id, date: o.order_date, amount: orderAmt(o) })),
       };
     } catch (e) {
       result.cafe24 = e.message.includes('인증 필요')
