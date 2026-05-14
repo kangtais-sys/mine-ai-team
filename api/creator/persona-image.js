@@ -83,19 +83,39 @@ async function safeJson(res) {
 
 // ── 레퍼런스 이미지 기반 Gemini 멀티모달 생성 ──
 async function generateWithReferences(apiKey, referenceImages, instruction, label, errors) {
-  // referenceImages: [{ mimeType, data }]  (data = base64 string)
-  const textPart = {
-    text: instruction ||
-      'Use these reference images to generate a high-quality photorealistic portrait of a Korean female beauty creator. ' +
-      'Match the model appearance, skin tone, outfit style, and composition from the references. ' +
-      'K-beauty aesthetic, natural glowing skin, soft studio lighting, sharp focus.',
+  // referenceImages: [{ mimeType, data, label }]  (data = base64 string)
+  // 각 이미지 앞에 라벨 텍스트를 끼워서 Gemini가 역할을 명확히 인식하게 함
+  const LABEL_KO = {
+    '모델': 'Model face and overall appearance — match this person\'s facial features and look',
+    '헤어': 'Hairstyle reference — replicate this exact hairstyle, color, and texture',
+    '피부': 'Skin tone and texture reference — match this skin tone, complexion, and finish',
+    '의상': 'Outfit and clothing reference — wear this style of clothing',
+    '구도': 'Composition and pose reference — use this exact camera angle, framing, and pose',
   };
 
-  const imageParts = referenceImages.map(img => ({
-    inlineData: { mimeType: img.mimeType, data: img.data },
-  }));
+  const introPart = {
+    text:
+      'Generate a high-quality photorealistic portrait of a Korean female beauty creator, ' +
+      'incorporating ALL of the following reference images. Each reference has a specific role — ' +
+      'carefully apply each one. K-beauty aesthetic, soft studio lighting, sharp focus.\n\n' +
+      (instruction ? `Additional instruction: ${instruction}\n\n` : '') +
+      'References:',
+  };
 
-  const parts = [textPart, ...imageParts];
+  // 이미지마다 역할 설명 텍스트 + 이미지 인라인 데이터 교대로 배열
+  const interleavedParts = referenceImages.flatMap((img, i) => {
+    const roleLabel = LABEL_KO[img.label] || `Reference ${i + 1}`;
+    return [
+      { text: `[${i + 1}/${referenceImages.length}] ${img.label || `Reference ${i + 1}`}: ${roleLabel}` },
+      { inlineData: { mimeType: img.mimeType, data: img.data } },
+    ];
+  });
+
+  const closingPart = {
+    text: 'Now generate the portrait combining ALL the above references faithfully.',
+  };
+
+  const parts = [introPart, ...interleavedParts, closingPart];
 
   for (const model of GEMINI_IMAGE_MODELS) {
     try {

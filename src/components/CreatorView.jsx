@@ -306,7 +306,7 @@ function PersonaSetup({ onGoCreate }) {
         label: selectedAngle,
         // 레퍼런스 이미지가 있으면 멀티모달, 없으면 기존 텍스트 방식
         ...(refImages.length > 0
-          ? { referenceImages: refImages.map(r => ({ mimeType: r.mimeType, data: r.data })), instruction: `${instruction}. ${angleOpt.extraPrompt}` }
+          ? { referenceImages: refImages.map(r => ({ mimeType: r.mimeType, data: r.data, label: r.label })), instruction: `${instruction}. ${angleOpt.extraPrompt}` }
           : { extraPrompt: angleOpt.extraPrompt }
         ),
       };
