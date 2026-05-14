@@ -688,6 +688,7 @@ function PersonaSetup({ onGoCreate }) {
                   { label: '피부', emoji: '✨' },
                   { label: '의상', emoji: '👗' },
                   { label: '구도', emoji: '📐' },
+                  { label: '배경', emoji: '🌅' },
                 ].map(cat => (
                   <label key={cat.label} style={{
                     display: 'flex', alignItems: 'center', gap: 3, padding: '4px 8px',

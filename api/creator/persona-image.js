@@ -91,6 +91,7 @@ async function generateWithReferences(apiKey, referenceImages, instruction, labe
     '피부': 'Skin tone and texture reference — match this skin tone, complexion, and finish',
     '의상': 'Outfit and clothing reference — wear this style of clothing',
     '구도': 'Composition and pose reference — use this exact camera angle, framing, and pose',
+    '배경': 'Background reference — use this background style, color, and atmosphere',
   };
 
   const introPart = {
