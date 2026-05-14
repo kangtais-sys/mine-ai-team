@@ -7,22 +7,31 @@ const redis = new Redis({
 
 export const config = { maxDuration: 60 };
 
-const HIGGSFIELD_BASE = 'https://api.higgsfield.ai';
+// 실제 플랫폼 URL (기존 api.higgsfield.ai는 구버전)
+const HIGGSFIELD_BASE = 'https://platform.higgsfield.ai';
 
-// Higgsfield job 상태 확인
-async function checkHiggsfieldJob(jobId) {
-  const apiKey = process.env.HIGGSFIELD_API_KEY;
-  if (!apiKey) return null;
+function higgsfieldAuth() {
+  const key = process.env.HIGGSFIELD_API_KEY;
+  const secret = process.env.HIGGSFIELD_API_SECRET;
+  if (!key) return null;
+  return secret ? `Key ${key}:${secret}` : `Key ${key}`;
+}
 
-  const res = await fetch(`${HIGGSFIELD_BASE}/v1/generations/${jobId}`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
+// Higgsfield 상태 폴링 (request_id 기반)
+async function checkHiggsfieldJob(requestId) {
+  const auth = higgsfieldAuth();
+  if (!auth) return null;
+
+  const res = await fetch(`${HIGGSFIELD_BASE}/requests/${requestId}/status`, {
+    headers: { Authorization: auth },
   });
   if (!res.ok) return null;
 
   const data = await res.json();
+  // status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw'
   return {
-    status: data.status, // 'pending' | 'running' | 'completed' | 'failed'
-    videoUrl: data.video_url || data.outputs?.video_url || null,
+    status: data.status,
+    videoUrl: data.video?.url || null,
   };
 }
 
@@ -57,7 +66,7 @@ export default async function handler(req, res) {
         if (draft.status === 'generating' && draft.higgsfieldJobId) {
           const job = await checkHiggsfieldJob(draft.higgsfieldJobId).catch(() => null);
 
-          if (job?.status === 'completed' && job.videoUrl) {
+          if ((job?.status === 'completed') && job.videoUrl) {
             // 영상 완료 → review로 전환, mediaUrl 저장
             const updated = {
               ...draft,
@@ -68,7 +77,7 @@ export default async function handler(req, res) {
             await redis.set(`creator:draft:${id}`, updated, { ex: 86400 * 30 });
             polled++;
             console.log(`[Creator Schedule] Video ready: ${id} (${job.videoUrl.substring(0, 60)})`);
-          } else if (job?.status === 'failed') {
+          } else if (job?.status === 'failed' || job?.status === 'nsfw') {
             // 영상 실패
             const failed = {
               ...draft,

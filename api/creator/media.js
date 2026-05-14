@@ -5,44 +5,40 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-const HIGGSFIELD_BASE = 'https://api.higgsfield.ai';
+// ── Higgsfield API 설정 ──────────────────────────────────────────
+// 실제 플랫폼 URL: platform.higgsfield.ai (기존 api.higgsfield.ai 는 구버전)
+const HIGGSFIELD_BASE = 'https://platform.higgsfield.ai';
 
-// Higgsfield 영상 생성 요청
-// personaImageDataUrl: "data:image/jpeg;base64,..." 형태 (있으면 image-to-video, 없으면 text-to-video)
-async function requestHiggsfieldVideo(visualPrompt, format, personaImageDataUrl) {
-  const apiKey = process.env.HIGGSFIELD_API_KEY;
-  if (!apiKey) throw new Error('HIGGSFIELD_API_KEY 없음');
+function higgsfieldAuth() {
+  const key = process.env.HIGGSFIELD_API_KEY;
+  const secret = process.env.HIGGSFIELD_API_SECRET;
+  if (!key) throw new Error('HIGGSFIELD_API_KEY 없음');
+  // 시크릿 있으면 Key key:secret, 없으면 Key key
+  return secret ? `Key ${key}:${secret}` : `Key ${key}`;
+}
 
-  // base64 data URL에서 실제 base64 데이터 추출
-  const base64Data = personaImageDataUrl?.startsWith('data:')
-    ? personaImageDataUrl.split(',')[1]
-    : null;
+// 영상 생성 요청 → request_id 반환 (비동기 처리)
+async function requestHiggsfieldVideo(visualPrompt, format, personaImageUrl) {
+  const auth = higgsfieldAuth();
 
-  const body = base64Data
-    ? {
-        task: 'image-to-video',
-        prompt: visualPrompt,
-        image: base64Data,           // base64 이미지 (페르소나 seed)
-        duration: 5,
-        aspect_ratio: '9:16',
-        fps: 30,
-        motion_intensity: 'medium',
-      }
-    : {
-        task: 'text-to-video',
-        prompt: visualPrompt,
-        duration: 5,
-        aspect_ratio: '9:16',
-        fps: 30,
-        motion_intensity: 'medium',
-      };
+  // 페르소나 이미지가 실제 HTTP URL인 경우에만 image-to-video 사용
+  // base64 data URL은 Higgsfield API가 지원 안 함 → text-to-video 폴백
+  const isHttpUrl = personaImageUrl?.startsWith('http');
 
-  console.log('[Creator Media] Higgsfield mode:', base64Data ? 'image-to-video' : 'text-to-video');
+  const modelId = isHttpUrl
+    ? 'kling-video/v2.1/pro/image-to-video'  // Kling 2.1 Pro image-to-video
+    : 'higgsfield-ai/dop/turbo';              // Higgsfield DoP Turbo (text-to-video)
 
-  const res = await fetch(`${HIGGSFIELD_BASE}/v1/generations`, {
+  const body = isHttpUrl
+    ? { image_url: personaImageUrl, prompt: visualPrompt, duration: 5, aspect_ratio: '9:16' }
+    : { prompt: visualPrompt, duration: 5, aspect_ratio: '9:16' };
+
+  console.log(`[Creator Media] Higgsfield mode: ${isHttpUrl ? 'image-to-video (Kling 2.1)' : 'text-to-video (DoP Turbo)'}`);
+
+  const res = await fetch(`${HIGGSFIELD_BASE}/${modelId}`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
+      'Authorization': auth,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
@@ -50,44 +46,36 @@ async function requestHiggsfieldVideo(visualPrompt, format, personaImageDataUrl)
 
   if (!res.ok) {
     const err = await res.text();
-    // image-to-video 실패 시 text-to-video로 폴백
-    if (base64Data) {
-      console.warn('[Creator Media] image-to-video 실패, text-to-video로 폴백:', err.substring(0, 150));
-      const fallbackRes = await fetch(`${HIGGSFIELD_BASE}/v1/generations`, {
+    // image-to-video 실패 시 text-to-video DoP Turbo로 폴백
+    if (isHttpUrl) {
+      console.warn(`[Creator Media] Kling image-to-video 실패, DoP Turbo로 폴백: ${err.substring(0, 150)}`);
+      const fallback = await fetch(`${HIGGSFIELD_BASE}/higgsfield-ai/dop/turbo`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          task: 'text-to-video',
-          prompt: visualPrompt,
-          duration: 5, aspect_ratio: '9:16', fps: 30, motion_intensity: 'medium',
-        }),
+        headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: visualPrompt, duration: 5, aspect_ratio: '9:16' }),
       });
-      if (!fallbackRes.ok) {
-        const fbErr = await fallbackRes.text();
-        throw new Error(`Higgsfield text-to-video 폴백도 실패 ${fallbackRes.status}: ${fbErr.substring(0, 200)}`);
+      if (!fallback.ok) {
+        const fbErr = await fallback.text();
+        throw new Error(`Higgsfield DoP Turbo 폴백 실패 ${fallback.status}: ${fbErr.substring(0, 200)}`);
       }
-      const fbData = await fallbackRes.json();
-      const fbJobId = fbData.generation_id || fbData.id;
-      if (!fbJobId) throw new Error(`Higgsfield jobId 없음 (폴백): ${JSON.stringify(fbData)}`);
-      return fbJobId;
+      const fbData = await fallback.json();
+      if (!fbData.request_id) throw new Error(`request_id 없음 (폴백): ${JSON.stringify(fbData)}`);
+      return fbData.request_id;
     }
-    throw new Error(`Higgsfield API ${res.status}: ${err.substring(0, 200)}`);
+    throw new Error(`Higgsfield ${modelId} ${res.status}: ${err.substring(0, 200)}`);
   }
 
   const data = await res.json();
-  // 응답: { success, generation_id, status_url } 또는 { id, ... }
-  const jobId = data.generation_id || data.id;
-  if (!jobId) throw new Error(`Higgsfield jobId 없음: ${JSON.stringify(data)}`);
-  return jobId;
+  if (!data.request_id) throw new Error(`Higgsfield request_id 없음: ${JSON.stringify(data)}`);
+  return data.request_id;
 }
 
-// Higgsfield 상태 조회 → 완료 시 video_url 반환
-export async function checkHiggsfieldStatus(jobId) {
-  const apiKey = process.env.HIGGSFIELD_API_KEY;
-  if (!apiKey) throw new Error('HIGGSFIELD_API_KEY 없음');
+// 상태 조회 → { status, videoUrl, raw }
+export async function checkHiggsfieldStatus(requestId) {
+  const auth = higgsfieldAuth();
 
-  const res = await fetch(`${HIGGSFIELD_BASE}/v1/generations/${jobId}`, {
-    headers: { 'Authorization': `Bearer ${apiKey}` },
+  const res = await fetch(`${HIGGSFIELD_BASE}/requests/${requestId}/status`, {
+    headers: { 'Authorization': auth },
   });
 
   if (!res.ok) {
@@ -96,15 +84,15 @@ export async function checkHiggsfieldStatus(jobId) {
   }
 
   const data = await res.json();
-  // { status: 'pending'|'running'|'completed'|'failed', video_url: '...' }
+  // status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw'
   return {
     status: data.status,
-    videoUrl: data.video_url || data.outputs?.video_url || null,
+    videoUrl: data.video?.url || null,
     raw: data,
   };
 }
 
-// 카드뉴스 템플릿 4종 (Ssobi 동일 스펙)
+// ── 카드뉴스 템플릿 4종 ──────────────────────────────────────────
 const CARD_TEMPLATES = {
   clean: { bg: '#FFFFFF', text: '#1A1A1A', accent: '#1A1A1A', font: "'Noto Sans KR', sans-serif" },
   bold:  { bg: '#D55A35', text: '#1A1A1A', accent: '#0E1B2C', font: "'Noto Sans KR', sans-serif" },
@@ -112,7 +100,7 @@ const CARD_TEMPLATES = {
   noir:  { bg: '#1A1A1A', text: '#FFFFFF', accent: '#FFFFFF', font: "'Noto Serif KR', serif" },
 };
 
-// 슬라이드 HTML 생성 (htmlcsstoimage.com 용 — 1080x1080)
+// 슬라이드 HTML 생성 (htmlcsstoimage.com or Satori 용 — 1080x1080)
 function buildSlideHtml(slide, templateKey) {
   const t = CARD_TEMPLATES[templateKey] || CARD_TEMPLATES.clean;
   const num = String(slide.num || 1).padStart(2, '0');
@@ -149,21 +137,18 @@ function buildSlideHtml(slide, templateKey) {
 </html>`;
 }
 
-// htmlcsstoimage.com — HTML→PNG 변환
+// htmlcsstoimage.com — HTML→PNG 변환 (HCTI 키 있을 때만)
 async function renderSlideImage(slide, templateKey) {
   const userId = process.env.HCTI_API_USER_ID;
   const apiKey = process.env.HCTI_API_KEY;
-  if (!userId || !apiKey) throw new Error('HCTI 키 없음 (HCTI_API_USER_ID, HCTI_API_KEY)');
+  if (!userId || !apiKey) throw new Error('HCTI 키 없음');
 
   const html = buildSlideHtml(slide, templateKey);
   const auth = Buffer.from(`${userId}:${apiKey}`).toString('base64');
 
   const res = await fetch('https://hcti.io/v1/image', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Basic ${auth}`,
-    },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` },
     body: JSON.stringify({ html, viewport_width: 1080, viewport_height: 1080 }),
   });
 
@@ -182,7 +167,6 @@ export default async function handler(req, res) {
   const { id } = req.body || {};
   if (!id) return res.status(400).json({ error: 'id 필수' });
 
-  // 드래프트 로드
   const raw = await redis.get(`creator:draft:${id}`);
   if (!raw) return res.status(404).json({ error: '드래프트 없음' });
   const draft = typeof raw === 'string' ? JSON.parse(raw) : raw;
@@ -192,14 +176,17 @@ export default async function handler(req, res) {
 
   try {
     if (isVideo) {
-      // ── 영상: Higgsfield 비동기 요청 ──
       if (!draft.visualPrompt) return res.status(400).json({ error: 'visualPrompt 없음 (generate 먼저)' });
 
-      const jobId = await requestHiggsfieldVideo(draft.visualPrompt, draft.format, draft.personaImageUrl);
+      const requestId = await requestHiggsfieldVideo(
+        draft.visualPrompt,
+        draft.format,
+        draft.personaImageUrl,
+      );
 
       const updated = {
         ...draft,
-        higgsfieldJobId: jobId,
+        higgsfieldJobId: requestId,   // request_id 저장 (cron이 폴링)
         status: 'generating',
         updatedAt: new Date().toISOString(),
       };
@@ -208,16 +195,15 @@ export default async function handler(req, res) {
     }
 
     if (isCardNews) {
-      // ── 카드뉴스: htmlcsstoimage.com HTML→PNG 렌더링 ──
       const templateKey = draft.cardnewsTemplate || 'clean';
 
-      // HCTI 키 없으면 텍스트 미리보기 모드
       if (!process.env.HCTI_API_USER_ID || !process.env.HCTI_API_KEY) {
+        // HCTI 없으면 텍스트 미리보기 모드 (슬라이드 JSON으로 렌더)
         const updated = { ...draft, status: 'review', mediaUrls: [], updatedAt: new Date().toISOString() };
         await redis.set(`creator:draft:${id}`, updated, { ex: 86400 * 30 });
         return res.status(200).json({
           success: true, draft: updated,
-          message: `HCTI 키 미설정 — ${CARD_TEMPLATES[templateKey] ? `${templateKey} 템플릿` : '텍스트'} 미리보기로 진행`,
+          message: `카드뉴스 텍스트 미리보기 모드 (${templateKey} 템플릿)`,
         });
       }
 
@@ -231,12 +217,7 @@ export default async function handler(req, res) {
         }
       }
 
-      const updated = {
-        ...draft,
-        mediaUrls: imageUrls,
-        status: 'review',
-        updatedAt: new Date().toISOString(),
-      };
+      const updated = { ...draft, mediaUrls: imageUrls, status: 'review', updatedAt: new Date().toISOString() };
       await redis.set(`creator:draft:${id}`, updated, { ex: 86400 * 30 });
       return res.status(200).json({ success: true, draft: updated });
     }
@@ -244,11 +225,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: '알 수 없는 format' });
   } catch (e) {
     console.error('[Creator Media]', e.message);
-
-    // 실패 시 draft 상태 업데이트
     const failed = { ...draft, status: 'failed', error: e.message, updatedAt: new Date().toISOString() };
     await redis.set(`creator:draft:${id}`, failed, { ex: 86400 * 30 }).catch(() => {});
-
     return res.status(500).json({ error: e.message });
   }
 }
