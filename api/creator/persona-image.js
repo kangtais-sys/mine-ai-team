@@ -1,11 +1,13 @@
-// Gemini 이미지 생성으로 페르소나 캐릭터 이미지 생성
-// 모드 A (텍스트): 1차 Imagen 3 → 2차 Gemini 멀티모달 모델 체인
-// 모드 B (레퍼런스): referenceImages(base64) + instruction → Gemini 멀티모달
-// 생성 성공 시 persona-images API로 자동 저장
-// env: GOOGLE_API_KEY 또는 GEMINI_API_KEY
+// 페르소나 이미지 생성
+// 모드 C (Flux Kontext): primaryImageUrl 있으면 → Higgsfield fnf API로 캐릭터 일관성 유지
+// 모드 A (텍스트): Imagen3 → Gemini 폴백 (초기 캐릭터 생성)
+// 모드 B (레퍼런스): referenceImages(base64) + instruction → Gemini (수동 레퍼런스)
+// env: GOOGLE_API_KEY / GEMINI_API_KEY, HIGGSFIELD_CLI_TOKEN
 
 import { Redis } from '@upstash/redis';
 import { randomUUID } from 'crypto';
+
+export const config = { maxDuration: 60 };
 
 const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
@@ -14,6 +16,7 @@ const redis = new Redis({
 
 const IMAGES_KEY = 'creator:persona:millimilli:images';
 const MAX_IMAGES = 10;
+const FNF_BASE = 'https://fnf.higgsfield.ai';
 
 async function saveImageToGallery(imageUrl, prompt, via, label) {
   try {
@@ -39,13 +42,122 @@ async function saveImageToGallery(imageUrl, prompt, via, label) {
   }
 }
 
+// ── 모드 C: Higgsfield Flux Kontext — 캐릭터 일관성 이미지 생성 ──
+// primaryImageUrl: HTTP URL 또는 base64 data URL
+// prompt: English prompt for the variation
+async function generateWithFluxKontext(primaryImageUrl, prompt, label) {
+  const token = (process.env.HIGGSFIELD_CLI_TOKEN || '').trim();
+  if (!token) throw new Error('HIGGSFIELD_CLI_TOKEN 없음');
+
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
+
+  // 1. 업로드 슬롯 생성 (presigned S3 URL 획득)
+  const uploadRes = await fetch(`${FNF_BASE}/agents/uploads?type=image`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ url: 'placeholder' }),
+  });
+
+  if (!uploadRes.ok) {
+    const err = await uploadRes.text();
+    throw new Error(`Higgsfield upload slot 생성 실패 (${uploadRes.status}): ${err.substring(0, 200)}`);
+  }
+
+  const { id: mediaId, upload_url: uploadUrl } = await uploadRes.json();
+  if (!mediaId || !uploadUrl) throw new Error('업로드 슬롯 응답 이상');
+
+  // 2. 이미지 바이너리 가져오기 (base64 or HTTP)
+  let imageBuffer;
+  let mimeType = 'image/png';
+
+  if (primaryImageUrl.startsWith('data:')) {
+    // base64 data URL → buffer
+    const match = primaryImageUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) throw new Error('base64 형식 오류');
+    mimeType = match[1];
+    imageBuffer = Buffer.from(match[2], 'base64');
+  } else {
+    // HTTP URL → fetch binary
+    const imgRes = await fetch(primaryImageUrl);
+    if (!imgRes.ok) throw new Error(`이미지 다운로드 실패: ${imgRes.status}`);
+    mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
+    const arrayBuf = await imgRes.arrayBuffer();
+    imageBuffer = Buffer.from(arrayBuf);
+  }
+
+  // 3. S3 presigned URL에 PUT
+  const putRes = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': mimeType },
+    body: imageBuffer,
+  });
+
+  if (!putRes.ok && putRes.status !== 200) {
+    const putErr = await putRes.text().catch(() => '');
+    throw new Error(`S3 PUT 실패 (${putRes.status}): ${putErr.substring(0, 100)}`);
+  }
+
+  // 4. Flux Kontext 잡 생성
+  const jobRes = await fetch(`${FNF_BASE}/agents/jobs`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      job_set_type: 'flux_kontext',
+      params: {
+        prompt,
+        aspect_ratio: label?.includes('전신') ? '3:4' : '3:4',
+        input_images: [{ id: mediaId, type: 'media_input' }],
+        enhance_prompt: true,
+        multi_ref: false,
+      },
+    }),
+  });
+
+  if (!jobRes.ok) {
+    const jobErr = await jobRes.text();
+    throw new Error(`Flux Kontext 잡 생성 실패 (${jobRes.status}): ${jobErr.substring(0, 200)}`);
+  }
+
+  const jobIds = await jobRes.json();
+  const jobId = Array.isArray(jobIds) ? jobIds[0] : jobIds.id;
+  if (!jobId) throw new Error('잡 ID 없음');
+
+  console.log(`[Persona Image] Flux Kontext 잡 생성: ${jobId}`);
+
+  // 5. 완료 폴링 (최대 55초, 3초 간격)
+  const deadline = Date.now() + 55_000;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 3000));
+
+    const statusRes = await fetch(`${FNF_BASE}/agents/jobs/${jobId}`, { headers });
+    if (!statusRes.ok) continue;
+
+    const job = await statusRes.json();
+    console.log(`[Persona Image] Flux Kontext 상태: ${job.status}`);
+
+    if (job.status === 'completed' && job.result_url) {
+      console.log(`[Persona Image] Flux Kontext 완료: ${job.result_url.substring(0, 60)}`);
+      // HTTP URL로 갤러리에 저장
+      const saved = await saveImageToGallery(job.result_url, prompt, 'flux_kontext', label);
+      return { success: true, imageUrl: job.result_url, prompt, via: 'flux_kontext', savedImage: saved };
+    }
+
+    if (job.status === 'failed') {
+      throw new Error('Flux Kontext 잡 실패');
+    }
+  }
+
+  throw new Error('Flux Kontext 타임아웃 (55초 초과)');
+}
+
 const IMAGEN_ENDPOINT =
   'https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict';
 
-// 시도할 Gemini 이미지 모델 — 모델마다 responseModalities 케이스가 다름
 const GEMINI_IMAGE_MODELS = [
   { id: 'gemini-2.0-flash-preview-image-generation', modalities: ['IMAGE'] },
-  { id: 'gemini-3.1-flash-image-preview',            modalities: ['Image'] },
   { id: 'gemini-2.0-flash-exp',                      modalities: ['IMAGE'] },
 ];
 
@@ -71,7 +183,6 @@ function buildImagePrompt(persona) {
   return parts.filter(Boolean).join(', ');
 }
 
-// 응답이 JSON인지 확인 후 파싱
 async function safeJson(res) {
   const text = await res.text();
   try {
@@ -81,10 +192,8 @@ async function safeJson(res) {
   }
 }
 
-// ── 레퍼런스 이미지 기반 Gemini 멀티모달 생성 ──
+// ── 레퍼런스 이미지 기반 Gemini 생성 ──
 async function generateWithReferences(apiKey, referenceImages, instruction, label, errors) {
-  // referenceImages: [{ mimeType, data, label }]  (data = base64 string)
-  // 각 이미지 앞에 라벨 텍스트를 끼워서 Gemini가 역할을 명확히 인식하게 함
   const LABEL_KO = {
     '모델': 'Model face and overall appearance — match this person\'s facial features and look',
     '헤어': 'Hairstyle reference — replicate this exact hairstyle, color, and texture',
@@ -103,7 +212,6 @@ async function generateWithReferences(apiKey, referenceImages, instruction, labe
       'References:',
   };
 
-  // 이미지마다 역할 설명 텍스트 + 이미지 인라인 데이터 교대로 배열
   const interleavedParts = referenceImages.flatMap((img, i) => {
     const roleLabel = LABEL_KO[img.label] || `Reference ${i + 1}`;
     return [
@@ -159,8 +267,57 @@ async function generateWithReferences(apiKey, referenceImages, instruction, labe
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // GOOGLE_API_KEY 또는 GEMINI_API_KEY 둘 다 시도
+  const {
+    persona = {},
+    extraPrompt = '',
+    label = '',
+    referenceImages,
+    instruction,
+    primaryImageUrl,    // 추가: 기존 대표 이미지 URL (HTTP or base64)
+    anglePrompt,        // 추가: 영문 각도/씬 프롬프트 (UI에서 전달)
+  } = req.body || {};
+
+  const errors = [];
+
+  // ══ 모드 C: Flux Kontext (기존 대표 이미지 기반 캐릭터 일관성 컷 생성) ══
+  if (primaryImageUrl && process.env.HIGGSFIELD_CLI_TOKEN) {
+    try {
+      const fluxPrompt = anglePrompt
+        || extraPrompt
+        || 'Korean female beauty creator, same character, natural expression, photorealistic, high quality, keep the same facial features and hairstyle';
+
+      console.log(`[Persona Image] Flux Kontext 모드: label=${label}, prompt=${fluxPrompt.substring(0, 80)}`);
+      const result = await generateWithFluxKontext(primaryImageUrl, fluxPrompt, label);
+      return res.status(200).json(result);
+    } catch (e) {
+      console.error('[Persona Image] Flux Kontext 실패, Gemini 폴백:', e.message);
+      // Flux Kontext 실패 시 Gemini 모드 B로 폴백
+      errors.push(`Flux Kontext: ${e.message}`);
+    }
+  }
+
   const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
+
+  // ══ 모드 B: Gemini 레퍼런스 이미지 기반 생성 ══
+  if (referenceImages && referenceImages.length > 0) {
+    if (!apiKey) {
+      return res.status(400).json({ error: 'API 키 없음 (GOOGLE_API_KEY 또는 GEMINI_API_KEY 필요)' });
+    }
+    const totalBytes = referenceImages.reduce((sum, img) => sum + (img.data?.length || 0), 0);
+    console.log('[Persona Image] reference mode:', referenceImages.length, 'images, total base64 bytes:', totalBytes);
+    if (totalBytes > 4 * 1024 * 1024) {
+      return res.status(413).json({ error: '레퍼런스 이미지 용량 초과 — 이미지를 더 작게 줄여서 다시 시도하세요' });
+    }
+    const result = await generateWithReferences(apiKey, referenceImages, instruction, label, errors);
+    if (result) return res.status(200).json(result);
+    console.error('[Persona Image] Reference mode all failed:', errors);
+    return res.status(500).json({
+      error: `레퍼런스 기반 생성 실패 — ${errors[errors.length - 1] || '알 수 없는 오류'}`,
+      attempts: errors,
+    });
+  }
+
+  // ══ 모드 A: Gemini 텍스트 기반 생성 ══
   if (!apiKey) {
     return res.status(400).json({
       error: 'API 키 없음 (GOOGLE_API_KEY 또는 GEMINI_API_KEY 필요)',
@@ -168,33 +325,10 @@ export default async function handler(req, res) {
     });
   }
 
-  const { persona = {}, extraPrompt = '', label = '', referenceImages, instruction } = req.body || {};
-
-  const errors = [];
-
   try {
-    // ══ 모드 B: 레퍼런스 이미지 기반 생성 ══
-    if (referenceImages && referenceImages.length > 0) {
-      // 각 이미지 base64 크기 체크 — 1장당 1MB(base64 기준) 초과 시 경고
-      const totalBytes = referenceImages.reduce((sum, img) => sum + (img.data?.length || 0), 0);
-      console.log('[Persona Image] reference mode:', referenceImages.length, 'images, total base64 bytes:', totalBytes);
-      if (totalBytes > 4 * 1024 * 1024) {
-        return res.status(413).json({ error: '레퍼런스 이미지 용량 초과 — 이미지를 더 작게 줄여서 다시 시도하세요' });
-      }
-      const result = await generateWithReferences(apiKey, referenceImages, instruction, label, errors);
-      if (result) return res.status(200).json(result);
-      // 레퍼런스 모드 전부 실패 → 에러 반환
-      console.error('[Persona Image] Reference mode all failed:', errors);
-      return res.status(500).json({
-        error: `레퍼런스 기반 생성 실패 — ${errors[errors.length - 1] || '알 수 없는 오류'}`,
-        attempts: errors,
-      });
-    }
-
-    // ══ 모드 A: 텍스트 기반 생성 ══
     const prompt = buildImagePrompt(persona) + (extraPrompt ? `, ${extraPrompt}` : '');
 
-    // ── 1차: Imagen 3 ──
+    // 1차: Imagen 3
     try {
       const imagenRes = await fetch(`${IMAGEN_ENDPOINT}?key=${apiKey}`, {
         method: 'POST',
@@ -216,13 +350,7 @@ export default async function handler(req, res) {
         if (prediction?.bytesBase64Encoded) {
           const imageUrl = `data:${prediction.mimeType || 'image/png'};base64,${prediction.bytesBase64Encoded}`;
           const saved = await saveImageToGallery(imageUrl, prompt, 'imagen3', label);
-          return res.status(200).json({
-            success: true,
-            imageUrl,
-            prompt,
-            via: 'imagen3',
-            savedImage: saved,
-          });
+          return res.status(200).json({ success: true, imageUrl, prompt, via: 'imagen3', savedImage: saved });
         }
       } else {
         const errText = await imagenRes.text();
@@ -232,7 +360,7 @@ export default async function handler(req, res) {
       errors.push(`Imagen3 error: ${e.message}`);
     }
 
-    // ── 2차: Gemini 이미지 모델 순차 시도 ──
+    // 2차: Gemini 이미지 모델 순차 시도
     for (const model of GEMINI_IMAGE_MODELS) {
       try {
         console.log('[Persona Image] trying Gemini model:', model.id);
@@ -248,7 +376,6 @@ export default async function handler(req, res) {
           }
         );
 
-        // 429 Rate limit 감지
         if (geminiRes.status === 429) {
           errors.push(`${model.id}: 요청 한도 초과 (잠시 후 다시 시도)`);
           continue;
@@ -260,16 +387,9 @@ export default async function handler(req, res) {
         if (inlineData?.data) {
           const imageUrl = `data:${inlineData.mimeType || 'image/png'};base64,${inlineData.data}`;
           const saved = await saveImageToGallery(imageUrl, prompt, model.id, label);
-          return res.status(200).json({
-            success: true,
-            imageUrl,
-            prompt,
-            via: model.id,
-            savedImage: saved,
-          });
+          return res.status(200).json({ success: true, imageUrl, prompt, via: model.id, savedImage: saved });
         }
 
-        // 모델이 텍스트만 반환한 경우 (이미지 거부)
         const textPart = geminiData.candidates?.[0]?.content?.parts?.find(p => p.text)?.text;
         errors.push(`${model.id}: 이미지 없음${textPart ? ` (${textPart.substring(0, 80)})` : ''}`);
       } catch (e) {
@@ -277,7 +397,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // 모든 시도 실패
     console.error('[Persona Image] All attempts failed:', errors);
     return res.status(500).json({
       error: `이미지 생성 실패 — ${errors[errors.length - 1] || '알 수 없는 오류'}`,

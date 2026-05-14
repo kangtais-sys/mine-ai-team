@@ -301,32 +301,40 @@ function PersonaSetup({ onGoCreate }) {
     setImageError('');
     const angleOpt = IMAGE_ANGLE_OPTIONS.find(a => a.key === selectedAngle) || IMAGE_ANGLE_OPTIONS[0];
     try {
-      // 수동 레퍼런스가 없고, 이미 저장된 대표 이미지가 있으면 → 자동으로 모델 레퍼런스로 주입
-      // 이렇게 해야 같은 인물로 다른 각도 컷이 생성됨
+      // 대표 이미지가 있으면 → Flux Kontext 모드 C (캐릭터 일관성 컷 생성)
+      // 수동 레퍼런스가 있으면 → Gemini 모드 B
+      // 아무것도 없으면 → Gemini 모드 A (초기 생성)
       const primaryImg = images.find(i => i.isPrimary) || images[0];
-      const autoModelRef = (!refImages.length && primaryImg?.url)
-        ? (() => {
-            const url = primaryImg.url;
-            const [meta, data] = url.split(',');
-            const mimeType = (meta.match(/:(.*?);/) || [])[1] || 'image/jpeg';
-            return [{ mimeType, data, label: '모델' }];
-          })()
-        : null;
+      const hasPrimaryImg = !!primaryImg?.url;
+      const hasManualRefs = refImages.length > 0;
 
-      const activeRefs = refImages.length > 0 ? refImages : (autoModelRef || []);
-      const body = {
-        persona,
-        label: selectedAngle,
-        ...(activeRefs.length > 0
-          ? {
-              referenceImages: activeRefs.map(r => ({ mimeType: r.mimeType, data: r.data, label: r.label })),
-              instruction: activeRefs === autoModelRef
-                ? `이 인물(모델)과 동일한 사람으로, ${angleOpt.extraPrompt} 각도/구도로 생성해줘. 얼굴과 외모는 레퍼런스와 최대한 일치시켜.`
-                : `${instruction}. ${angleOpt.extraPrompt}`,
-            }
-          : { extraPrompt: angleOpt.extraPrompt }
-        ),
-      };
+      let body;
+
+      if (hasPrimaryImg && !hasManualRefs) {
+        // 모드 C: Flux Kontext — 대표 이미지 URL + 영문 angle prompt 전달
+        const fluxPrompt = `Korean female beauty creator, ${angleOpt.extraPrompt}. Keep the exact same facial features, hairstyle, skin tone, and overall character identity. Photorealistic, high quality, K-beauty aesthetic.`;
+        body = {
+          persona,
+          label: selectedAngle,
+          primaryImageUrl: primaryImg.url,
+          anglePrompt: fluxPrompt,
+        };
+      } else if (hasManualRefs) {
+        // 모드 B: Gemini 수동 레퍼런스
+        body = {
+          persona,
+          label: selectedAngle,
+          referenceImages: refImages.map(r => ({ mimeType: r.mimeType, data: r.data, label: r.label })),
+          instruction: `${instruction}. ${angleOpt.extraPrompt}`,
+        };
+      } else {
+        // 모드 A: Gemini 텍스트 기반 초기 생성
+        body = {
+          persona,
+          label: selectedAngle,
+          extraPrompt: angleOpt.extraPrompt,
+        };
+      }
       const res = await fetch('/api/creator/persona-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
