@@ -29,7 +29,7 @@ function buildCatchphrasesHint(persona) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { topic, pillar: pillarOverride, format, platforms = ['instagram'], notes = '', cardnewsTemplate = 'clean', personaImageUrl } = req.body || {};
+  const { topic, pillar: pillarOverride, format, platforms = ['instagram'], notes = '', cardnewsTemplate = 'clean', personaImageUrl, sourceImages = [] } = req.body || {};
   if ((!topic && !pillarOverride) || !format) return res.status(400).json({ error: 'topic 또는 pillar, format 필수' });
 
   // 상세 페르소나 로드 (Redis → persona API 저장값 우선)
@@ -82,6 +82,7 @@ export default async function handler(req, res) {
 
   // 페르소나 이미지 URL (영상 생성 시 사용)
   const hasPersonaImage = !!personaImageUrl;
+  const hasSourceImages = sourceImages.length > 0;
 
   const systemPrompt = `당신은 밀리밀리(MILLIMILLI) 브랜드의 가상 인플루언서 AI 크리에이터입니다.
 
@@ -121,7 +122,10 @@ ${pillarInfo.label}: ${pillarInfo.desc}
 - 한국어로 작성 (영어는 visualPrompt만)
 - visualPrompt에는 반드시 페르소나 외모 & 비주얼 스타일을 반영할 것`;
 
-  const topicLine = topic ? `콘텐츠 주제/아이디어: ${topic}` : `콘텐츠 기둥: ${pillarInfo.label} — ${pillarInfo.desc}`;
+  const sourceImagesNote = hasSourceImages
+    ? `\n첨부 소스 이미지 ${sourceImages.length}장: ${sourceImages.map(s => s.label).join(', ')}\n→ 이 이미지들을 스크립트와 영상 구성에 적극 활용할 것. 제품 설명, 성분 비교, 랭킹 등 해당 이미지가 보이는 시점을 스크립트에 명시할 것.`
+    : '';
+  const topicLine = topic ? `콘텐츠 주제/아이디어: ${topic}${sourceImagesNote}` : `콘텐츠 기둥: ${pillarInfo.label} — ${pillarInfo.desc}`;
   const baseHashtags = `${hashtags.base.join(' ')} ${(hashtags[pillar] || hashtags.base).join(' ')}`;
 
   const userPrompt = isVideo
@@ -198,6 +202,7 @@ ${pillarInfo.label}: ${pillarInfo.desc}
       slides: parsed.slides || [],
       cardnewsTemplate: format === 'cardnews' ? (cardnewsTemplate || 'clean') : null,
       personaImageUrl: personaImageUrl || null,
+      sourceImages: sourceImages.map(s => ({ mimeType: s.mimeType, data: s.data, label: s.label })),
       higgsfieldJobId: null,
       mediaUrl: null,
       mediaUrls: [],

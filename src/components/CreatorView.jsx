@@ -804,78 +804,6 @@ function PersonaSetup({ onGoCreate }) {
           </div>
         </div>
 
-        {/* Content Preview */}
-        <div style={{ ...CARD, padding: '16px' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#6E6E73', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>콘텐츠 샘플 미리보기</div>
-
-          {/* Pillar chips */}
-          <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 10.5, color: '#AEAEB2', fontWeight: 600, marginBottom: 5 }}>기둥</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {PREVIEW_PILLARS.map(p => (
-                <button key={p.key} onClick={() => { setPreviewPillar(p.key); setPreview(null); }} style={{
-                  padding: '4px 8px', borderRadius: 12, border: `1px solid ${previewPillar === p.key ? '#5E6AD2' : '#E5E5EA'}`,
-                  background: previewPillar === p.key ? '#F0F0FF' : '#FFF',
-                  fontSize: 11, fontWeight: previewPillar === p.key ? 600 : 400,
-                  color: previewPillar === p.key ? '#5E6AD2' : '#6E6E73', cursor: 'pointer',
-                }}>{p.label}</button>
-              ))}
-            </div>
-          </div>
-
-          {/* Format chips */}
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 10.5, color: '#AEAEB2', fontWeight: 600, marginBottom: 5 }}>포맷</div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {PREVIEW_FORMATS.map(f => (
-                <button key={f.key} onClick={() => { setPreviewFormat(f.key); setPreview(null); }} style={{
-                  padding: '4px 8px', borderRadius: 12, border: `1px solid ${previewFormat === f.key ? '#1D1D1F' : '#E5E5EA'}`,
-                  background: previewFormat === f.key ? '#F2F2F7' : '#FFF',
-                  fontSize: 11, fontWeight: previewFormat === f.key ? 600 : 400,
-                  color: previewFormat === f.key ? '#1D1D1F' : '#6E6E73', cursor: 'pointer',
-                }}>{f.label}</button>
-              ))}
-            </div>
-          </div>
-
-          <button
-            onClick={handleGeneratePreview}
-            disabled={generatingPreview}
-            style={{
-              width: '100%', padding: '8px', borderRadius: 8, border: 'none',
-              background: generatingPreview ? '#E5E5EA' : '#1D1D1F',
-              color: generatingPreview ? '#AEAEB2' : '#FFF',
-              fontSize: 12.5, fontWeight: 600, cursor: generatingPreview ? 'default' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 10,
-            }}
-          >
-            {generatingPreview
-              ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> 생성 중...</>
-              : <><Sparkles size={12} /> 샘플 생성</>}
-          </button>
-
-          {preview && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ background: '#F8F8FA', borderRadius: 8, padding: '8px 10px' }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: '#5E6AD2', marginBottom: 4 }}>HOOK</div>
-                <div style={{ fontSize: 11.5, color: '#1D1D1F', lineHeight: 1.55 }}>{preview.hook}</div>
-              </div>
-              {preview.script && (
-                <div style={{ background: '#F8F8FA', borderRadius: 8, padding: '8px 10px', maxHeight: 160, overflowY: 'auto' }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#AEAEB2', marginBottom: 4 }}>SCRIPT</div>
-                  <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{preview.script}</div>
-                </div>
-              )}
-              {preview.caption && (
-                <div style={{ background: '#FFF9EE', borderRadius: 8, padding: '7px 10px', border: '1px solid #FDEDB0' }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#FF9500', marginBottom: 3 }}>CAPTION</div>
-                  <div style={{ fontSize: 11, color: '#1D1D1F', lineHeight: 1.5 }}>{preview.caption}</div>
-                </div>
-              )}
-            </div>
-          )}
-          <div style={{ fontSize: 10.5, color: '#AEAEB2', marginTop: preview ? 8 : 0, textAlign: 'center' }}>Claude Haiku · 저장 없이 빠른 미리보기</div>
-        </div>
       </div>
 
     </div>
@@ -1137,6 +1065,8 @@ function CreateForm({ onGenerated }) {
   const [draft, setDraft]           = useState(null);
   const [persona, setPersona]       = useState(null);
   const [primaryImage, setPrimaryImage] = useState(null);
+  // 소스 이미지 (제품 누끼, 성분 캡처, 랭킹 자료 등)
+  const [sourceImages, setSourceImages] = useState([]); // [{ data, mimeType, preview, label }]
 
   useEffect(() => {
     fetch('/api/creator/persona').then(r => r.json()).then(d => { if (d.persona) setPersona(d.persona); }).catch(() => {});
@@ -1148,6 +1078,35 @@ function CreateForm({ onGenerated }) {
   }, []);
 
   const togglePlatform = (key) => setPlatforms(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]);
+
+  // 소스 이미지 업로드 — 512px 압축
+  const handleSourceImageUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    files.forEach(file => {
+      if (sourceImages.length >= 6) return;
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const MAX = 512;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+          else { width = Math.round(width * MAX / height); height = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        URL.revokeObjectURL(url);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+        setSourceImages(prev => prev.length < 6
+          ? [...prev, { data: dataUrl.split(',')[1], mimeType: 'image/jpeg', preview: dataUrl, label: file.name }]
+          : prev
+        );
+      };
+      img.src = url;
+    });
+  };
 
   const handleGenerate = async () => {
     if (!topic.trim()) return;
@@ -1164,6 +1123,7 @@ function CreateForm({ onGenerated }) {
           platforms,
           cardnewsTemplate,
           personaImageUrl: primaryImage?.url || null,
+          sourceImages: sourceImages.map(s => ({ data: s.data, mimeType: s.mimeType, label: s.label })),
         }),
       });
       const genData = await genRes.json();
@@ -1201,7 +1161,7 @@ function CreateForm({ onGenerated }) {
             {draft.status === 'generating' ? '영상 생성 중 (1-3분 소요) — "검토 대기" 탭에서 확인하세요.' : '"검토 대기" 탭에서 확인·편집·발행할 수 있어요.'}
           </p>
         </div>
-        <button onClick={() => { setStep('idle'); setError(''); setDraft(null); setTopic(''); }}
+        <button onClick={() => { setStep('idle'); setError(''); setDraft(null); setTopic(''); setSourceImages([]); }}
           style={{ padding: '10px 20px', borderRadius: 8, border: '1px solid #E5E5EA', background: '#FFF', fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
           <Plus size={14} /> 새 콘텐츠 만들기
         </button>
@@ -1251,7 +1211,51 @@ function CreateForm({ onGenerated }) {
         </div>
       </div>
 
-      {/* ── 2. 포맷 ── */}
+      {/* ── 2. 소스 이미지 ── */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#6E6E73', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            소스 이미지 <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#AEAEB2' }}>(선택 · 최대 6장)</span>
+          </label>
+          {sourceImages.length > 0 && (
+            <button onClick={() => setSourceImages([])} style={{ fontSize: 11, color: '#FF3B30', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>전체 삭제</button>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start' }}>
+          {/* 업로드된 이미지 썸네일 */}
+          {sourceImages.map((img, idx) => (
+            <div key={idx} style={{ position: 'relative' }}>
+              <img src={img.preview} alt={img.label}
+                style={{ width: 68, height: 68, borderRadius: 8, objectFit: 'cover', border: '1.5px solid #E5E5EA', display: 'block' }} />
+              <button onClick={() => setSourceImages(prev => prev.filter((_, i) => i !== idx))}
+                style={{ position: 'absolute', top: -5, right: -5, width: 16, height: 16, borderRadius: '50%', border: 'none', background: '#FF3B30', color: '#FFF', fontSize: 9, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                ×
+              </button>
+              <div style={{ fontSize: 8.5, color: '#AEAEB2', textAlign: 'center', marginTop: 3, maxWidth: 68, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{img.label}</div>
+            </div>
+          ))}
+
+          {/* 추가 버튼 */}
+          {sourceImages.length < 6 && (
+            <label style={{
+              width: 68, height: 68, borderRadius: 8, border: '1.5px dashed #C8C8D0',
+              background: '#FAFAFA', display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', cursor: 'pointer', gap: 4,
+            }}>
+              <Plus size={18} color="#AEAEB2" />
+              <span style={{ fontSize: 9.5, color: '#AEAEB2' }}>이미지 추가</span>
+              <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleSourceImageUpload} />
+            </label>
+          )}
+        </div>
+
+        <div style={{ fontSize: 11, color: '#AEAEB2', marginTop: 7, lineHeight: 1.5 }}>
+          제품 누끼컷, 성분 정보 캡처, 랭킹 자료, 비교표 등 — AI가 분석해서 스크립트와 영상에 반영해요
+        </div>
+      </div>
+
+      {/* ── 3. 포맷 ── */}
       <div style={{ marginBottom: 20 }}>
         <label style={{ fontSize: 12, fontWeight: 600, color: '#6E6E73', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>포맷</label>
         <div style={{ display: 'flex', gap: 8 }}>
