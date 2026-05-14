@@ -6,68 +6,90 @@ const redis = new Redis({
 });
 
 // ── Higgsfield API 설정 ──────────────────────────────────────────
-// 실제 플랫폼 URL: platform.higgsfield.ai (기존 api.higgsfield.ai 는 구버전)
+// 플랫폼 URL: platform.higgsfield.ai
+// 인증: Key {apiKey} 헤더
+// 엔드포인트 (OpenAPI 검증 완료 2026-05):
+//   영상: POST /v1/image2video/kling  또는  /v1/image2video/dop
+//   상태: GET  /requests/{request_id}/status
+//   응답: { request_id, status, video: { url } }
+// ⚠️ 모든 영상 모델은 input_image(URL) 필수 — 텍스트 전용 없음
 const HIGGSFIELD_BASE = 'https://platform.higgsfield.ai';
 
 function higgsfieldAuth() {
-  const key = process.env.HIGGSFIELD_API_KEY;
-  const secret = process.env.HIGGSFIELD_API_SECRET;
+  const key = (process.env.HIGGSFIELD_API_KEY || '').replace(/^["']|["']$/g, '');
+  const secret = (process.env.HIGGSFIELD_API_SECRET || '').replace(/^["']|["']$/g, '');
   if (!key) throw new Error('HIGGSFIELD_API_KEY 없음');
-  // 시크릿 있으면 Key key:secret, 없으면 Key key
   return secret ? `Key ${key}:${secret}` : `Key ${key}`;
 }
 
-// 영상 생성 요청 → request_id 반환 (비동기 처리)
-async function requestHiggsfieldVideo(visualPrompt, format, personaImageUrl) {
+// 영상 생성 요청 → request_id 반환 (비동기)
+// ⚠️ personaImageUrl은 반드시 https:// HTTP URL이어야 함 (base64 불가)
+async function requestHiggsfieldVideo(visualPrompt, personaImageUrl) {
   const auth = higgsfieldAuth();
 
-  // 페르소나 이미지가 실제 HTTP URL인 경우에만 image-to-video 사용
-  // base64 data URL은 Higgsfield API가 지원 안 함 → text-to-video 폴백
   const isHttpUrl = personaImageUrl?.startsWith('http');
-
-  const modelId = isHttpUrl
-    ? 'kling-video/v2.1/pro/image-to-video'  // Kling 2.1 Pro image-to-video
-    : 'higgsfield-ai/dop/turbo';              // Higgsfield DoP Turbo (text-to-video)
-
-  const body = isHttpUrl
-    ? { image_url: personaImageUrl, prompt: visualPrompt, duration: 5, aspect_ratio: '9:16' }
-    : { prompt: visualPrompt, duration: 5, aspect_ratio: '9:16' };
-
-  console.log(`[Creator Media] Higgsfield mode: ${isHttpUrl ? 'image-to-video (Kling 2.1)' : 'text-to-video (DoP Turbo)'}`);
-
-  const res = await fetch(`${HIGGSFIELD_BASE}/${modelId}`, {
-    method: 'POST',
-    headers: {
-      'Authorization': auth,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    // image-to-video 실패 시 text-to-video DoP Turbo로 폴백
-    if (isHttpUrl) {
-      console.warn(`[Creator Media] Kling image-to-video 실패, DoP Turbo로 폴백: ${err.substring(0, 150)}`);
-      const fallback = await fetch(`${HIGGSFIELD_BASE}/higgsfield-ai/dop/turbo`, {
-        method: 'POST',
-        headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: visualPrompt, duration: 5, aspect_ratio: '9:16' }),
-      });
-      if (!fallback.ok) {
-        const fbErr = await fallback.text();
-        throw new Error(`Higgsfield DoP Turbo 폴백 실패 ${fallback.status}: ${fbErr.substring(0, 200)}`);
-      }
-      const fbData = await fallback.json();
-      if (!fbData.request_id) throw new Error(`request_id 없음 (폴백): ${JSON.stringify(fbData)}`);
-      return fbData.request_id;
-    }
-    throw new Error(`Higgsfield ${modelId} ${res.status}: ${err.substring(0, 200)}`);
+  if (!isHttpUrl) {
+    throw new Error(
+      '페르소나 이미지 HTTP URL 필요 — Higgsfield 영상 생성은 이미지 URL이 필수입니다. ' +
+      '페르소나 이미지를 먼저 저장(외부 URL)하거나, 크리에이터 설정에서 이미지를 등록해주세요.'
+    );
   }
 
-  const data = await res.json();
-  if (!data.request_id) throw new Error(`Higgsfield request_id 없음: ${JSON.stringify(data)}`);
-  return data.request_id;
+  // 1차: Kling v2.1 Pro image-to-video
+  // body: { params: { prompt, input_image: { type, image_url }, model, mode, duration } }
+  const klingBody = {
+    params: {
+      prompt: visualPrompt,
+      input_image: { type: 'image_url', image_url: personaImageUrl },
+      model: 'kling-v2-1',
+      mode: 'pro',
+      duration: 5,
+    },
+  };
+
+  console.log('[Creator Media] Higgsfield Kling v2.1 Pro 요청 시작');
+  const klingRes = await fetch(`${HIGGSFIELD_BASE}/v1/image2video/kling`, {
+    method: 'POST',
+    headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify(klingBody),
+  });
+
+  if (klingRes.ok) {
+    const klingData = await klingRes.json();
+    if (klingData.request_id) {
+      console.log(`[Creator Media] Kling 요청 성공: ${klingData.request_id}`);
+      return { requestId: klingData.request_id, model: 'kling-v2-1' };
+    }
+  }
+
+  // Kling 실패 시 DoP Turbo로 폴백
+  const klingErr = await klingRes.text().catch(() => '');
+  console.warn(`[Creator Media] Kling 실패 (${klingRes.status}): ${klingErr.substring(0, 150)} → DoP Turbo 폴백`);
+
+  const dopBody = {
+    params: {
+      prompt: visualPrompt,
+      input_images: [{ type: 'image_url', image_url: personaImageUrl }],
+      model: 'dop-turbo',
+    },
+  };
+
+  const dopRes = await fetch(`${HIGGSFIELD_BASE}/v1/image2video/dop`, {
+    method: 'POST',
+    headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify(dopBody),
+  });
+
+  if (!dopRes.ok) {
+    const dopErr = await dopRes.text();
+    throw new Error(`Higgsfield DoP Turbo 실패 ${dopRes.status}: ${dopErr.substring(0, 200)}`);
+  }
+
+  const dopData = await dopRes.json();
+  if (!dopData.request_id) throw new Error(`request_id 없음 (DoP): ${JSON.stringify(dopData).substring(0, 200)}`);
+
+  console.log(`[Creator Media] DoP Turbo 요청 성공: ${dopData.request_id}`);
+  return { requestId: dopData.request_id, model: 'dop-turbo' };
 }
 
 // 상태 조회 → { status, videoUrl, raw }
@@ -178,20 +200,20 @@ export default async function handler(req, res) {
     if (isVideo) {
       if (!draft.visualPrompt) return res.status(400).json({ error: 'visualPrompt 없음 (generate 먼저)' });
 
-      const requestId = await requestHiggsfieldVideo(
+      const { requestId, model: usedModel } = await requestHiggsfieldVideo(
         draft.visualPrompt,
-        draft.format,
         draft.personaImageUrl,
       );
 
       const updated = {
         ...draft,
         higgsfieldJobId: requestId,   // request_id 저장 (cron이 폴링)
+        higgsfieldModel: usedModel,   // 사용된 모델 기록
         status: 'generating',
         updatedAt: new Date().toISOString(),
       };
       await redis.set(`creator:draft:${id}`, updated, { ex: 86400 * 30 });
-      return res.status(200).json({ success: true, draft: updated, message: '영상 생성 시작 (완료까지 1-3분)' });
+      return res.status(200).json({ success: true, draft: updated, message: `영상 생성 시작 (${usedModel}, 완료까지 1-3분)` });
     }
 
     if (isCardNews) {

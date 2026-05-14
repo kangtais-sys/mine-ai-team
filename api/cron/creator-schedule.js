@@ -11,8 +11,8 @@ export const config = { maxDuration: 60 };
 const HIGGSFIELD_BASE = 'https://platform.higgsfield.ai';
 
 function higgsfieldAuth() {
-  const key = process.env.HIGGSFIELD_API_KEY;
-  const secret = process.env.HIGGSFIELD_API_SECRET;
+  const key = (process.env.HIGGSFIELD_API_KEY || '').replace(/^["']|["']$/g, '');
+  const secret = (process.env.HIGGSFIELD_API_SECRET || '').replace(/^["']|["']$/g, '');
   if (!key) return null;
   return secret ? `Key ${key}:${secret}` : `Key ${key}`;
 }
