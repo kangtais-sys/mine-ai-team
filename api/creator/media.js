@@ -45,9 +45,8 @@ async function ensureHttpUrl(imageUrl) {
 
   await redis.set(`creator:temp-img:${id}`, { mimeType, data: base64Data }, { ex: 3600 }); // 1시간 TTL
 
-  const baseUrl = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : 'https://mine-ai-team.vercel.app';
+  // VERCEL_URL은 배포별 URL이라 Higgsfield에서 접근 못할 수 있음 → 안정 도메인 사용
+  const baseUrl = process.env.APP_URL || 'https://mine-ai-team.vercel.app';
   const proxyUrl = `${baseUrl}/api/creator/image-proxy?id=${id}`;
 
   console.log(`[Creator Media] base64 → 프록시 URL: ${proxyUrl}`);
