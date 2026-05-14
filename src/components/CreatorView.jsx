@@ -328,20 +328,32 @@ function PersonaSetup({ onGoCreate }) {
     setGeneratingImage(false);
   };
 
-  // 파일 → base64 변환
+  // 파일 → Canvas 리사이즈(max 768px) → JPEG 0.85 압축 → base64
   const handleRefImageUpload = (e, label) => {
     const file = e.target.files[0];
     if (!file) return;
     if (refImages.length >= 5) { setImageError('레퍼런스 이미지는 최대 5장'); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const result = ev.target.result; // data:image/...;base64,...
-      const [meta, data] = result.split(',');
-      const mimeType = meta.match(/:(.*?);/)[1];
-      setRefImages(prev => [...prev, { mimeType, data, preview: result, label }]);
+    e.target.value = '';
+
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 768;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+        else { width = Math.round(width * MAX / height); height = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const data = dataUrl.split(',')[1];
+      setRefImages(prev => [...prev, { mimeType: 'image/jpeg', data, preview: dataUrl, label }]);
     };
-    reader.readAsDataURL(file);
-    e.target.value = ''; // reset input
+    img.src = url;
   };
 
   const removeRefImage = (idx) => setRefImages(prev => prev.filter((_, i) => i !== idx));
