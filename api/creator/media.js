@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis';
+import { randomUUID } from 'crypto';
 
 const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
@@ -28,15 +29,35 @@ function higgsfieldHeaders() {
   };
 }
 
+// base64 data URL → Redis 저장 후 이미지 프록시 HTTP URL 반환
+// Higgsfield는 base64를 직접 받을 수 없어서 공개 HTTP URL이 필요
+async function ensureHttpUrl(imageUrl) {
+  if (!imageUrl) throw new Error('페르소나 이미지 없음 — 크리에이터 설정에서 이미지를 먼저 생성해주세요');
+  if (imageUrl.startsWith('http')) return imageUrl; // 이미 HTTP URL
+
+  // base64 data URL → Redis에 임시 저장 → 프록시 URL 반환
+  const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) throw new Error('지원되지 않는 이미지 형식');
+
+  const mimeType = match[1];
+  const base64Data = match[2];
+  const id = randomUUID();
+
+  await redis.set(`creator:temp-img:${id}`, { mimeType, data: base64Data }, { ex: 3600 }); // 1시간 TTL
+
+  const baseUrl = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : 'https://mine-ai-team.vercel.app';
+  const proxyUrl = `${baseUrl}/api/creator/image-proxy?id=${id}`;
+
+  console.log(`[Creator Media] base64 → 프록시 URL: ${proxyUrl}`);
+  return proxyUrl;
+}
+
 // 영상 생성 요청 → request_id 반환 (비동기)
-// ⚠️ personaImageUrl은 반드시 https:// HTTP URL이어야 함 (base64 불가)
 async function requestHiggsfieldVideo(visualPrompt, personaImageUrl) {
-  const isHttpUrl = personaImageUrl?.startsWith('http');
-  if (!isHttpUrl) {
-    throw new Error(
-      '페르소나 이미지 HTTP URL 필요 — 크리에이터 설정에서 페르소나 이미지를 등록(외부 URL)해주세요.'
-    );
-  }
+  // base64면 자동으로 Vercel Blob에 업로드해서 HTTP URL 획득
+  const imageUrl = await ensureHttpUrl(personaImageUrl);
 
   const headers = higgsfieldHeaders();
 
@@ -45,7 +66,7 @@ async function requestHiggsfieldVideo(visualPrompt, personaImageUrl) {
   const klingBody = {
     params: {
       prompt: visualPrompt,
-      input_image: { type: 'image_url', image_url: personaImageUrl },
+      input_image: { type: 'image_url', image_url: imageUrl },
       model: 'kling-v2-1',
       mode: 'std',
       duration: 5,
@@ -75,7 +96,7 @@ async function requestHiggsfieldVideo(visualPrompt, personaImageUrl) {
   const dopBody = {
     params: {
       prompt: visualPrompt,
-      input_images: [{ type: 'image_url', image_url: personaImageUrl }],
+      input_images: [{ type: 'image_url', image_url: imageUrl }],
       model: 'dop-turbo',
     },
   };
