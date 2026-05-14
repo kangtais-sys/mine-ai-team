@@ -1,8 +1,8 @@
 // 페르소나 이미지 생성
-// 모드 C (Flux Kontext): primaryImageUrl 있으면 → Higgsfield fnf API로 캐릭터 일관성 유지
+// 모드 C (Nano Banana Pro): primaryImageUrl 있으면 → Higgsfield Nano Banana Pro로 얼굴 100% 일관성 유지
 // 모드 A (텍스트): Imagen3 → Gemini 폴백 (초기 캐릭터 생성)
 // 모드 B (레퍼런스): referenceImages(base64) + instruction → Gemini (수동 레퍼런스)
-// env: GOOGLE_API_KEY / GEMINI_API_KEY, HIGGSFIELD_CLI_TOKEN
+// env: GOOGLE_API_KEY / GEMINI_API_KEY, HIGGSFIELD_CLI_TOKEN, HIGGSFIELD_REFRESH_TOKEN
 
 import { Redis } from '@upstash/redis';
 import { randomUUID } from 'crypto';
@@ -17,6 +17,71 @@ const redis = new Redis({
 const IMAGES_KEY = 'creator:persona:millimilli:images';
 const MAX_IMAGES = 10;
 const FNF_BASE = 'https://fnf.higgsfield.ai';
+const REDIS_TOKEN_KEY = 'higgsfield:access_token';
+
+// ── Higgsfield 토큰 관리 (자동 갱신 지원) ──
+
+/** CloudFront URL에서 Higgsfield 잡 ID 추출
+ *  예: https://d8j0ntlcm91z4.cloudfront.net/.../hf_20260514_223722_UUID.png → UUID */
+function extractHiggsJobId(url) {
+  const match = url.match(/hf_\d{8}_\d{6}_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\./i);
+  return match ? match[1] : null;
+}
+
+/** 유효한 액세스 토큰 반환 (Redis 캐시 → env 순서) */
+async function getValidToken() {
+  // 1. Redis 캐시 우선
+  const cached = await redis.get(REDIS_TOKEN_KEY).catch(() => null);
+  if (cached) return cached;
+  // 2. env 폴백
+  const envToken = (process.env.HIGGSFIELD_CLI_TOKEN || '').trim();
+  if (envToken) return envToken;
+  throw new Error('HIGGSFIELD_CLI_TOKEN 없음');
+}
+
+/** 리프레시 토큰으로 액세스 토큰 갱신 후 Redis 저장 */
+async function refreshAccessToken() {
+  const refreshToken = (process.env.HIGGSFIELD_REFRESH_TOKEN || '').trim();
+  if (!refreshToken) throw new Error('HIGGSFIELD_REFRESH_TOKEN 없음 — Vercel 환경변수에 추가 필요');
+
+  console.log('[Persona Image] 토큰 갱신 시도...');
+  const res = await fetch('https://fnf-device-auth.higgsfield.ai/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(`토큰 갱신 실패 (${res.status}): ${err.substring(0, 100)}`);
+  }
+
+  const data = await res.json();
+  const newToken = data.access_token;
+  if (!newToken) throw new Error('갱신 응답에 access_token 없음');
+
+  // 50분 캐시 (토큰 TTL 3600초보다 여유 있게)
+  await redis.set(REDIS_TOKEN_KEY, newToken, { ex: 3000 }).catch(() => {});
+  console.log('[Persona Image] 토큰 갱신 완료');
+  return newToken;
+}
+
+/** fnf API 호출 — 401 시 자동 갱신 후 재시도 */
+async function fnfFetch(url, options = {}, token = null) {
+  const tok = token || await getValidToken();
+  const headers = { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json', ...(options.headers || {}) };
+
+  const res = await fetch(url, { ...options, headers });
+
+  if (res.status === 401) {
+    console.log('[Persona Image] 401 수신 — 토큰 갱신 후 재시도');
+    const newTok = await refreshAccessToken();
+    const headers2 = { Authorization: `Bearer ${newTok}`, 'Content-Type': 'application/json', ...(options.headers || {}) };
+    return fetch(url, { ...options, headers: headers2 });
+  }
+
+  return res;
+}
 
 async function saveImageToGallery(imageUrl, prompt, via, label) {
   try {
@@ -42,53 +107,38 @@ async function saveImageToGallery(imageUrl, prompt, via, label) {
   }
 }
 
-// ── 모드 C: Higgsfield Flux Kontext — 캐릭터 일관성 이미지 생성 ──
-// primaryImageUrl: HTTP URL 또는 base64 data URL
-// prompt: English prompt for the variation
-async function generateWithFluxKontext(primaryImageUrl, prompt, label) {
-  const token = (process.env.HIGGSFIELD_CLI_TOKEN || '').trim();
-  if (!token) throw new Error('HIGGSFIELD_CLI_TOKEN 없음');
-
-  const headers = {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-
-  // 1. 업로드 슬롯 생성 (presigned S3 URL 획득)
-  const uploadRes = await fetch(`${FNF_BASE}/agents/uploads?type=image`, {
+// ── 이미지 → S3 업로드 헬퍼 ──
+async function uploadImageToS3(primaryImageUrl) {
+  // 업로드 슬롯 생성
+  const uploadSlotRes = await fnfFetch(`${FNF_BASE}/agents/uploads?type=image`, {
     method: 'POST',
-    headers,
     body: JSON.stringify({ url: 'placeholder' }),
   });
 
-  if (!uploadRes.ok) {
-    const err = await uploadRes.text();
-    throw new Error(`Higgsfield upload slot 생성 실패 (${uploadRes.status}): ${err.substring(0, 200)}`);
+  if (!uploadSlotRes.ok) {
+    const err = await uploadSlotRes.text();
+    throw new Error(`업로드 슬롯 생성 실패 (${uploadSlotRes.status}): ${err.substring(0, 150)}`);
   }
 
-  const { id: mediaId, upload_url: uploadUrl } = await uploadRes.json();
+  const { id: mediaId, upload_url: uploadUrl } = await uploadSlotRes.json();
   if (!mediaId || !uploadUrl) throw new Error('업로드 슬롯 응답 이상');
 
-  // 2. 이미지 바이너리 가져오기 (base64 or HTTP)
-  let imageBuffer;
-  let mimeType = 'image/png';
+  // 이미지 바이너리
+  let imageBuffer, mimeType = 'image/jpeg';
 
   if (primaryImageUrl.startsWith('data:')) {
-    // base64 data URL → buffer
     const match = primaryImageUrl.match(/^data:([^;]+);base64,(.+)$/);
     if (!match) throw new Error('base64 형식 오류');
     mimeType = match[1];
     imageBuffer = Buffer.from(match[2], 'base64');
   } else {
-    // HTTP URL → fetch binary
     const imgRes = await fetch(primaryImageUrl);
     if (!imgRes.ok) throw new Error(`이미지 다운로드 실패: ${imgRes.status}`);
     mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
-    const arrayBuf = await imgRes.arrayBuffer();
-    imageBuffer = Buffer.from(arrayBuf);
+    imageBuffer = Buffer.from(await imgRes.arrayBuffer());
   }
 
-  // 3. S3 presigned URL에 PUT
+  // S3 PUT
   const putRes = await fetch(uploadUrl, {
     method: 'PUT',
     headers: { 'Content-Type': mimeType },
@@ -96,61 +146,80 @@ async function generateWithFluxKontext(primaryImageUrl, prompt, label) {
   });
 
   if (!putRes.ok && putRes.status !== 200) {
-    const putErr = await putRes.text().catch(() => '');
-    throw new Error(`S3 PUT 실패 (${putRes.status}): ${putErr.substring(0, 100)}`);
+    const err = await putRes.text().catch(() => '');
+    throw new Error(`S3 PUT 실패 (${putRes.status}): ${err.substring(0, 100)}`);
   }
 
-  // 4. Flux Kontext 잡 생성
-  const jobRes = await fetch(`${FNF_BASE}/agents/jobs`, {
+  return { mediaId, mimeType };
+}
+
+// ── 모드 C: Higgsfield Nano Banana Pro — 얼굴 100% 일관성 멀티컷 생성 ──
+// primaryImageUrl: Higgsfield CloudFront URL 또는 base64 data URL
+// prompt: English prompt for the angle/scene variation
+async function generateWithNanaBanana(primaryImageUrl, prompt, label) {
+  // 1. 레퍼런스 입력 이미지 결정
+  //    • CloudFront URL → 잡 ID 추출 → flux_kontext_job 타입 (최고 품질)
+  //    • 그 외 → S3 업로드 → media_input 타입
+  let inputImage;
+
+  const cfJobId = extractHiggsJobId(primaryImageUrl);
+  if (cfJobId) {
+    console.log(`[Persona Image] CloudFront URL → 잡 ID 추출: ${cfJobId}`);
+    inputImage = { id: cfJobId, type: 'flux_kontext_job' };
+  } else {
+    console.log('[Persona Image] 외부 URL/base64 → S3 업로드');
+    const { mediaId } = await uploadImageToS3(primaryImageUrl);
+    inputImage = { id: mediaId, type: 'media_input' };
+  }
+
+  // 2. Nano Banana Pro 잡 생성 (자동 토큰 갱신 포함)
+  const jobRes = await fnfFetch(`${FNF_BASE}/agents/jobs`, {
     method: 'POST',
-    headers,
     body: JSON.stringify({
-      job_set_type: 'flux_kontext',
+      job_set_type: 'nano_banana_2',
       params: {
         prompt,
-        aspect_ratio: label?.includes('전신') ? '3:4' : '3:4',
-        input_images: [{ id: mediaId, type: 'media_input' }],
+        aspect_ratio: '3:4',
+        input_images: [inputImage],
         enhance_prompt: true,
-        multi_ref: false,
       },
     }),
   });
 
   if (!jobRes.ok) {
-    const jobErr = await jobRes.text();
-    throw new Error(`Flux Kontext 잡 생성 실패 (${jobRes.status}): ${jobErr.substring(0, 200)}`);
+    const err = await jobRes.text();
+    throw new Error(`Nano Banana 잡 생성 실패 (${jobRes.status}): ${err.substring(0, 200)}`);
   }
 
   const jobIds = await jobRes.json();
   const jobId = Array.isArray(jobIds) ? jobIds[0] : jobIds.id;
   if (!jobId) throw new Error('잡 ID 없음');
 
-  console.log(`[Persona Image] Flux Kontext 잡 생성: ${jobId}`);
+  console.log(`[Persona Image] Nano Banana 잡 생성: ${jobId}`);
 
-  // 5. 완료 폴링 (최대 55초, 3초 간격)
+  // 3. 완료 폴링 (최대 55초, 3초 간격)
   const deadline = Date.now() + 55_000;
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 3000));
 
-    const statusRes = await fetch(`${FNF_BASE}/agents/jobs/${jobId}`, { headers });
+    const statusRes = await fnfFetch(`${FNF_BASE}/agents/jobs/${jobId}`, { method: 'GET' });
     if (!statusRes.ok) continue;
 
     const job = await statusRes.json();
-    console.log(`[Persona Image] Flux Kontext 상태: ${job.status}`);
+    console.log(`[Persona Image] Nano Banana 상태: ${job.status}`);
 
     if (job.status === 'completed' && job.result_url) {
-      console.log(`[Persona Image] Flux Kontext 완료: ${job.result_url.substring(0, 60)}`);
-      // HTTP URL로 갤러리에 저장
-      const saved = await saveImageToGallery(job.result_url, prompt, 'flux_kontext', label);
-      return { success: true, imageUrl: job.result_url, prompt, via: 'flux_kontext', savedImage: saved };
+      console.log(`[Persona Image] Nano Banana 완료: ${job.result_url.substring(0, 80)}`);
+      const saved = await saveImageToGallery(job.result_url, prompt, 'nano_banana_2', label);
+      return { success: true, imageUrl: job.result_url, prompt, via: 'nano_banana_2', savedImage: saved };
     }
 
     if (job.status === 'failed') {
-      throw new Error('Flux Kontext 잡 실패');
+      throw new Error('Nano Banana 잡 실패');
     }
   }
 
-  throw new Error('Flux Kontext 타임아웃 (55초 초과)');
+  throw new Error('Nano Banana 타임아웃 (55초 초과)');
 }
 
 const IMAGEN_ENDPOINT =
@@ -279,20 +348,19 @@ export default async function handler(req, res) {
 
   const errors = [];
 
-  // ══ 모드 C: Flux Kontext (기존 대표 이미지 기반 캐릭터 일관성 컷 생성) ══
-  if (primaryImageUrl && process.env.HIGGSFIELD_CLI_TOKEN) {
+  // ══ 모드 C: Nano Banana Pro (기존 대표 이미지 기반 — 얼굴 100% 일관성 컷 생성) ══
+  if (primaryImageUrl && (process.env.HIGGSFIELD_CLI_TOKEN || process.env.HIGGSFIELD_REFRESH_TOKEN)) {
     try {
-      const fluxPrompt = anglePrompt
+      const nbPrompt = anglePrompt
         || extraPrompt
-        || 'Korean female beauty creator, same character, natural expression, photorealistic, high quality, keep the same facial features and hairstyle';
+        || 'Korean female beauty creator, same character, natural expression, photorealistic, high quality, keep the exact same facial features, hairstyle and skin tone';
 
-      console.log(`[Persona Image] Flux Kontext 모드: label=${label}, prompt=${fluxPrompt.substring(0, 80)}`);
-      const result = await generateWithFluxKontext(primaryImageUrl, fluxPrompt, label);
+      console.log(`[Persona Image] Nano Banana 모드: label=${label}, prompt=${nbPrompt.substring(0, 80)}`);
+      const result = await generateWithNanaBanana(primaryImageUrl, nbPrompt, label);
       return res.status(200).json(result);
     } catch (e) {
-      console.error('[Persona Image] Flux Kontext 실패, Gemini 폴백:', e.message);
-      // Flux Kontext 실패 시 Gemini 모드 B로 폴백
-      errors.push(`Flux Kontext: ${e.message}`);
+      console.error('[Persona Image] Nano Banana 실패, Gemini 폴백:', e.message);
+      errors.push(`NanaBanana: ${e.message}`);
     }
   }
 
