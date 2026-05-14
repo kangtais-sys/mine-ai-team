@@ -315,7 +315,10 @@ function PersonaSetup({ onGoCreate }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); }
+      catch { throw new Error(res.ok ? '응답 파싱 오류' : `서버 오류 ${res.status}: 이미지가 너무 크거나 요청 한도 초과`); }
       if (data.imageUrl) {
         const newImg = data.savedImage || { id: Date.now(), url: data.imageUrl, label: selectedAngle, isPrimary: images.length === 0, savedAt: new Date().toISOString() };
         setImages(prev => [newImg, ...prev].slice(0, 10));
@@ -328,7 +331,8 @@ function PersonaSetup({ onGoCreate }) {
     setGeneratingImage(false);
   };
 
-  // 파일 → Canvas 리사이즈(max 768px) → JPEG 0.85 압축 → base64
+  // 파일 → Canvas 리사이즈(max 512px) → JPEG 0.72 압축 → base64
+  // 512px JPEG 0.72 ≈ 30~80KB — Vercel 4.5MB 바디 제한 안에 충분히 들어옴
   const handleRefImageUpload = (e, label) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -338,7 +342,7 @@ function PersonaSetup({ onGoCreate }) {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      const MAX = 768;
+      const MAX = 512;
       let { width, height } = img;
       if (width > MAX || height > MAX) {
         if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
@@ -349,7 +353,7 @@ function PersonaSetup({ onGoCreate }) {
       canvas.height = height;
       canvas.getContext('2d').drawImage(img, 0, 0, width, height);
       URL.revokeObjectURL(url);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
       const data = dataUrl.split(',')[1];
       setRefImages(prev => [...prev, { mimeType: 'image/jpeg', data, preview: dataUrl, label }]);
     };

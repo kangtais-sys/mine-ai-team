@@ -154,7 +154,12 @@ export default async function handler(req, res) {
   try {
     // ══ 모드 B: 레퍼런스 이미지 기반 생성 ══
     if (referenceImages && referenceImages.length > 0) {
-      console.log('[Persona Image] reference mode:', referenceImages.length, 'images');
+      // 각 이미지 base64 크기 체크 — 1장당 1MB(base64 기준) 초과 시 경고
+      const totalBytes = referenceImages.reduce((sum, img) => sum + (img.data?.length || 0), 0);
+      console.log('[Persona Image] reference mode:', referenceImages.length, 'images, total base64 bytes:', totalBytes);
+      if (totalBytes > 4 * 1024 * 1024) {
+        return res.status(413).json({ error: '레퍼런스 이미지 용량 초과 — 이미지를 더 작게 줄여서 다시 시도하세요' });
+      }
       const result = await generateWithReferences(apiKey, referenceImages, instruction, label, errors);
       if (result) return res.status(200).json(result);
       // 레퍼런스 모드 전부 실패 → 에러 반환
