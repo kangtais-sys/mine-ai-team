@@ -16,10 +16,10 @@ const redis = new Redis({
 const HIGGSFIELD_BASE = 'https://platform.higgsfield.ai';
 
 function higgsfieldAuth() {
-  const key = (process.env.HIGGSFIELD_API_KEY || '').replace(/^["']|["']$/g, '');
-  const secret = (process.env.HIGGSFIELD_API_SECRET || '').replace(/^["']|["']$/g, '');
+  const key = (process.env.HIGGSFIELD_API_KEY || '').replace(/^["']|["']$/g, '').trim();
   if (!key) throw new Error('HIGGSFIELD_API_KEY 없음');
-  return secret ? `Key ${key}:${secret}` : `Key ${key}`;
+  // Higgsfield Cloud API 인증: hf-api-key 헤더에 UUID 키 (Authorization: Key ... 아님)
+  return { 'hf-api-key': key };
 }
 
 // 영상 생성 요청 → request_id 반환 (비동기)
@@ -50,7 +50,7 @@ async function requestHiggsfieldVideo(visualPrompt, personaImageUrl) {
   console.log('[Creator Media] Higgsfield Kling v2.1 Pro 요청 시작');
   const klingRes = await fetch(`${HIGGSFIELD_BASE}/v1/image2video/kling`, {
     method: 'POST',
-    headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+    headers: { ...auth, 'Content-Type': 'application/json' },
     body: JSON.stringify(klingBody),
   });
 
@@ -76,7 +76,7 @@ async function requestHiggsfieldVideo(visualPrompt, personaImageUrl) {
 
   const dopRes = await fetch(`${HIGGSFIELD_BASE}/v1/image2video/dop`, {
     method: 'POST',
-    headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+    headers: { ...auth, 'Content-Type': 'application/json' },
     body: JSON.stringify(dopBody),
   });
 
@@ -97,7 +97,7 @@ export async function checkHiggsfieldStatus(requestId) {
   const auth = higgsfieldAuth();
 
   const res = await fetch(`${HIGGSFIELD_BASE}/requests/${requestId}/status`, {
-    headers: { 'Authorization': auth },
+    headers: { ...auth },
   });
 
   if (!res.ok) {

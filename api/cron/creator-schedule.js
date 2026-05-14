@@ -11,10 +11,10 @@ export const config = { maxDuration: 60 };
 const HIGGSFIELD_BASE = 'https://platform.higgsfield.ai';
 
 function higgsfieldAuth() {
-  const key = (process.env.HIGGSFIELD_API_KEY || '').replace(/^["']|["']$/g, '');
-  const secret = (process.env.HIGGSFIELD_API_SECRET || '').replace(/^["']|["']$/g, '');
+  const key = (process.env.HIGGSFIELD_API_KEY || '').replace(/^["']|["']$/g, '').trim();
   if (!key) return null;
-  return secret ? `Key ${key}:${secret}` : `Key ${key}`;
+  // Higgsfield Cloud API 인증: hf-api-key 헤더 (UUID 형식)
+  return { 'hf-api-key': key };
 }
 
 // Higgsfield 상태 폴링 (request_id 기반)
@@ -23,7 +23,7 @@ async function checkHiggsfieldJob(requestId) {
   if (!auth) return null;
 
   const res = await fetch(`${HIGGSFIELD_BASE}/requests/${requestId}/status`, {
-    headers: { Authorization: auth },
+    headers: { ...auth },
   });
   if (!res.ok) return null;
 
