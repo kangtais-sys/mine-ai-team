@@ -972,6 +972,47 @@ function DraftCard({ draft, onUpdate, onPublish, onDelete }) {
               </div>
             </div>
           )}
+
+          {/* 자막 목록 (영상 포맷) */}
+          {draft.subtitles?.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#AEAEB2', display: 'block', marginBottom: 6 }}>
+                자막 <span style={{ fontWeight: 400, color: '#C8C8D0' }}>({draft.subtitles.length}개)</span>
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {draft.subtitles.map((sub, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: '#F2F2F7', borderRadius: 6, padding: '6px 10px' }}>
+                    <span style={{ fontSize: 10, color: '#AEAEB2', fontWeight: 700, flexShrink: 0, marginTop: 1, minWidth: 16, textAlign: 'right' }}>{i + 1}</span>
+                    <span style={{ fontSize: 12.5, color: '#1D1D1F', lineHeight: 1.5 }}>{sub}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 소스 이미지 (분석에 사용된 참고 자료) */}
+          {draft.sourceImages?.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#AEAEB2', display: 'block', marginBottom: 6 }}>
+                소스 이미지 <span style={{ fontWeight: 400, color: '#C8C8D0' }}>({draft.sourceImages.length}장 · AI 분석 완료)</span>
+              </label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {draft.sourceImages.map((img, i) => (
+                  <div key={i} style={{ position: 'relative' }}>
+                    <img
+                      src={img.data ? `data:${img.mimeType || 'image/jpeg'};base64,${img.data}` : ''}
+                      alt={img.label}
+                      style={{ width: 56, height: 56, borderRadius: 6, objectFit: 'cover', border: '1px solid #E5E5EA', display: 'block' }}
+                      onError={e => { e.target.style.display = 'none'; }}
+                    />
+                    <div style={{ fontSize: 8, color: '#AEAEB2', textAlign: 'center', marginTop: 2, maxWidth: 56, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {img.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {draft.slides?.length > 0 && !draft.mediaUrls?.length && (() => {
             const tpl = CARD_TEMPLATES.find(t => t.key === draft.cardnewsTemplate) || CARD_TEMPLATES[0];
             return (

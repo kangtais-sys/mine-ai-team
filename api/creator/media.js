@@ -8,9 +8,36 @@ const redis = new Redis({
 const HIGGSFIELD_BASE = 'https://api.higgsfield.ai';
 
 // Higgsfield 영상 생성 요청
-async function requestHiggsfieldVideo(visualPrompt, format) {
+// personaImageDataUrl: "data:image/jpeg;base64,..." 형태 (있으면 image-to-video, 없으면 text-to-video)
+async function requestHiggsfieldVideo(visualPrompt, format, personaImageDataUrl) {
   const apiKey = process.env.HIGGSFIELD_API_KEY;
   if (!apiKey) throw new Error('HIGGSFIELD_API_KEY 없음');
+
+  // base64 data URL에서 실제 base64 데이터 추출
+  const base64Data = personaImageDataUrl?.startsWith('data:')
+    ? personaImageDataUrl.split(',')[1]
+    : null;
+
+  const body = base64Data
+    ? {
+        task: 'image-to-video',
+        prompt: visualPrompt,
+        image: base64Data,           // base64 이미지 (페르소나 seed)
+        duration: 5,
+        aspect_ratio: '9:16',
+        fps: 30,
+        motion_intensity: 'medium',
+      }
+    : {
+        task: 'text-to-video',
+        prompt: visualPrompt,
+        duration: 5,
+        aspect_ratio: '9:16',
+        fps: 30,
+        motion_intensity: 'medium',
+      };
+
+  console.log('[Creator Media] Higgsfield mode:', base64Data ? 'image-to-video' : 'text-to-video');
 
   const res = await fetch(`${HIGGSFIELD_BASE}/v1/generations`, {
     method: 'POST',
@@ -18,18 +45,32 @@ async function requestHiggsfieldVideo(visualPrompt, format) {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      task: 'text-to-video',
-      prompt: visualPrompt,
-      duration: 5,                   // 5초 (Reels/Shorts 기본)
-      aspect_ratio: '9:16',          // 세로 영상
-      fps: 30,
-      motion_intensity: 'medium',
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const err = await res.text();
+    // image-to-video 실패 시 text-to-video로 폴백
+    if (base64Data) {
+      console.warn('[Creator Media] image-to-video 실패, text-to-video로 폴백:', err.substring(0, 150));
+      const fallbackRes = await fetch(`${HIGGSFIELD_BASE}/v1/generations`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task: 'text-to-video',
+          prompt: visualPrompt,
+          duration: 5, aspect_ratio: '9:16', fps: 30, motion_intensity: 'medium',
+        }),
+      });
+      if (!fallbackRes.ok) {
+        const fbErr = await fallbackRes.text();
+        throw new Error(`Higgsfield text-to-video 폴백도 실패 ${fallbackRes.status}: ${fbErr.substring(0, 200)}`);
+      }
+      const fbData = await fallbackRes.json();
+      const fbJobId = fbData.generation_id || fbData.id;
+      if (!fbJobId) throw new Error(`Higgsfield jobId 없음 (폴백): ${JSON.stringify(fbData)}`);
+      return fbJobId;
+    }
     throw new Error(`Higgsfield API ${res.status}: ${err.substring(0, 200)}`);
   }
 
@@ -154,7 +195,7 @@ export default async function handler(req, res) {
       // ── 영상: Higgsfield 비동기 요청 ──
       if (!draft.visualPrompt) return res.status(400).json({ error: 'visualPrompt 없음 (generate 먼저)' });
 
-      const jobId = await requestHiggsfieldVideo(draft.visualPrompt, draft.format);
+      const jobId = await requestHiggsfieldVideo(draft.visualPrompt, draft.format, draft.personaImageUrl);
 
       const updated = {
         ...draft,

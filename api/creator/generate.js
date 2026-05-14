@@ -2,6 +2,33 @@ import Anthropic from '@anthropic-ai/sdk';
 import { Redis } from '@upstash/redis';
 import { randomUUID } from 'crypto';
 
+// Gemini Google Search grounding — 트렌드 컨텍스트 수집
+async function fetchTrendContext(topic) {
+  const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
+  if (!apiKey || !topic) return '';
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: `뷰티/스킨케어 관점에서 "${topic}" 관련 최신 트렌드, 주목받는 성분, 소비자 관심사를 한국어로 3-5줄 간략히 요약해줘. 실제 데이터나 수치가 있으면 포함. 없으면 현재 시장 동향 기준으로.` }],
+          }],
+          tools: [{ google_search: {} }],
+          generationConfig: { maxOutputTokens: 300 },
+        }),
+      }
+    );
+    if (!res.ok) return '';
+    const data = await res.json();
+    return data.candidates?.[0]?.content?.parts?.find(p => p.text)?.text?.trim() || '';
+  } catch {
+    return '';
+  }
+}
+
 const anthropic = new Anthropic();
 const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
@@ -122,10 +149,11 @@ ${pillarInfo.label}: ${pillarInfo.desc}
 - 한국어로 작성 (영어는 visualPrompt만)
 - visualPrompt에는 반드시 페르소나 외모 & 비주얼 스타일을 반영할 것`;
 
-  const sourceImagesNote = hasSourceImages
-    ? `\n첨부 소스 이미지 ${sourceImages.length}장: ${sourceImages.map(s => s.label).join(', ')}\n→ 이 이미지들을 스크립트와 영상 구성에 적극 활용할 것. 제품 설명, 성분 비교, 랭킹 등 해당 이미지가 보이는 시점을 스크립트에 명시할 것.`
-    : '';
-  const topicLine = topic ? `콘텐츠 주제/아이디어: ${topic}${sourceImagesNote}` : `콘텐츠 기둥: ${pillarInfo.label} — ${pillarInfo.desc}`;
+  // 트렌드 컨텍스트 (Google Search grounding via Gemini)
+  const trendContext = topic ? await fetchTrendContext(topic) : '';
+  const trendLine = trendContext ? `\n\n【최신 트렌드 & 시장 컨텍스트 (실시간 검색)】\n${trendContext}` : '';
+
+  const topicLine = topic ? `콘텐츠 주제/아이디어: ${topic}${trendLine}` : `콘텐츠 기둥: ${pillarInfo.label} — ${pillarInfo.desc}`;
   const baseHashtags = `${hashtags.base.join(' ')} ${(hashtags[pillar] || hashtags.base).join(' ')}`;
 
   const userPrompt = isVideo
@@ -164,11 +192,26 @@ ${pillarInfo.label}: ${pillarInfo.desc}
 }`;
 
   try {
+    // 소스 이미지가 있으면 Claude Vision으로 직접 분석 (텍스트 힌트가 아닌 실제 이미지)
+    const userContent = hasSourceImages
+      ? [
+          { type: 'text', text: userPrompt },
+          ...sourceImages.map(s => ({
+            type: 'image',
+            source: { type: 'base64', media_type: s.mimeType || 'image/jpeg', data: s.data },
+          })),
+          {
+            type: 'text',
+            text: `위 ${sourceImages.length}장의 소스 이미지를 직접 보고 내용을 분석하세요 (제품명, 성분, 수치, 순위, 텍스트 등). 스크립트의 적절한 시점에 "이 이미지에서 보이듯" 형태로 구체적으로 언급하고, visualPrompt에도 해당 이미지가 등장하는 씬을 반영하세요.`,
+          },
+        ]
+      : userPrompt;
+
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1200,
+      max_tokens: 1800,
       system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
+      messages: [{ role: 'user', content: userContent }],
     });
 
     const raw = response.content[0]?.text || '';
