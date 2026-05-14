@@ -332,7 +332,7 @@ function PersonaSetup({ onGoCreate }) {
   const handleRefImageUpload = (e, label) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (refImages.length >= 3) { setImageError('레퍼런스 이미지는 최대 3장'); return; }
+    if (refImages.length >= 5) { setImageError('레퍼런스 이미지는 최대 5장'); return; }
     const reader = new FileReader();
     reader.onload = (ev) => {
       const result = ev.target.result; // data:image/...;base64,...
@@ -664,10 +664,11 @@ function PersonaSetup({ onGoCreate }) {
             </div>
 
             {/* 업로드 버튼 행 */}
-            {refImages.length < 3 && (
+            {refImages.length < 5 && (
               <div style={{ display: 'flex', gap: 4, marginBottom: 7, flexWrap: 'wrap' }}>
                 {[
                   { label: '모델', emoji: '👤' },
+                  { label: '헤어', emoji: '💇' },
                   { label: '피부', emoji: '✨' },
                   { label: '의상', emoji: '👗' },
                   { label: '구도', emoji: '📐' },
