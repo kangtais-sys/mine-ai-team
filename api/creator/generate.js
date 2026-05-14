@@ -29,8 +29,8 @@ function buildCatchphrasesHint(persona) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { pillar, format, platforms = ['instagram'], notes = '', cardnewsTemplate = 'clean' } = req.body || {};
-  if (!pillar || !format) return res.status(400).json({ error: 'pillar, format 필수' });
+  const { topic, pillar: pillarOverride, format, platforms = ['instagram'], notes = '', cardnewsTemplate = 'clean', personaImageUrl } = req.body || {};
+  if ((!topic && !pillarOverride) || !format) return res.status(400).json({ error: 'topic 또는 pillar, format 필수' });
 
   // 상세 페르소나 로드 (Redis → persona API 저장값 우선)
   let persona = {};
@@ -74,9 +74,14 @@ export default async function handler(req, res) {
     usp: '500달톤 이하 단백질이 각질층 깊숙이 침투',
   };
 
+  // topic이 있으면 pillar를 자동 감지 (없으면 override 사용)
+  const pillar = pillarOverride || 'ingredient'; // 기본값, 아래 Claude가 덮어씀
   const pillarInfo = pillars[pillar] || { label: pillar, desc: pillar };
   const isVideo = format === 'reel' || format === 'shorts';
   const isCardNews = format === 'cardnews';
+
+  // 페르소나 이미지 URL (영상 생성 시 사용)
+  const hasPersonaImage = !!personaImageUrl;
 
   const systemPrompt = `당신은 밀리밀리(MILLIMILLI) 브랜드의 가상 인플루언서 AI 크리에이터입니다.
 
@@ -116,34 +121,40 @@ ${pillarInfo.label}: ${pillarInfo.desc}
 - 한국어로 작성 (영어는 visualPrompt만)
 - visualPrompt에는 반드시 페르소나 외모 & 비주얼 스타일을 반영할 것`;
 
+  const topicLine = topic ? `콘텐츠 주제/아이디어: ${topic}` : `콘텐츠 기둥: ${pillarInfo.label} — ${pillarInfo.desc}`;
+  const baseHashtags = `${hashtags.base.join(' ')} ${(hashtags[pillar] || hashtags.base).join(' ')}`;
+
   const userPrompt = isVideo
-    ? `콘텐츠 기둥: ${pillarInfo.label}
+    ? `${topicLine}
 포맷: ${format === 'reel' ? '인스타 Reels (15-30초 세로 영상)' : '유튜브/틱톡 숏츠 (15-60초 세로 영상)'}
 플랫폼: ${platforms.join(', ')}
+페르소나 이미지: ${hasPersonaImage ? '있음 (영상에 페르소나 이미지 활용 가능)' : '없음 (텍스트 기반 비주얼 프롬프트만)'}
 추가 메모: ${notes || '없음'}
 
 아래 JSON 형식으로 반환 (코드블록 없이 순수 JSON만):
 {
+  "detectedPillar": "ingredient|treatment|behind|collab|trend 중 주제에 맞는 것",
   "hook": "영상 오프닝 후킹 문구 (1-2문장, 시청자가 스크롤 멈출 만한)",
-  "script": "전체 스크립트 (후킹→본론→CTA 구조, 15-30초 분량, 자연스러운 구어체)",
+  "script": "전체 스크립트 (후킹→본론→CTA 구조, 15-30초 분량, 자연스러운 구어체, 자막용으로 문장 단위로 개행)",
+  "subtitles": ["자막 1번", "자막 2번", "자막 3번", "..."],
   "caption": "인스타/틱톡 캡션 (이모지 포함, 200자 이내, 후킹 첫 줄 + 정보 + CTA)",
-  "hashtags": "${(hashtags.base.join(' '))} ${((hashtags[pillar] || hashtags.base)).join(' ')} (총 10-15개)",
-  "visualPrompt": "Higgsfield video generation prompt in English: cinematic vertical 9:16, Korean beauty creator, ${visualStyle || 'white lab coat, natural minimal makeup, laboratory background'}, [specific visual description matching the script], soft studio lighting, clean modern aesthetic"
+  "hashtags": "${baseHashtags} (주제 관련 해시태그 추가, 총 10-15개)",
+  "visualPrompt": "Higgsfield image-to-video prompt in English (start with: Korean beauty creator ${name}, then describe the scene/motion matching the script): cinematic vertical 9:16, ${visualStyle || 'natural minimal makeup, studio lighting'}, specific action/motion, soft lighting, clean aesthetic"
 }`
-    : `콘텐츠 기둥: ${pillarInfo.label}
+    : `${topicLine}
 포맷: 인스타 카드뉴스 (5-7장 슬라이드)
 플랫폼: ${platforms.join(', ')}
 추가 메모: ${notes || '없음'}
 
 아래 JSON 형식으로 반환 (코드블록 없이 순수 JSON만):
 {
+  "detectedPillar": "ingredient|treatment|behind|collab|trend 중 주제에 맞는 것",
   "hook": "카드뉴스 첫 장 후킹 문구",
   "caption": "인스타 캡션 (이모지 포함, 200자 이내)",
-  "hashtags": "${(hashtags.base.join(' '))} ${((hashtags[pillar] || hashtags.base)).join(' ')} (총 10-15개)",
+  "hashtags": "${baseHashtags} (주제 관련 해시태그 추가, 총 10-15개)",
   "slides": [
     {"num": 1, "title": "후킹 제목 (첫 장)", "body": "1-2줄 짧은 임팩트 문구", "visual": "슬라이드 비주얼 설명"},
     {"num": 2, "title": "소제목", "body": "본문 내용 (3-4줄)", "visual": "비주얼 설명"},
-    ...
     {"num": 7, "title": "마무리 / CTA", "body": "저장해두고 써먹어요! + 팔로우 유도", "visual": "비주얼 설명"}
   ]
 }`;
@@ -168,21 +179,25 @@ ${pillarInfo.label}: ${pillarInfo.desc}
     // 드래프트 생성
     const id = randomUUID();
     const now = new Date().toISOString();
+    const detectedPillar = parsed.detectedPillar || pillar;
     const draft = {
       id,
       brand: 'millimilli',
-      pillar,
-      pillarLabel: pillarInfo.label,
+      topic: topic || notes,
+      pillar: detectedPillar,
+      pillarLabel: (pillars[detectedPillar] || pillarInfo).label,
       format,
       platforms,
       notes,
       hook: parsed.hook || '',
       script: parsed.script || '',
+      subtitles: parsed.subtitles || [],
       caption: parsed.caption || '',
       hashtags: parsed.hashtags || '',
       visualPrompt: parsed.visualPrompt || '',
       slides: parsed.slides || [],
       cardnewsTemplate: format === 'cardnews' ? (cardnewsTemplate || 'clean') : null,
+      personaImageUrl: personaImageUrl || null,
       higgsfieldJobId: null,
       mediaUrl: null,
       mediaUrls: [],

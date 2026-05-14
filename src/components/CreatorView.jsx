@@ -301,12 +301,29 @@ function PersonaSetup({ onGoCreate }) {
     setImageError('');
     const angleOpt = IMAGE_ANGLE_OPTIONS.find(a => a.key === selectedAngle) || IMAGE_ANGLE_OPTIONS[0];
     try {
+      // 수동 레퍼런스가 없고, 이미 저장된 대표 이미지가 있으면 → 자동으로 모델 레퍼런스로 주입
+      // 이렇게 해야 같은 인물로 다른 각도 컷이 생성됨
+      const primaryImg = images.find(i => i.isPrimary) || images[0];
+      const autoModelRef = (!refImages.length && primaryImg?.url)
+        ? (() => {
+            const url = primaryImg.url;
+            const [meta, data] = url.split(',');
+            const mimeType = (meta.match(/:(.*?);/) || [])[1] || 'image/jpeg';
+            return [{ mimeType, data, label: '모델' }];
+          })()
+        : null;
+
+      const activeRefs = refImages.length > 0 ? refImages : (autoModelRef || []);
       const body = {
         persona,
         label: selectedAngle,
-        // 레퍼런스 이미지가 있으면 멀티모달, 없으면 기존 텍스트 방식
-        ...(refImages.length > 0
-          ? { referenceImages: refImages.map(r => ({ mimeType: r.mimeType, data: r.data, label: r.label })), instruction: `${instruction}. ${angleOpt.extraPrompt}` }
+        ...(activeRefs.length > 0
+          ? {
+              referenceImages: activeRefs.map(r => ({ mimeType: r.mimeType, data: r.data, label: r.label })),
+              instruction: activeRefs === autoModelRef
+                ? `이 인물(모델)과 동일한 사람으로, ${angleOpt.extraPrompt} 각도/구도로 생성해줘. 얼굴과 외모는 레퍼런스와 최대한 일치시켜.`
+                : `${instruction}. ${angleOpt.extraPrompt}`,
+            }
           : { extraPrompt: angleOpt.extraPrompt }
         ),
       };
@@ -1100,48 +1117,69 @@ function DraftCard({ draft, onUpdate, onPublish, onDelete }) {
 }
 
 // ─── Create Form ─────────────────────────────────────────────
+const STEP_LABELS = {
+  idle:       null,
+  trend:      '📊 트렌드 & 정보 수집 중...',
+  generating: '✍️  스크립트 & 구성 작성 중...',
+  media:      '🎬 영상/이미지 생성 중...',
+  done:       '✅ 완료',
+  error:      '❌ 오류',
+};
+
 function CreateForm({ onGenerated }) {
-  const [pillar, setPillar] = useState('');
-  const [format, setFormat] = useState('reel');
-  const [platforms, setPlatforms] = useState(['instagram', 'tiktok']);
-  const [notes, setNotes] = useState('');
+  const [topic, setTopic]           = useState('');
+  const [format, setFormat]         = useState('reel');
+  const [platforms, setPlatforms]   = useState(['instagram', 'tiktok']);
   const [cardnewsTemplate, setCardnewsTemplate] = useState('clean');
-  const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState('idle');
-  const [error, setError] = useState('');
-  const [draft, setDraft] = useState(null);
-  const [generateMedia, setGenerateMedia] = useState(true);
-  const [persona, setPersona] = useState(null);
+  const [loading, setLoading]       = useState(false);
+  const [step, setStep]             = useState('idle');
+  const [error, setError]           = useState('');
+  const [draft, setDraft]           = useState(null);
+  const [persona, setPersona]       = useState(null);
+  const [primaryImage, setPrimaryImage] = useState(null);
 
   useEffect(() => {
     fetch('/api/creator/persona').then(r => r.json()).then(d => { if (d.persona) setPersona(d.persona); }).catch(() => {});
+    fetch('/api/creator/persona-images').then(r => r.json()).then(d => {
+      const imgs = d.images || [];
+      const pri = imgs.find(i => i.isPrimary) || imgs[0];
+      if (pri) setPrimaryImage(pri);
+    }).catch(() => {});
   }, []);
 
   const togglePlatform = (key) => setPlatforms(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]);
 
   const handleGenerate = async () => {
-    if (!pillar) return;
-    setLoading(true); setStep('generating'); setError('');
+    if (!topic.trim()) return;
+    setLoading(true); setStep('trend'); setError('');
     try {
+      // 1단계: 스크립트 생성 (트렌드 수집 + 기둥 자동 감지 포함)
+      setStep('generating');
       const genRes = await fetch('/api/creator/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pillar, format, platforms, notes, cardnewsTemplate }),
+        body: JSON.stringify({
+          topic,
+          format,
+          platforms,
+          cardnewsTemplate,
+          personaImageUrl: primaryImage?.url || null,
+        }),
       });
       const genData = await genRes.json();
       if (!genData.success) throw new Error(genData.error || '생성 실패');
       setDraft(genData.draft);
 
-      if (generateMedia) {
-        setStep('media');
-        const mediaRes = await fetch('/api/creator/media', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: genData.draft.id }),
-        });
-        const mediaData = await mediaRes.json();
-        if (mediaData.success) setDraft(mediaData.draft);
-      }
+      // 2단계: 미디어 생성
+      setStep('media');
+      const mediaRes = await fetch('/api/creator/media', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: genData.draft.id }),
+      });
+      const mediaData = await mediaRes.json();
+      if (mediaData.success) setDraft(mediaData.draft);
+
       setStep('done');
       onGenerated();
     } catch (e) {
@@ -1153,7 +1191,7 @@ function CreateForm({ onGenerated }) {
 
   if (step === 'done' && draft) {
     return (
-      <div style={{ maxWidth: 600 }}>
+      <div style={{ maxWidth: 620 }}>
         <div style={{ ...CARD, borderColor: '#34C759', background: '#F0FFF4', marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <CheckCircle2 size={18} color="#34C759" />
@@ -1163,7 +1201,7 @@ function CreateForm({ onGenerated }) {
             {draft.status === 'generating' ? '영상 생성 중 (1-3분 소요) — "검토 대기" 탭에서 확인하세요.' : '"검토 대기" 탭에서 확인·편집·발행할 수 있어요.'}
           </p>
         </div>
-        <button onClick={() => { setStep('idle'); setError(''); setDraft(null); setNotes(''); }}
+        <button onClick={() => { setStep('idle'); setError(''); setDraft(null); setTopic(''); }}
           style={{ padding: '10px 20px', borderRadius: 8, border: '1px solid #E5E5EA', background: '#FFF', fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
           <Plus size={14} /> 새 콘텐츠 만들기
         </button>
@@ -1173,37 +1211,47 @@ function CreateForm({ onGenerated }) {
 
   return (
     <div style={{ maxWidth: 620 }}>
-      {/* 페르소나 미니 카드 */}
-      {persona && (
-        <div style={{ ...CARD, marginBottom: 18, background: 'linear-gradient(135deg, #F8F8FF 0%, #F0F0FF 100%)', padding: '12px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#5E6AD2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>🧬</div>
-            <div>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#1D1D1F' }}>{persona.name} · @{persona.handle}</div>
-              <div style={{ fontSize: 11.5, color: '#6E6E73', marginTop: 2 }}>{persona.occupation} · {persona.age}</div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* 1. 콘텐츠 기둥 */}
-      <div style={{ marginBottom: 20 }}>
-        <label style={{ fontSize: 12, fontWeight: 600, color: '#6E6E73', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>콘텐츠 기둥</label>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {PILLARS.map(p => (
-            <button key={p.key} onClick={() => setPillar(p.key)} style={{
-              padding: '8px 14px', borderRadius: 20, border: `1.5px solid ${pillar === p.key ? '#5E6AD2' : '#E5E5EA'}`,
-              background: pillar === p.key ? '#F0F0FF' : '#FFF',
-              fontSize: 13, fontWeight: pillar === p.key ? 600 : 400,
-              color: pillar === p.key ? '#5E6AD2' : '#6E6E73',
-              cursor: 'pointer', transition: 'all 0.15s',
-            }}>{p.label}</button>
-          ))}
+      {/* ── 페르소나 헤더 ── */}
+      <div style={{ ...CARD, marginBottom: 20, padding: '14px 16px', background: 'linear-gradient(135deg, #F8F8FF 0%, #F0F0FF 100%)', display: 'flex', alignItems: 'center', gap: 14 }}>
+        {primaryImage ? (
+          <img src={primaryImage.url} alt="대표" style={{ width: 52, height: 64, borderRadius: 10, objectFit: 'cover', border: '2px solid #D4D7FF', flexShrink: 0 }} />
+        ) : (
+          <div style={{ width: 52, height: 64, borderRadius: 10, background: '#E8E8FF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 }}>🧬</div>
+        )}
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#1D1D1F' }}>{persona?.name || '밀리 (Milli)'}</div>
+          <div style={{ fontSize: 12, color: '#6E6E73', marginTop: 2 }}>@{persona?.handle || 'millimilli.kr'} · {persona?.occupation || '화장품 연구원'}</div>
+          {primaryImage
+            ? <div style={{ fontSize: 11, color: '#5E6AD2', marginTop: 5, fontWeight: 600 }}>✓ 페르소나 이미지 연동됨 — 콘텐츠에 자동 적용</div>
+            : <div style={{ fontSize: 11, color: '#FF9500', marginTop: 5 }}>⚠ 페르소나 탭에서 이미지를 먼저 생성하세요</div>}
         </div>
-        {pillar && <p style={{ fontSize: 11.5, color: '#AEAEB2', margin: '6px 0 0' }}>{PILLARS.find(p => p.key === pillar)?.desc}</p>}
       </div>
 
-      {/* 2. 포맷 */}
+      {/* ── 1. 주제 입력 ── */}
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ fontSize: 12, fontWeight: 600, color: '#6E6E73', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          어떤 콘텐츠를 만들까요?
+        </label>
+        <textarea
+          value={topic}
+          onChange={e => setTopic(e.target.value)}
+          placeholder={'예시:\n• 레티놀 vs 나이아신아마이드 — 뭘 먼저 써야 해?\n• 500달톤 신제품 출시 기념 성분 설명\n• 피부과 의사가 추천하는 보습 루틴 콜라보\n• 요즘 뜨는 병풀 성분 총정리'}
+          rows={5}
+          style={{
+            width: '100%', boxSizing: 'border-box', padding: '12px 14px',
+            borderRadius: 10, border: '1.5px solid #E5E5EA',
+            fontSize: 13.5, lineHeight: 1.6, resize: 'vertical',
+            fontFamily: 'inherit', outline: 'none', color: '#1D1D1F',
+            background: topic ? '#FAFAFA' : '#FDFDFD',
+          }}
+        />
+        <div style={{ fontSize: 11, color: '#AEAEB2', marginTop: 5 }}>
+          주제를 자유롭게 쓰면 트렌드 수집 → 기둥 자동 감지 → 스크립트 생성까지 자동으로 해줘요
+        </div>
+      </div>
+
+      {/* ── 2. 포맷 ── */}
       <div style={{ marginBottom: 20 }}>
         <label style={{ fontSize: 12, fontWeight: 600, color: '#6E6E73', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>포맷</label>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -1225,7 +1273,7 @@ function CreateForm({ onGenerated }) {
         </div>
       </div>
 
-      {/* 2.5. 카드뉴스 템플릿 */}
+      {/* ── 카드뉴스 템플릿 ── */}
       {format === 'cardnews' && (
         <div style={{ marginBottom: 20 }}>
           <label style={{ fontSize: 12, fontWeight: 600, color: '#6E6E73', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>카드뉴스 템플릿</label>
@@ -1250,7 +1298,7 @@ function CreateForm({ onGenerated }) {
         </div>
       )}
 
-      {/* 3. 플랫폼 */}
+      {/* ── 3. 플랫폼 ── */}
       <div style={{ marginBottom: 20 }}>
         <label style={{ fontSize: 12, fontWeight: 600, color: '#6E6E73', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>발행 플랫폼</label>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -1267,22 +1315,37 @@ function CreateForm({ onGenerated }) {
         </div>
       </div>
 
-      {/* 4. 추가 메모 */}
-      <div style={{ marginBottom: 20 }}>
-        <label style={{ fontSize: 12, fontWeight: 600, color: '#6E6E73', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>추가 메모 (선택)</label>
-        <textarea value={notes} onChange={e => setNotes(e.target.value)}
-          placeholder="예: 레티놀 vs 나이아신아마이드 비교 / 신제품 출시 기념 / 의사 콜라보 영상"
-          rows={3}
-          style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 8, border: '1px solid #E5E5EA', fontSize: 13, lineHeight: 1.5, resize: 'vertical', fontFamily: 'inherit', outline: 'none' }} />
+      {/* ── 자동화 항목 안내 ── */}
+      <div style={{ ...CARD, marginBottom: 20, padding: '12px 16px', background: '#F8F8FA' }}>
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: '#6E6E73', marginBottom: 8 }}>생성 시 자동으로 처리되는 것들</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {[
+            '📊 실시간 트렌드 반영',
+            `🧬 ${persona?.name || '밀리'} 페르소나 적용`,
+            primaryImage ? '🖼 페르소나 이미지 삽입' : '✍️ 스크립트 생성',
+            format === 'cardnews' ? '📱 카드뉴스 슬라이드 구성' : '🎬 영상 생성 (Higgsfield)',
+            '🏷 해시태그 자동 생성',
+            '📅 발행 스케줄링',
+          ].map((item, i) => (
+            <span key={i} style={{ fontSize: 11.5, padding: '3px 9px', borderRadius: 12, background: '#EEEEFF', color: '#5E6AD2', fontWeight: 500 }}>{item}</span>
+          ))}
+        </div>
       </div>
 
-      {/* 미디어 생성 옵션 */}
-      <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <input type="checkbox" id="gen-media" checked={generateMedia} onChange={e => setGenerateMedia(e.target.checked)} style={{ cursor: 'pointer' }} />
-        <label htmlFor="gen-media" style={{ fontSize: 13, color: '#6E6E73', cursor: 'pointer' }}>
-          {format === 'cardnews' ? `카드뉴스 이미지 자동 생성 (${CARD_TEMPLATES.find(t => t.key === cardnewsTemplate)?.label || '클린'} 템플릿)` : '영상 자동 생성 (Higgsfield)'}
-        </label>
-      </div>
+      {/* ── 진행 상태 ── */}
+      {loading && (
+        <div style={{ marginBottom: 16, padding: '12px 16px', background: '#F0F0FF', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Loader2 size={16} color="#5E6AD2" style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#5E6AD2' }}>{STEP_LABELS[step]}</div>
+            <div style={{ fontSize: 11, color: '#AEAEB2', marginTop: 2 }}>
+              {step === 'trend' && '관련 트렌드와 정보를 수집하고 있어요'}
+              {step === 'generating' && 'Claude가 페르소나 스타일로 스크립트를 작성하고 있어요'}
+              {step === 'media' && format === 'cardnews' ? '카드뉴스 슬라이드를 만들고 있어요' : '페르소나 이미지 기반으로 영상을 생성하고 있어요'}
+            </div>
+          </div>
+        </div>
+      )}
 
       {step === 'error' && (
         <div style={{ marginBottom: 16, padding: '10px 14px', background: '#FFF5F5', borderRadius: 8, fontSize: 13, color: '#FF3B30', display: 'flex', gap: 8 }}>
@@ -1290,19 +1353,20 @@ function CreateForm({ onGenerated }) {
         </div>
       )}
 
-      <button onClick={handleGenerate} disabled={loading || !pillar || platforms.length === 0} style={{
-        width: '100%', padding: '14px', borderRadius: 10, border: 'none',
-        background: loading || !pillar ? '#E5E5EA' : '#1D1D1F',
-        color: loading || !pillar ? '#AEAEB2' : '#FFF',
-        fontSize: 14.5, fontWeight: 700, cursor: loading || !pillar ? 'default' : 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all 0.15s',
-      }}>
-        {loading ? (
-          <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-            {step === 'generating' ? 'Claude가 콘텐츠 생성 중...' : step === 'media' ? '미디어 생성 중...' : '처리 중...'}</>
-        ) : (
-          <><Sparkles size={16} /> AI 콘텐츠 생성</>
-        )}
+      <button
+        onClick={handleGenerate}
+        disabled={loading || !topic.trim() || platforms.length === 0}
+        style={{
+          width: '100%', padding: '15px', borderRadius: 10, border: 'none',
+          background: loading || !topic.trim() ? '#E5E5EA' : '#1D1D1F',
+          color: loading || !topic.trim() ? '#AEAEB2' : '#FFF',
+          fontSize: 15, fontWeight: 700, cursor: loading || !topic.trim() ? 'default' : 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all 0.15s',
+        }}
+      >
+        {loading
+          ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> {STEP_LABELS[step] || '처리 중...'}</>
+          : <><Sparkles size={16} /> 콘텐츠 자동 생성</>}
       </button>
     </div>
   );
