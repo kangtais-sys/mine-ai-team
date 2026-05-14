@@ -1,7 +1,6 @@
 // Gemini 이미지 생성으로 페르소나 캐릭터 이미지 생성
-// 1차: Imagen 3 (고품질, 빌링 필요)
-// 2차 fallback: gemini-2.0-flash-preview-image-generation
-// 3차 fallback: gemini-3.1-flash-image-preview
+// 모드 A (텍스트): 1차 Imagen 3 → 2차 Gemini 멀티모달 모델 체인
+// 모드 B (레퍼런스): referenceImages(base64) + instruction → Gemini 멀티모달
 // 생성 성공 시 persona-images API로 자동 저장
 // env: GOOGLE_API_KEY 또는 GEMINI_API_KEY
 
@@ -82,6 +81,60 @@ async function safeJson(res) {
   }
 }
 
+// ── 레퍼런스 이미지 기반 Gemini 멀티모달 생성 ──
+async function generateWithReferences(apiKey, referenceImages, instruction, label, errors) {
+  // referenceImages: [{ mimeType, data }]  (data = base64 string)
+  const textPart = {
+    text: instruction ||
+      'Use these reference images to generate a high-quality photorealistic portrait of a Korean female beauty creator. ' +
+      'Match the model appearance, skin tone, outfit style, and composition from the references. ' +
+      'K-beauty aesthetic, natural glowing skin, soft studio lighting, sharp focus.',
+  };
+
+  const imageParts = referenceImages.map(img => ({
+    inlineData: { mimeType: img.mimeType, data: img.data },
+  }));
+
+  const parts = [textPart, ...imageParts];
+
+  for (const model of GEMINI_IMAGE_MODELS) {
+    try {
+      console.log('[Persona Image] trying reference mode with model:', model.id);
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model.id}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig: { responseModalities: model.modalities },
+          }),
+        }
+      );
+
+      if (res.status === 429) {
+        errors.push(`[ref] ${model.id}: 요청 한도 초과`);
+        continue;
+      }
+
+      const data = await safeJson(res);
+      const inlineData = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData;
+
+      if (inlineData?.data) {
+        const imageUrl = `data:${inlineData.mimeType || 'image/png'};base64,${inlineData.data}`;
+        const saved = await saveImageToGallery(imageUrl, instruction || 'reference-based', model.id, label);
+        return { success: true, imageUrl, prompt: instruction, via: `ref:${model.id}`, savedImage: saved };
+      }
+
+      const textReply = data.candidates?.[0]?.content?.parts?.find(p => p.text)?.text;
+      errors.push(`[ref] ${model.id}: 이미지 없음${textReply ? ` (${textReply.substring(0, 80)})` : ''}`);
+    } catch (e) {
+      errors.push(`[ref] ${model.id} error: ${e.message}`);
+    }
+  }
+  return null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -94,12 +147,27 @@ export default async function handler(req, res) {
     });
   }
 
-  const { persona = {}, extraPrompt = '', label = '' } = req.body || {};
-  const prompt = buildImagePrompt(persona) + (extraPrompt ? `, ${extraPrompt}` : '');
+  const { persona = {}, extraPrompt = '', label = '', referenceImages, instruction } = req.body || {};
 
   const errors = [];
 
   try {
+    // ══ 모드 B: 레퍼런스 이미지 기반 생성 ══
+    if (referenceImages && referenceImages.length > 0) {
+      console.log('[Persona Image] reference mode:', referenceImages.length, 'images');
+      const result = await generateWithReferences(apiKey, referenceImages, instruction, label, errors);
+      if (result) return res.status(200).json(result);
+      // 레퍼런스 모드 전부 실패 → 에러 반환
+      console.error('[Persona Image] Reference mode all failed:', errors);
+      return res.status(500).json({
+        error: `레퍼런스 기반 생성 실패 — ${errors[errors.length - 1] || '알 수 없는 오류'}`,
+        attempts: errors,
+      });
+    }
+
+    // ══ 모드 A: 텍스트 기반 생성 ══
+    const prompt = buildImagePrompt(persona) + (extraPrompt ? `, ${extraPrompt}` : '');
+
     // ── 1차: Imagen 3 ──
     try {
       const imagenRes = await fetch(`${IMAGEN_ENDPOINT}?key=${apiKey}`, {

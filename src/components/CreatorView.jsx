@@ -257,6 +257,10 @@ function PersonaSetup({ onGoCreate }) {
   const [imageError, setImageError] = useState('');
   const [lightbox, setLightbox] = useState(null);   // { url, label }
 
+  // 레퍼런스 이미지 (파일 업로드 → base64)
+  const [refImages, setRefImages] = useState([]);   // [{ mimeType, data, preview, label }]
+  const [instruction, setInstruction] = useState('이 이미지를 참고해서 동일한 스타일로 생성해줘');
+
   // Right panel — content preview
   const [previewPillar, setPreviewPillar] = useState('ingredient');
   const [previewFormat, setPreviewFormat] = useState('reel');
@@ -297,14 +301,22 @@ function PersonaSetup({ onGoCreate }) {
     setImageError('');
     const angleOpt = IMAGE_ANGLE_OPTIONS.find(a => a.key === selectedAngle) || IMAGE_ANGLE_OPTIONS[0];
     try {
+      const body = {
+        persona,
+        label: selectedAngle,
+        // 레퍼런스 이미지가 있으면 멀티모달, 없으면 기존 텍스트 방식
+        ...(refImages.length > 0
+          ? { referenceImages: refImages.map(r => ({ mimeType: r.mimeType, data: r.data })), instruction: `${instruction}. ${angleOpt.extraPrompt}` }
+          : { extraPrompt: angleOpt.extraPrompt }
+        ),
+      };
       const res = await fetch('/api/creator/persona-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ persona, extraPrompt: angleOpt.extraPrompt, label: selectedAngle }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (data.imageUrl) {
-        // 갤러리에 추가 (savedImage가 있으면 그걸 쓰고, 없으면 임시 객체)
         const newImg = data.savedImage || { id: Date.now(), url: data.imageUrl, label: selectedAngle, isPrimary: images.length === 0, savedAt: new Date().toISOString() };
         setImages(prev => [newImg, ...prev].slice(0, 10));
       } else {
@@ -315,6 +327,24 @@ function PersonaSetup({ onGoCreate }) {
     }
     setGeneratingImage(false);
   };
+
+  // 파일 → base64 변환
+  const handleRefImageUpload = (e, label) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (refImages.length >= 3) { setImageError('레퍼런스 이미지는 최대 3장'); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target.result; // data:image/...;base64,...
+      const [meta, data] = result.split(',');
+      const mimeType = meta.match(/:(.*?);/)[1];
+      setRefImages(prev => [...prev, { mimeType, data, preview: result, label }]);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = ''; // reset input
+  };
+
+  const removeRefImage = (idx) => setRefImages(prev => prev.filter((_, i) => i !== idx));
 
   const handleSetPrimary = async (id) => {
     setImages(prev => prev.map(img => ({ ...img, isPrimary: img.id === id })));
@@ -622,6 +652,77 @@ function PersonaSetup({ onGoCreate }) {
             </div>
           )}
 
+          {/* ── 레퍼런스 이미지 업로드 ── */}
+          <div style={{ borderTop: '1px solid #F2F2F7', paddingTop: 10, marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: '#6E6E73' }}>
+                {refImages.length > 0 ? '🖼 레퍼런스 기반 생성' : '🖼 레퍼런스 이미지 (선택)'}
+              </div>
+              {refImages.length > 0 && (
+                <button onClick={() => setRefImages([])} style={{ fontSize: 9, color: '#FF3B30', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>전체 삭제</button>
+              )}
+            </div>
+
+            {/* 업로드 버튼 행 */}
+            {refImages.length < 3 && (
+              <div style={{ display: 'flex', gap: 4, marginBottom: 7, flexWrap: 'wrap' }}>
+                {[
+                  { label: '모델', emoji: '👤' },
+                  { label: '피부', emoji: '✨' },
+                  { label: '의상', emoji: '👗' },
+                  { label: '구도', emoji: '📐' },
+                ].map(cat => (
+                  <label key={cat.label} style={{
+                    display: 'flex', alignItems: 'center', gap: 3, padding: '4px 8px',
+                    borderRadius: 8, border: '1px dashed #C8C8D0', background: '#FAFAFA',
+                    fontSize: 10, color: '#6E6E73', cursor: 'pointer', userSelect: 'none',
+                  }}>
+                    {cat.emoji} {cat.label}
+                    <input type="file" accept="image/*" style={{ display: 'none' }}
+                      onChange={e => handleRefImageUpload(e, cat.label)} />
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {/* 업로드된 레퍼런스 썸네일 */}
+            {refImages.length > 0 && (
+              <div style={{ display: 'flex', gap: 5, marginBottom: 8, flexWrap: 'wrap' }}>
+                {refImages.map((img, idx) => (
+                  <div key={idx} style={{ position: 'relative', flexShrink: 0 }}>
+                    <img src={img.preview} alt={img.label}
+                      style={{ width: 52, height: 60, borderRadius: 7, objectFit: 'cover', border: '1.5px solid #5E6AD2' }} />
+                    <div style={{ fontSize: 7.5, color: '#5E6AD2', textAlign: 'center', marginTop: 2, fontWeight: 600 }}>{img.label}</div>
+                    <button onClick={() => removeRefImage(idx)}
+                      style={{ position: 'absolute', top: -4, right: -4, width: 14, height: 14, borderRadius: '50%', border: 'none', background: '#FF3B30', color: '#FFF', fontSize: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 지시사항 텍스트 (레퍼런스 있을 때만) */}
+            {refImages.length > 0 && (
+              <textarea
+                value={instruction}
+                onChange={e => setInstruction(e.target.value)}
+                placeholder="이 이미지를 참고해서 동일한 스타일로 생성해줘"
+                style={{
+                  width: '100%', padding: '7px 9px', borderRadius: 7, border: '1px solid #E5E5EA',
+                  fontSize: 10.5, color: '#1D1D1F', resize: 'vertical', minHeight: 52, lineHeight: 1.5,
+                  fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none', background: '#FAFAFA',
+                }}
+              />
+            )}
+
+            {refImages.length === 0 && (
+              <div style={{ fontSize: 9.5, color: '#AEAEB2', lineHeight: 1.5 }}>
+                모델·피부·의상·구도 예시 이미지를 올리면<br/>텍스트보다 훨씬 정확하게 생성돼요
+              </div>
+            )}
+          </div>
+
           {/* 각도 선택 — 그룹별 */}
           <div style={{ marginBottom: 8 }}>
             {['📐 앵글', '🖼 구도', '🎬 씬'].map(group => (
@@ -651,7 +752,7 @@ function PersonaSetup({ onGoCreate }) {
             disabled={generatingImage}
             style={{
               width: '100%', padding: '9px', borderRadius: 8, border: 'none',
-              background: generatingImage ? '#E5E5EA' : '#5E6AD2',
+              background: generatingImage ? '#E5E5EA' : refImages.length > 0 ? '#1D1D1F' : '#5E6AD2',
               color: generatingImage ? '#AEAEB2' : '#FFF',
               fontSize: 12, fontWeight: 600, cursor: generatingImage ? 'default' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -659,7 +760,9 @@ function PersonaSetup({ onGoCreate }) {
           >
             {generatingImage
               ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> 생성 중...</>
-              : <><Sparkles size={12} /> {selectedAngle} 컷 생성</>}
+              : refImages.length > 0
+                ? <><Camera size={12} /> 레퍼런스로 {selectedAngle} 생성</>
+                : <><Sparkles size={12} /> {selectedAngle} 컷 생성</>}
           </button>
           <div style={{ fontSize: 10, color: '#AEAEB2', marginTop: 5, textAlign: 'center' }}>
             {images.length > 0 ? `${images.length}장 저장됨 · 클릭하면 대표 변경` : 'Gemini Imagen 3 · 새로고침해도 유지'}
