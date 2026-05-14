@@ -15,50 +15,56 @@ const redis = new Redis({
 // ⚠️ 모든 영상 모델은 input_image(URL) 필수 — 텍스트 전용 없음
 const HIGGSFIELD_BASE = 'https://platform.higgsfield.ai';
 
-function higgsfieldAuth() {
+function higgsfieldHeaders() {
   const key = (process.env.HIGGSFIELD_API_KEY || '').replace(/^["']|["']$/g, '').trim();
   if (!key) throw new Error('HIGGSFIELD_API_KEY 없음');
-  // Higgsfield Cloud API 인증: hf-api-key 헤더에 UUID 키 (Authorization: Key ... 아님)
-  return { 'hf-api-key': key };
+  // Higgsfield Cloud API 인증: hf-api-key 헤더 (UUID 형식)
+  // Origin 헤더 필수 — 없으면 서버가 500 반환
+  return {
+    'hf-api-key': key,
+    'Content-Type': 'application/json',
+    'Origin': 'https://cloud.higgsfield.ai',
+    'Referer': 'https://cloud.higgsfield.ai/',
+  };
 }
 
 // 영상 생성 요청 → request_id 반환 (비동기)
 // ⚠️ personaImageUrl은 반드시 https:// HTTP URL이어야 함 (base64 불가)
 async function requestHiggsfieldVideo(visualPrompt, personaImageUrl) {
-  const auth = higgsfieldAuth();
-
   const isHttpUrl = personaImageUrl?.startsWith('http');
   if (!isHttpUrl) {
     throw new Error(
-      '페르소나 이미지 HTTP URL 필요 — Higgsfield 영상 생성은 이미지 URL이 필수입니다. ' +
-      '페르소나 이미지를 먼저 저장(외부 URL)하거나, 크리에이터 설정에서 이미지를 등록해주세요.'
+      '페르소나 이미지 HTTP URL 필요 — 크리에이터 설정에서 페르소나 이미지를 등록(외부 URL)해주세요.'
     );
   }
 
-  // 1차: Kling v2.1 Pro image-to-video
-  // body: { params: { prompt, input_image: { type, image_url }, model, mode, duration } }
+  const headers = higgsfieldHeaders();
+
+  // 1차: Kling v2.1 Std image-to-video (더 안정적)
+  // 응답: { id, type, jobs: [...] } → id가 request_id
   const klingBody = {
     params: {
       prompt: visualPrompt,
       input_image: { type: 'image_url', image_url: personaImageUrl },
       model: 'kling-v2-1',
-      mode: 'pro',
+      mode: 'std',
       duration: 5,
     },
   };
 
-  console.log('[Creator Media] Higgsfield Kling v2.1 Pro 요청 시작');
+  console.log('[Creator Media] Higgsfield Kling v2.1 요청 시작');
   const klingRes = await fetch(`${HIGGSFIELD_BASE}/v1/image2video/kling`, {
     method: 'POST',
-    headers: { ...auth, 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(klingBody),
   });
 
   if (klingRes.ok) {
     const klingData = await klingRes.json();
-    if (klingData.request_id) {
-      console.log(`[Creator Media] Kling 요청 성공: ${klingData.request_id}`);
-      return { requestId: klingData.request_id, model: 'kling-v2-1' };
+    const requestId = klingData.id || klingData.request_id;
+    if (requestId) {
+      console.log(`[Creator Media] Kling 요청 성공: ${requestId}`);
+      return { requestId, model: 'kling-v2-1' };
     }
   }
 
@@ -76,7 +82,7 @@ async function requestHiggsfieldVideo(visualPrompt, personaImageUrl) {
 
   const dopRes = await fetch(`${HIGGSFIELD_BASE}/v1/image2video/dop`, {
     method: 'POST',
-    headers: { ...auth, 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(dopBody),
   });
 
@@ -86,18 +92,19 @@ async function requestHiggsfieldVideo(visualPrompt, personaImageUrl) {
   }
 
   const dopData = await dopRes.json();
-  if (!dopData.request_id) throw new Error(`request_id 없음 (DoP): ${JSON.stringify(dopData).substring(0, 200)}`);
+  const dopRequestId = dopData.id || dopData.request_id;
+  if (!dopRequestId) throw new Error(`request_id 없음 (DoP): ${JSON.stringify(dopData).substring(0, 200)}`);
 
-  console.log(`[Creator Media] DoP Turbo 요청 성공: ${dopData.request_id}`);
-  return { requestId: dopData.request_id, model: 'dop-turbo' };
+  console.log(`[Creator Media] DoP Turbo 요청 성공: ${dopRequestId}`);
+  return { requestId: dopRequestId, model: 'dop-turbo' };
 }
 
 // 상태 조회 → { status, videoUrl, raw }
 export async function checkHiggsfieldStatus(requestId) {
-  const auth = higgsfieldAuth();
+  const headers = higgsfieldHeaders();
 
   const res = await fetch(`${HIGGSFIELD_BASE}/requests/${requestId}/status`, {
-    headers: { ...auth },
+    headers,
   });
 
   if (!res.ok) {
