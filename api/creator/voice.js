@@ -11,13 +11,18 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-// ElevenLabs 한국어 여성 보이스 맵 (한국어 네이티브 모델)
-// 출처: json2video.com/ai-voices/elevenlabs/languages/korean + ElevenLabs Voice Library
+// ElevenLabs 보이스 맵
+// 한국어 네이티브 보이스 (라이브러리 — Creator 플랜 이상 필요)
+// 기본 내장 보이스 (모든 플랜 — eleven_multilingual_v2로 한국어 가능)
 const VOICE_MAP = {
-  'female-warm':  { name: 'JiYoung',  voice_id: 'AW5wrnG1jVizOYY7R1Oo' },  // 서울 억양 프리미엄 여성
-  'female-clear': { name: 'Seulki',   voice_id: 'ksaI0TCD9BstzEzlxj4q' },  // 깔끔한 여성
-  'female-pro':   { name: 'Rosa Oh',  voice_id: 'sf8Bpb1IU97NI9BHSMRf' },  // 전문직 여성
-  'male':         { name: 'Chungman', voice_id: '8MwPLtBplylvbrksiBOC' },  // 남성
+  // ── 한국어 네이티브 (유료 플랜 전용) ──
+  'female-warm':  { name: 'JiYoung',  voice_id: 'AW5wrnG1jVizOYY7R1Oo', requiresPaid: true },
+  'female-clear': { name: 'Seulki',   voice_id: 'ksaI0TCD9BstzEzlxj4q', requiresPaid: true },
+  'female-pro':   { name: 'Rosa Oh',  voice_id: 'sf8Bpb1IU97NI9BHSMRf', requiresPaid: true },
+  'male':         { name: 'Chungman', voice_id: '8MwPLtBplylvbrksiBOC', requiresPaid: true },
+  // ── 기본 내장 (무료 플랜 — 한국어 가능) ──
+  'female-basic': { name: 'Rachel',   voice_id: '21m00Tcm4TlvDq8ikWAM', requiresPaid: false },
+  'female-soft':  { name: 'Bella',    voice_id: 'EXAVITQu4vr4xnSDxMaL', requiresPaid: false },
 };
 
 function getApiKey() {
@@ -51,7 +56,10 @@ export default async function handler(req, res) {
   const { script, voice = 'female-warm', draftId } = req.body || {};
   if (!script) return res.status(400).json({ error: 'script 필수' });
 
-  const voiceConfig = VOICE_MAP[voice] || VOICE_MAP['female-warm'];
+  // 요청 보이스 없거나 유료 전용이면 기본 보이스로 폴백
+  let voiceConfig = VOICE_MAP[voice] || VOICE_MAP['female-warm'];
+  // 유료 보이스인지 체크 — 실패 시 자동으로 Rachel로 폴백
+
   const apiKey = getApiKey();
   const text = preprocessScript(script);
 
@@ -85,9 +93,9 @@ export default async function handler(req, res) {
 
     if (!ttsRes.ok) {
       const errText = await ttsRes.text();
-      // 보이스 ID가 유효하지 않으면 fallback 보이스로 재시도
-      if (ttsRes.status === 400 || ttsRes.status === 422) {
-        console.warn(`[Voice] ${voiceConfig.name} 실패, Rachel로 fallback`);
+      // 402 (유료 플랜 필요) 또는 400/422 → Rachel 폴백
+      if (ttsRes.status === 402 || ttsRes.status === 400 || ttsRes.status === 422) {
+        console.warn(`[Voice] ${voiceConfig.name} 실패 (${ttsRes.status}), Rachel로 fallback`);
         return await tryFallbackVoice(text, apiKey, draftId, script, res);
       }
       return res.status(502).json({ error: `ElevenLabs 오류 ${ttsRes.status}: ${errText.substring(0, 300)}` });
@@ -127,9 +135,9 @@ export default async function handler(req, res) {
   }
 }
 
-// ElevenLabs 기본 안정 보이스로 fallback (Sola — 부드러운 한국어 여성)
+// ElevenLabs 기본 내장 보이스로 fallback (Rachel — 무료 플랜 포함, 한국어 가능)
 async function tryFallbackVoice(text, apiKey, draftId, script, res) {
-  const fallbackVoiceId = 'KlstlYt9VVf3zgie2Oht'; // Sola
+  const fallbackVoiceId = '21m00Tcm4TlvDq8ikWAM'; // Rachel (기본 내장 — 모든 플랜)
   const fallbackRes = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${fallbackVoiceId}`,
     {
