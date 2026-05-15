@@ -371,6 +371,10 @@
       "destination": "/api/creator/persona-images"
     },
     {
+      "source": "/api/creator/image-proxy",
+      "destination": "/api/creator/image-proxy"
+    },
+    {
       "source": "/api/creator/preview",
       "destination": "/api/creator/preview"
     },
