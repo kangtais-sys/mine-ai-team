@@ -17,10 +17,10 @@ const VOICE_MAP = {
   'male':         { name: 'ko-KR-Wavenet-C', ssmlGender: 'MALE' },
 };
 
-// Google TTS는 API Key 방식으로 호출 (JWT보다 단순하고 안정적)
+// Google TTS는 전용 API Key 방식으로 호출 (GOOGLE_TTS_API_KEY)
 function getTtsApiKey() {
-  const key = process.env.GOOGLE_API_KEY;
-  if (!key) throw new Error('GOOGLE_API_KEY 환경변수 미설정');
+  const key = process.env.GOOGLE_TTS_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!key) throw new Error('GOOGLE_TTS_API_KEY 환경변수 미설정');
   return key;
 }
 
