@@ -395,6 +395,22 @@
       "destination": "/api/creator/publish"
     },
     {
+      "source": "/api/creator/compose",
+      "destination": "/api/creator/compose"
+    },
+    {
+      "source": "/api/creator/voice",
+      "destination": "/api/creator/voice"
+    },
+    {
+      "source": "/api/creator/subtitle",
+      "destination": "/api/creator/subtitle"
+    },
+    {
+      "source": "/api/creator/accounts",
+      "destination": "/api/creator/accounts"
+    },
+    {
       "source": "/api/cron/creator-schedule",
       "destination": "/api/cron/creator-schedule"
     },
