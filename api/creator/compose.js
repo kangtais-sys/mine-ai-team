@@ -15,49 +15,29 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-// ── 서비스 계정 토큰 (crypto 모듈로 직접 JWT 서명) ──────────────
-
-async function getServiceAccountToken(scope) {
-  const email = process.env.GOOGLE_CLIENT_EMAIL;
-  const rawKey = process.env.GOOGLE_PRIVATE_KEY || '';
-  // Vercel에서 \n이 이스케이프된 경우와 실제 개행인 경우 모두 처리
-  const privateKey = rawKey.replace(/\\n/g, '\n');
-
-  if (!email || !privateKey) throw new Error('GOOGLE_CLIENT_EMAIL / GOOGLE_PRIVATE_KEY 미설정');
-
-  const now = Math.floor(Date.now() / 1000);
-  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
-  const payload = Buffer.from(JSON.stringify({
-    iss: email, scope, aud: 'https://oauth2.googleapis.com/token',
-    exp: now + 3600, iat: now,
-  })).toString('base64url');
-
-  const sign = crypto.createSign('RSA-SHA256');
-  sign.update(`${header}.${payload}`);
-  const sig = sign.sign(privateKey, 'base64url');
-  const assertion = `${header}.${payload}.${sig}`;
-
+// ── OAuth 액세스 토큰 (GOOGLE_REFRESH_TOKEN) ──────────────────────
+async function getOAuthToken() {
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion,
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+      grant_type: 'refresh_token',
     }),
   });
   const data = await res.json();
-  if (!data.access_token) throw new Error(`토큰 오류: ${JSON.stringify(data)}`);
+  if (!data.access_token) throw new Error(`OAuth 토큰 오류: ${JSON.stringify(data)}`);
   return data.access_token;
 }
 
-// ── Google Drive 업로드 (multipart REST) ──────────────────────────
+// ── Google Drive 업로드 (OAuth, 사용자 Drive) ──────────────────────
 async function uploadToGoogleDrive(filePath, filename) {
-  const token = await getServiceAccountToken('https://www.googleapis.com/auth/drive.file');
-  // 서비스 계정은 자체 스토리지 없음 → 사용자가 공유한 폴더에 업로드 필수
+  const token = await getOAuthToken();
   const folderId = process.env.GOOGLE_DRIVE_MEDIA_FOLDER_ID
     || process.env.GOOGLE_DRIVE_UPLOAD_FOLDER_ID
     || null;
-  if (!folderId) throw new Error('GOOGLE_DRIVE_MEDIA_FOLDER_ID 또는 GOOGLE_DRIVE_UPLOAD_FOLDER_ID 미설정 — 공유 폴더 ID 필요');
 
   // 파일 읽기
   const fileData = await fs.readFile(filePath);
