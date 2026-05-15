@@ -95,15 +95,12 @@ async function getOrCreateTalkingPhoto(personaImageUrl, cacheKey) {
   const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
   const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
 
-  // 3. HeyGen 토킹 포토 업로드 (multipart form-data — Node.js 18 native FormData)
-  const form = new FormData();
-  const blob = new Blob([imgBuffer], { type: contentType });
-  form.append('image', blob, 'persona.jpg');
-
+  // 3. HeyGen 토킹 포토 업로드 (image_url 방식 — multipart 대신 JSON으로 URL 전달)
+  // 프록시 URL은 이미 ensureHttpUrl()에서 만들어진 상태 (imgUrl)
   const uploadRes = await fetch('https://upload.heygen.com/v1/talking_photo', {
     method: 'POST',
-    headers: heygenHeaders(), // Content-Type은 FormData가 자동으로 boundary 포함해서 설정
-    body: form,
+    headers: heygenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ image_url: imgUrl }),
     signal: AbortSignal.timeout(30000),
   });
 
