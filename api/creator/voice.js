@@ -135,37 +135,58 @@ export default async function handler(req, res) {
   }
 }
 
-// ElevenLabs 기본 내장 보이스로 fallback (Rachel — 무료 플랜 포함, 한국어 가능)
-async function tryFallbackVoice(text, apiKey, draftId, script, res) {
-  const fallbackVoiceId = '21m00Tcm4TlvDq8ikWAM'; // Rachel (기본 내장 — 모든 플랜)
-  const fallbackRes = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${fallbackVoiceId}`,
+// Google TTS 폴백 — ElevenLabs 유료 플랜 없을 때 사용
+// ko-KR-Neural2-C (여성) — 자연스러운 한국어, 무료 100만 자/월
+async function tryFallbackVoice(text, _elevenApiKey, draftId, _script, res) {
+  const googleKey = process.env.GOOGLE_TTS_API_KEY;
+  if (!googleKey) {
+    return res.status(502).json({ error: 'ElevenLabs 유료 플랜 또는 GOOGLE_TTS_API_KEY 필요' });
+  }
+
+  console.log('[Voice] Google TTS 폴백 사용 (ko-KR-Neural2-C)');
+  const ttsRes = await fetch(
+    `https://texttospeech.googleapis.com/v1/text:synthesize?key=${googleKey}`,
     {
       method: 'POST',
-      headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        text,
-        model_id: 'eleven_multilingual_v2',
-        language_code: 'ko',
-        voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.3, use_speaker_boost: true, speed: 1.0 },
-        output_format: 'mp3_44100_128',
+        input: { text },
+        voice: {
+          languageCode: 'ko-KR',
+          name: 'ko-KR-Neural2-C',   // 자연스러운 여성 한국어
+          ssmlGender: 'FEMALE',
+        },
+        audioConfig: {
+          audioEncoding: 'MP3',
+          speakingRate: 1.0,
+          pitch: 0.0,
+          effectsProfileId: ['headphone-class-device'],
+        },
       }),
     }
   );
-  if (!fallbackRes.ok) {
-    const err = await fallbackRes.text();
-    return res.status(502).json({ error: `ElevenLabs fallback 실패: ${err.substring(0, 200)}` });
+
+  if (!ttsRes.ok) {
+    const err = await ttsRes.text();
+    return res.status(502).json({ error: `Google TTS 실패 ${ttsRes.status}: ${err.substring(0, 200)}` });
   }
-  const buf = Buffer.from(await fallbackRes.arrayBuffer());
-  const audioBase64 = buf.toString('base64');
+
+  const { audioContent } = await ttsRes.json();
+  if (!audioContent) return res.status(502).json({ error: 'Google TTS audioContent 없음' });
+
+  const buf = Buffer.from(audioContent, 'base64');
   const durationSec = Math.max(1, Math.round(buf.length / 16000));
 
   if (draftId) {
     const raw = await redis.get(`creator:draft:${draftId}`).catch(() => null);
     if (raw) {
       const draft = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      await redis.set(`creator:draft:${draftId}`, { ...draft, audioBase64, audioDuration: durationSec, updatedAt: new Date().toISOString() }, { ex: 86400 * 30 }).catch(() => {});
+      await redis.set(
+        `creator:draft:${draftId}`,
+        { ...draft, audioBase64: audioContent, audioDuration: durationSec, voiceName: 'Google Neural2-C', updatedAt: new Date().toISOString() },
+        { ex: 86400 * 30 }
+      ).catch(() => {});
     }
   }
-  return res.status(200).json({ success: true, audioBase64, mimeType: 'audio/mp3', durationSec, voiceName: 'Sola (fallback)' });
+  return res.status(200).json({ success: true, audioBase64: audioContent, mimeType: 'audio/mp3', durationSec, voiceName: 'Google Neural2-C (fallback)' });
 }
