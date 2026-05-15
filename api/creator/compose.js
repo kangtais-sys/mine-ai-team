@@ -35,9 +35,8 @@ async function getOAuthToken() {
 // ── Google Drive 업로드 (OAuth, 사용자 Drive) ──────────────────────
 async function uploadToGoogleDrive(filePath, filename) {
   const token = await getOAuthToken();
-  const folderId = process.env.GOOGLE_DRIVE_MEDIA_FOLDER_ID
-    || process.env.GOOGLE_DRIVE_UPLOAD_FOLDER_ID
-    || null;
+  // 폴더 없이 root에 업로드 (폴더 접근 이슈 우회)
+  const folderId = null;
 
   // 파일 읽기
   const fileData = await fs.readFile(filePath);
