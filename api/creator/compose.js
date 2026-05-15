@@ -15,42 +15,91 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-// ── Google Drive 업로드 (서비스 계정) ──────────────────────────────
+// ── 서비스 계정 토큰 (crypto 모듈로 직접 JWT 서명) ──────────────
+import crypto from 'crypto';
+
+async function getServiceAccountToken(scope) {
+  const email = process.env.GOOGLE_CLIENT_EMAIL;
+  const rawKey = process.env.GOOGLE_PRIVATE_KEY || '';
+  // Vercel에서 \n이 이스케이프된 경우와 실제 개행인 경우 모두 처리
+  const privateKey = rawKey.replace(/\\n/g, '\n');
+
+  if (!email || !privateKey) throw new Error('GOOGLE_CLIENT_EMAIL / GOOGLE_PRIVATE_KEY 미설정');
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    iss: email, scope, aud: 'https://oauth2.googleapis.com/token',
+    exp: now + 3600, iat: now,
+  })).toString('base64url');
+
+  const sign = crypto.createSign('RSA-SHA256');
+  sign.update(`${header}.${payload}`);
+  const sig = sign.sign(privateKey, 'base64url');
+  const assertion = `${header}.${payload}.${sig}`;
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion,
+    }),
+  });
+  const data = await res.json();
+  if (!data.access_token) throw new Error(`토큰 오류: ${JSON.stringify(data)}`);
+  return data.access_token;
+}
+
+// ── Google Drive 업로드 (multipart REST) ──────────────────────────
 async function uploadToGoogleDrive(filePath, filename) {
-  const { google } = await import('googleapis');
-
-  const auth = new google.auth.JWT(
-    process.env.GOOGLE_CLIENT_EMAIL,
-    null,
-    process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    ['https://www.googleapis.com/auth/drive.file'],
-  );
-  const drive = google.drive({ version: 'v3', auth });
-
+  const token = await getServiceAccountToken('https://www.googleapis.com/auth/drive.file');
   const folderId = process.env.GOOGLE_DRIVE_MEDIA_FOLDER_ID || null;
 
-  const uploaded = await drive.files.create({
-    requestBody: {
-      name: filename,
-      mimeType: 'video/mp4',
-      ...(folderId ? { parents: [folderId] } : {}),
-    },
-    media: {
-      mimeType: 'video/mp4',
-      body: createReadStream(filePath),
-    },
-    fields: 'id',
+  // 파일 읽기
+  const fileData = await fs.readFile(filePath);
+
+  // multipart 업로드
+  const boundary = '----millibound' + Date.now();
+  const meta = JSON.stringify({
+    name: filename, mimeType: 'video/mp4',
+    ...(folderId ? { parents: [folderId] } : {}),
   });
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: video/mp4\r\n\r\n`),
+    fileData,
+    Buffer.from(`\r\n--${boundary}--`),
+  ]);
 
-  const fileId = uploaded.data.id;
-
-  // 공개 읽기 권한 설정
-  await drive.permissions.create({
-    fileId,
-    requestBody: { role: 'reader', type: 'anyone' },
+  const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': `multipart/related; boundary=${boundary}`,
+      'Content-Length': body.length,
+    },
+    body,
   });
+  if (!uploadRes.ok) {
+    const txt = await uploadRes.text();
+    throw new Error(`Drive 업로드 실패 ${uploadRes.status}: ${txt.substring(0, 200)}`);
+  }
+  const { id: fileId } = await uploadRes.json();
 
-  // 직접 다운로드 URL (Zernio가 이 URL로 비디오를 가져감)
+  // 공개 읽기 권한
+  const permRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+  });
+  if (!permRes.ok) {
+    const txt = await permRes.text();
+    throw new Error(`권한 설정 실패: ${txt.substring(0, 200)}`);
+  }
+
   return `https://drive.google.com/uc?export=download&id=${fileId}`;
 }
 
