@@ -499,6 +499,8 @@ export default async function handler(req, res) {
           return res.status(200).json({ success: true, draft: updated, message: 'HeyGen 립싱크 영상 생성 시작 (완료까지 1-3분)' });
         } catch (heygenErr) {
           console.warn('[Creator Media] HeyGen 실패, Higgsfield로 폴백:', heygenErr.message);
+          // HeyGen 에러를 드래프트에 기록 (디버깅용)
+          await redis.set(`creator:draft:${id}`, { ...draft, heygenLastError: heygenErr.message, updatedAt: new Date().toISOString() }, { ex: 86400 * 30 }).catch(() => {});
           // HeyGen 실패 시 Higgsfield로 폴백
         }
       }
