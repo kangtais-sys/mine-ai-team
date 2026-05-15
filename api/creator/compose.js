@@ -117,16 +117,35 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   return header + dialogues;
 }
 
+// ── BGM 트랙 선택 (콘텐츠 기둥/감정에 따라) ─────────────────────────
+// /public/bgm/ 에 호스팅된 Pixabay CC0 트랙 (상업용 무료)
+const BGM_TRACKS = {
+  calm:   '/public/bgm/lofi-calm.mp3',   // 성분/정보 콘텐츠 — 차분한 lofi
+  beats:  '/public/bgm/lofi-beats.mp3',  // 트렌드/흥미 콘텐츠 — 비트 lofi
+  jazz:   '/public/bgm/lofi-jazz.mp3',   // 제품 리뷰 — 재즈 lofi
+  paris:  '/public/bgm/lofi-paris.mp3',  // 기본 fallback — 감성 lofi
+};
+
+function selectBgmTrack(draft) {
+  const pillar = draft.detectedPillar || draft.pillar || '';
+  const script = (draft.script || '').toLowerCase();
+  if (pillar === 'trend' || script.includes('트렌드') || script.includes('요즘')) return BGM_TRACKS.beats;
+  if (pillar === 'treatment' || pillar === 'behind') return BGM_TRACKS.jazz;
+  if (pillar === 'ingredient' || script.includes('성분')) return BGM_TRACKS.calm;
+  return BGM_TRACKS.paris;
+}
+
 // ── FFmpeg 합성 ────────────────────────────────────────────────────
 // HeyGen 영상에는 이미 오디오가 포함되어 있으므로 audioPath는 선택적
 // 자막은 drawtext 필터로 렌더링 (ASS 필터 대신 — 폰트 의존성 없음)
-async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath) {
+async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgmPath) {
   const ffmpeg = (await import('fluent-ffmpeg')).default;
   const { path: ffmpegPath } = await import('@ffmpeg-installer/ffmpeg');
   ffmpeg.setFfmpegPath(ffmpegPath);
 
   // HeyGen 영상은 이미 오디오 포함 → audioPath 없을 때 대비
   const hasExternalAudio = audioPath && await fs.access(audioPath).then(() => true).catch(() => false);
+  const hasBgm = bgmPath && await fs.access(bgmPath).then(() => true).catch(() => false);
 
   return new Promise((resolve, reject) => {
     let cmd = ffmpeg();
@@ -134,6 +153,7 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath) {
     // 입력 스트림
     cmd = cmd.input(videoPath);
     if (hasExternalAudio) cmd = cmd.input(audioPath);
+    if (hasBgm) cmd = cmd.input(bgmPath);
 
     // 자막 drawtext 필터 체인 구성 (시스템 폰트 사용)
     // 텍스트 이스케이프: FFmpeg drawtext는 :, ', \\ 등을 이스케이프해야 함
@@ -165,9 +185,23 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath) {
       filterChain = `[0:v]${zoomFilter},${colorFilter}[v]`;
     }
 
+    // BGM 믹싱 설정
+    const bgmInputIdx = hasExternalAudio ? 2 : 1;  // BGM 입력 스트림 인덱스
+    let audioFilterStr = '';
+    let audioMapOpt = '';
+
+    if (hasBgm) {
+      const voiceSrc = hasExternalAudio ? '[1:a]' : '[0:a]';
+      // BGM: 볼륨 12% + 루프 (영상 길이에 맞게), 보이스와 믹스
+      audioFilterStr = `${voiceSrc}volume=1.0[voice];[${bgmInputIdx}:a]volume=0.12,aloop=loop=-1:size=2e+09[bgm];[voice][bgm]amix=inputs=2:duration=first[aout]`;
+      audioMapOpt = '-map [aout]';
+    } else {
+      audioMapOpt = hasExternalAudio ? '-map 1:a' : '-map 0:a?';
+    }
+
     const outputOpts = [
       '-map [v]',
-      hasExternalAudio ? '-map 1:a' : '-map 0:a?',  // HeyGen 영상 내장 오디오 또는 외부
+      audioMapOpt,
       '-c:v libx264',
       '-preset ultrafast',
       '-crf 22',
@@ -178,8 +212,11 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath) {
       '-y',
     ];
 
+    // 비디오 + 오디오 필터를 하나의 complexFilter로 합치기
+    const fullFilter = audioFilterStr ? `${filterChain};${audioFilterStr}` : filterChain;
+
     cmd
-      .complexFilter(filterChain)
+      .complexFilter(fullFilter)
       .outputOptions(outputOpts)
       .output(outputPath)
       .on('start', c => console.log('[Compose] FFmpeg 시작:', c.substring(0, 150)))
@@ -236,10 +273,15 @@ export default async function handler(req, res) {
       await fs.writeFile(audioPath, Buffer.from(draft.audioBase64, 'base64'));
     }
 
-    // 3. FFmpeg 합성 (자막 drawtext 방식)
-    console.log('[Compose] FFmpeg 합성 시작 (drawtext 자막)...');
+    // 3. FFmpeg 합성 (자막 drawtext 방식 + BGM 믹싱)
+    console.log('[Compose] FFmpeg 합성 시작 (drawtext 자막 + BGM)...');
     const audioForMerge = (!isHeyGen && draft.audioBase64) ? audioPath : null;
-    await composeWithFfmpeg(videoPath, audioForMerge, segments, outputPath);
+    // BGM 트랙 선택 (콘텐츠 기둥/스크립트 감정에 따라)
+    const bgmRelPath = selectBgmTrack(draft);
+    const bgmAbsPath = path.join(process.cwd(), bgmRelPath);
+    const bgmPath = await fs.access(bgmAbsPath).then(() => bgmAbsPath).catch(() => null);
+    if (bgmPath) console.log('[Compose] BGM 트랙:', path.basename(bgmPath));
+    await composeWithFfmpeg(videoPath, audioForMerge, segments, outputPath, bgmPath);
 
     // 5. preview 모드: 영상 파일을 직접 응답 (Drive 업로드 없이 품질 확인용)
     const isPreview = req.query?.preview === 'true';
