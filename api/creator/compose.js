@@ -200,7 +200,19 @@ export default async function handler(req, res) {
     console.log('[Compose] FFmpeg 합성 시작...');
     await composeWithFfmpeg(videoPath, audioPath, assPath, outputPath);
 
-    // 5. Google Drive 업로드 → 공개 URL
+    // 5. preview 모드: 영상 파일을 직접 응답 (Drive 업로드 없이 품질 확인용)
+    const isPreview = req.query?.preview === 'true';
+    if (isPreview) {
+      console.log('[Compose] Preview 모드 — 파일 직접 응답');
+      const fileData = await fs.readFile(outputPath);
+      await cleanup();
+      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Content-Disposition', `inline; filename="preview_${safeId}.mp4"`);
+      res.setHeader('Content-Length', fileData.length);
+      return res.status(200).end(fileData);
+    }
+
+    // 5b. Google Drive 업로드 → 공개 URL
     console.log('[Compose] Google Drive 업로드 중...');
     const filename = `milli_${safeId}_${Date.now()}.mp4`;
     const publicUrl = await uploadToGoogleDrive(outputPath, filename);
