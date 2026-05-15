@@ -53,7 +53,7 @@ ${script}
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-opus-4-5',
+      model: 'claude-haiku-4-5',
       max_tokens: 1200,
       messages: [{ role: 'user', content: prompt }],
     });
