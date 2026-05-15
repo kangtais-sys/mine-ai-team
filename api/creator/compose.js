@@ -118,33 +118,63 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 }
 
 // ── FFmpeg 합성 ────────────────────────────────────────────────────
-async function composeWithFfmpeg(videoPath, audioPath, assPath, outputPath) {
+// HeyGen 영상에는 이미 오디오가 포함되어 있으므로 audioPath는 선택적
+// 자막은 drawtext 필터로 렌더링 (ASS 필터 대신 — 폰트 의존성 없음)
+async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath) {
   const ffmpeg = (await import('fluent-ffmpeg')).default;
   const { path: ffmpegPath } = await import('@ffmpeg-installer/ffmpeg');
   ffmpeg.setFfmpegPath(ffmpegPath);
 
-  return new Promise((resolve, reject) => {
-    // assPath에 특수문자 이스케이프
-    const escapedAss = assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
+  // HeyGen 영상은 이미 오디오 포함 → audioPath 없을 때 대비
+  const hasExternalAudio = audioPath && await fs.access(audioPath).then(() => true).catch(() => false);
 
-    ffmpeg()
-      .input(videoPath)
-      .input(audioPath)
-      .complexFilter([`[0:v]ass='${escapedAss}'[v]`])
-      .outputOptions([
-        '-map [v]',
-        '-map 1:a',
-        '-c:v libx264',
-        '-preset ultrafast',
-        '-crf 23',
-        '-c:a aac',
-        '-b:a 128k',
-        '-shortest',
-        '-movflags +faststart',
-        '-y',
-      ])
+  return new Promise((resolve, reject) => {
+    let cmd = ffmpeg();
+
+    // 입력 스트림
+    cmd = cmd.input(videoPath);
+    if (hasExternalAudio) cmd = cmd.input(audioPath);
+
+    // 자막 drawtext 필터 체인 구성 (시스템 폰트 사용)
+    // 텍스트 이스케이프: FFmpeg drawtext는 :, ', \\ 등을 이스케이프해야 함
+    const escapeDrawtext = (str) =>
+      (str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/:/g, '\\:');
+
+    let filterChain = '[0:v]';
+
+    if (segments && segments.length > 0) {
+      const drawtextFilters = segments.map((seg, i) => {
+        const txt = escapeDrawtext(seg.text);
+        const start = parseFloat(seg.startSec) || 0;
+        const end = parseFloat(seg.endSec) || start + 1;
+        // 흰 텍스트 + 검정 외곽선 + 하단 중앙 배치
+        return `drawtext=text='${txt}':enable='between(t\\,${start}\\,${end})':fontsize=64:fontcolor=white:bordercolor=black:borderw=4:x=(w-text_w)/2:y=h*0.82:line_spacing=8`;
+      });
+
+      // 필터 체인: [0:v]drawtext=...,drawtext=...[v]
+      filterChain = `[0:v]${drawtextFilters.join(',')}[v]`;
+    } else {
+      filterChain = '[0:v]copy[v]';
+    }
+
+    const outputOpts = [
+      '-map [v]',
+      hasExternalAudio ? '-map 1:a' : '-map 0:a?',  // HeyGen 영상 내장 오디오 또는 외부
+      '-c:v libx264',
+      '-preset ultrafast',
+      '-crf 22',
+      '-c:a aac',
+      '-b:a 128k',
+      '-shortest',
+      '-movflags +faststart',
+      '-y',
+    ];
+
+    cmd
+      .complexFilter(filterChain)
+      .outputOptions(outputOpts)
       .output(outputPath)
-      .on('start', cmd => console.log('[Compose] FFmpeg 시작:', cmd.substring(0, 120)))
+      .on('start', c => console.log('[Compose] FFmpeg 시작:', c.substring(0, 150)))
       .on('end', () => { console.log('[Compose] FFmpeg 완료'); resolve(); })
       .on('error', err => { console.error('[Compose] FFmpeg 오류:', err.message); reject(err); })
       .run();
@@ -163,8 +193,9 @@ export default async function handler(req, res) {
   if (!draftRaw) return res.status(404).json({ error: '드래프트 없음' });
   const draft = typeof draftRaw === 'string' ? JSON.parse(draftRaw) : draftRaw;
 
-  if (!draft.mediaUrl) return res.status(400).json({ error: 'mediaUrl 없음 — 영상 생성 먼저 필요' });
-  if (!draft.audioBase64) return res.status(400).json({ error: 'audioBase64 없음 — 보이스 생성 먼저 필요' });
+  if (!draft.mediaUrl) return res.status(400).json({ error: 'mediaUrl 없음 — 영상 생성 먼저 필요 (HeyGen 또는 Higgsfield)' });
+  // HeyGen 영상에는 이미 오디오가 내장됨 — audioBase64 없어도 자막 합성 가능
+  const isHeyGen = draft.videoEngine === 'heygen';
 
   // 자막 세그먼트 로드
   const subRaw = await redis.get(`creator:subtitles:${draftId}`).catch(() => null);
@@ -190,15 +221,17 @@ export default async function handler(req, res) {
     if (!videoRes.ok) throw new Error(`영상 다운로드 실패: ${videoRes.status}`);
     await fs.writeFile(videoPath, Buffer.from(await videoRes.arrayBuffer()));
 
-    // 2. 오디오 base64 → MP3 파일
-    await fs.writeFile(audioPath, Buffer.from(draft.audioBase64, 'base64'));
+    // 2. 오디오 처리
+    // HeyGen 영상은 이미 오디오 포함 → 별도 오디오 불필요
+    // Higgsfield 영상은 무음 → ElevenLabs 오디오 병합 필요
+    if (!isHeyGen && draft.audioBase64) {
+      await fs.writeFile(audioPath, Buffer.from(draft.audioBase64, 'base64'));
+    }
 
-    // 3. ASS 자막 파일 생성
-    await fs.writeFile(assPath, buildAssContent(segments), 'utf8');
-
-    // 4. FFmpeg 합성 (영상 + 오디오 + 자막)
-    console.log('[Compose] FFmpeg 합성 시작...');
-    await composeWithFfmpeg(videoPath, audioPath, assPath, outputPath);
+    // 3. FFmpeg 합성 (자막 drawtext 방식)
+    console.log('[Compose] FFmpeg 합성 시작 (drawtext 자막)...');
+    const audioForMerge = (!isHeyGen && draft.audioBase64) ? audioPath : null;
+    await composeWithFfmpeg(videoPath, audioForMerge, segments, outputPath);
 
     // 5. preview 모드: 영상 파일을 직접 응답 (Drive 업로드 없이 품질 확인용)
     const isPreview = req.query?.preview === 'true';

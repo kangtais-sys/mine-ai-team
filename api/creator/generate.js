@@ -140,12 +140,31 @@ ${visualStyle || '흰 가운, 내추럴 피부, 최소한의 메이크업, 연�
 【콘텐츠 기둥】
 ${pillarInfo.label}: ${pillarInfo.desc}
 
-【출력 원칙】
-- 일방적 브랜드 홍보 금지 — 정보와 가치를 먼저 제공
-- 후킹 오프닝: 위의 시그니처 표현을 참고해 첫 2초 안에 멈출 이유를 줄 것
-- 페르소나의 행동 패턴과 시나리오를 스크립트에 자연스럽게 녹여낼 것
-- 커뮤니티 반응 유도: "여러분은요?" "댓글로 알려주세요" 포함 권장
-- 과학적 근거 기반, 용어는 쉽게 풀어서
+【스크립트 작성 원칙 — 이게 핵심이야】
+
+▶ 후킹 (0-3초): 무조건 스크롤 멈추게 만들어
+- "솔직히 말할게요" / "이거 아무도 안 알려줘요" / "돈 버렸어요, 진짜로"
+- 충격적 수치나 반전 사실로 시작 ("피부과 원장님이 실제로 쓰는 게 뭔지 아세요?")
+- 질문형 후킹: "여러분 레티놀 이렇게 쓰고 있으면 효과 없어요" 같이 오류 지적
+- 절대 "안녕하세요" 로 시작하지 말 것
+
+▶ 본론 (3-20초): 구체적 정보, AI 절대 티 안 나게
+- 실제 수치·연구 인용 ("FDA 공인 성분", "피부과 임상 12주", "비교 군 대비 2.3배")
+- 제품/성분의 핵심 메커니즘 쉽게 설명
+- "저도 처음엔 몰랐는데" 같은 개인 경험 녹이기
+- 구어체: "~거든요", "~잖아요", "진짜로", "솔직히" 적극 사용
+- 문장 단위로 끊어서 자막처럼 리듬감 있게
+
+▶ CTA (마지막 3-5초): 저장/팔로우 유도
+- "저장해두고 나중에 봐요" / "팔로우하면 이런 정보 계속 드려요"
+- 댓글 참여 유도 ("여러분 어떤 거 쓰고 계세요?")
+
+▶ 필수 금지 사항
+- "안녕하세요 저는 OOO입니다" 식 인사 금지
+- 광고성 문구 ("저희 제품은") 금지
+- 막연한 표현 ("좋은 것 같아요") 금지 — 구체적 수치로 대체
+- 30초 이상 스크립트 금지 — 15-25초가 최적
+
 - 한국어로 작성 (영어는 visualPrompt만)
 - visualPrompt에는 반드시 페르소나 외모 & 비주얼 스타일을 반영할 것`;
 
@@ -171,7 +190,7 @@ ${pillarInfo.label}: ${pillarInfo.desc}
   "subtitles": ["자막 1번", "자막 2번", "자막 3번", "..."],
   "caption": "인스타/틱톡 캡션 (이모지 포함, 200자 이내, 후킹 첫 줄 + 정보 + CTA)",
   "hashtags": "${baseHashtags} (주제 관련 해시태그 추가, 총 10-15개)",
-  "visualPrompt": "Higgsfield image-to-video prompt in English (start with: Korean beauty creator ${name}, then describe the scene/motion matching the script): cinematic vertical 9:16, ${visualStyle || 'natural minimal makeup, studio lighting'}, specific action/motion, soft lighting, clean aesthetic"
+  "visualPrompt": "HeyGen talking photo background scene description in English. Describe the environment/setting ONLY (not the person, as the person is auto-generated via talking photo): ${visualStyle ? visualStyle + ', ' : ''}clean Korean beauty studio, soft warm lighting, minimal props (skincare products on marble counter), blurred background, professional content creator aesthetic, vertical 9:16 format"
 }`
     : `${topicLine}
 포맷: 인스타 카드뉴스 (5-7장 슬라이드)

@@ -1,4 +1,4 @@
-// 보이스 생성 — Google Cloud TTS (ko-KR Wavenet)
+// 보이스 생성 — ElevenLabs eleven_multilingual_v2 (한국어 네이티브 여성 보이스)
 // POST { script, voice, draftId }
 // Returns { audioBase64, mimeType, durationSec }
 
@@ -11,37 +11,34 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
+// ElevenLabs 한국어 여성 보이스 맵 (한국어 네이티브 모델)
+// 출처: json2video.com/ai-voices/elevenlabs/languages/korean + ElevenLabs Voice Library
 const VOICE_MAP = {
-  'female-warm':  { name: 'ko-KR-Wavenet-B', ssmlGender: 'FEMALE' },
-  'female-clear': { name: 'ko-KR-Wavenet-A', ssmlGender: 'FEMALE' },
-  'male':         { name: 'ko-KR-Wavenet-C', ssmlGender: 'MALE' },
+  'female-warm':  { name: 'JiYoung',  voice_id: 'AW5wrnG1jVizOYY7R1Oo' },  // 서울 억양 프리미엄 여성
+  'female-clear': { name: 'Seulki',   voice_id: 'ksaI0TCD9BstzEzlxj4q' },  // 깔끔한 여성
+  'female-pro':   { name: 'Rosa Oh',  voice_id: 'sf8Bpb1IU97NI9BHSMRf' },  // 전문직 여성
+  'male':         { name: 'Chungman', voice_id: '8MwPLtBplylvbrksiBOC' },  // 남성
 };
 
-// Google TTS는 전용 API Key 방식으로 호출 (GOOGLE_TTS_API_KEY)
-function getTtsApiKey() {
-  const key = process.env.GOOGLE_TTS_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!key) throw new Error('GOOGLE_TTS_API_KEY 환경변수 미설정');
+function getApiKey() {
+  const key = process.env.ELEVENLABS_API_KEY;
+  if (!key) throw new Error('ELEVENLABS_API_KEY 환경변수 미설정');
   return key;
 }
 
-function buildSsml(script) {
-  const sentences = script
+// 스크립트를 자연스러운 말투로 전처리
+function preprocessScript(script) {
+  return script
     .replace(/\r\n/g, '\n')
-    .split(/(?<=[.。！？!?\n])/)
-    .map(s => s.trim())
-    .filter(Boolean);
-
-  const body = sentences
-    .map(s => `<s>${s}</s><break time="350ms"/>`)
-    .join('\n');
-
-  return `<speak>${body}</speak>`;
+    .replace(/\n+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-function estimateDuration(audioBase64) {
-  // MP3 ~128kbps = 16000 bytes/sec
-  const bytes = Buffer.byteLength(audioBase64, 'base64');
-  return Math.round(bytes / 16000);
+// MP3 binary에서 duration 추정 (128kbps 기준)
+function estimateDuration(audioBuffer) {
+  // MP3 @128kbps = 16000 bytes/sec
+  return Math.max(1, Math.round(audioBuffer.length / 16000));
 }
 
 export default async function handler(req, res) {
@@ -51,66 +48,112 @@ export default async function handler(req, res) {
   if (!script) return res.status(400).json({ error: 'script 필수' });
 
   const voiceConfig = VOICE_MAP[voice] || VOICE_MAP['female-warm'];
+  const apiKey = getApiKey();
+  const text = preprocessScript(script);
 
   try {
-    const apiKey = getTtsApiKey();
-    const ssml = buildSsml(script);
+    console.log(`[Voice] ElevenLabs 요청 — 보이스: ${voiceConfig.name}, 텍스트 길이: ${text.length}`);
 
-    const ttsRes = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        input: { ssml },
-        voice: {
-          languageCode: 'ko-KR',
-          name: voiceConfig.name,
-          ssmlGender: voiceConfig.ssmlGender,
+    const ttsRes = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceConfig.voice_id}`,
+      {
+        method: 'POST',
+        headers: {
+          'xi-api-key': apiKey,
+          'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg',
         },
-        audioConfig: {
-          audioEncoding: 'MP3',
-          speakingRate: 1.05,
-          pitch: 0,
-          volumeGainDb: 2.0,
-        },
-      }),
-    });
+        body: JSON.stringify({
+          text,
+          model_id: 'eleven_multilingual_v2',
+          language_code: 'ko',
+          voice_settings: {
+            stability: 0.45,          // 약간 자연스러운 변화
+            similarity_boost: 0.80,   // 보이스 일관성
+            style: 0.35,              // 표현력 (0=중립, 1=과장)
+            use_speaker_boost: true,  // 더 선명한 음질
+            speed: 1.05,              // 살짝 빠르게 (숏츠 스타일)
+          },
+          output_format: 'mp3_44100_128',
+        }),
+      }
+    );
 
     if (!ttsRes.ok) {
       const errText = await ttsRes.text();
-      return res.status(502).json({ error: `TTS API 오류 ${ttsRes.status}: ${errText.substring(0, 300)}` });
+      // 보이스 ID가 유효하지 않으면 fallback 보이스로 재시도
+      if (ttsRes.status === 400 || ttsRes.status === 422) {
+        console.warn(`[Voice] ${voiceConfig.name} 실패, Rachel로 fallback`);
+        return await tryFallbackVoice(text, apiKey, draftId, script, res);
+      }
+      return res.status(502).json({ error: `ElevenLabs 오류 ${ttsRes.status}: ${errText.substring(0, 300)}` });
     }
 
-    const ttsData = await ttsRes.json();
-    const audioBase64 = ttsData.audioContent;
-    if (!audioBase64) return res.status(502).json({ error: 'TTS 응답에 audioContent 없음' });
+    const audioBuffer = Buffer.from(await ttsRes.arrayBuffer());
+    if (!audioBuffer || audioBuffer.length < 1000) {
+      return res.status(502).json({ error: 'ElevenLabs 응답 오디오 없음' });
+    }
 
-    const durationSec = estimateDuration(audioBase64);
+    const audioBase64 = audioBuffer.toString('base64');
+    const durationSec = estimateDuration(audioBuffer);
+    console.log(`[Voice] 완료 — ${durationSec}초, ${audioBuffer.length} bytes`);
 
     if (draftId) {
-      // 오디오 캐시 저장
       await redis.set(
         `creator:audio:${draftId}`,
-        { audioBase64, mimeType: 'audio/mp3', durationSec, voice },
+        { audioBase64, mimeType: 'audio/mp3', durationSec, voice, voiceName: voiceConfig.name },
         { ex: 86400 },
       ).catch(() => {});
 
-      // 드래프트 패치
       const raw = await redis.get(`creator:draft:${draftId}`).catch(() => null);
       if (raw) {
         const draft = typeof raw === 'string' ? JSON.parse(raw) : raw;
         await redis.set(
           `creator:draft:${draftId}`,
-          { ...draft, audioBase64, audioDuration: durationSec, updatedAt: new Date().toISOString() },
+          { ...draft, audioBase64, audioDuration: durationSec, voiceName: voiceConfig.name, updatedAt: new Date().toISOString() },
           { ex: 86400 * 30 },
         ).catch(() => {});
       }
     }
 
-    return res.status(200).json({ success: true, audioBase64, mimeType: 'audio/mp3', durationSec });
+    return res.status(200).json({ success: true, audioBase64, mimeType: 'audio/mp3', durationSec, voiceName: voiceConfig.name });
   } catch (e) {
     console.error('[Creator Voice]', e.message);
     return res.status(500).json({ error: e.message });
   }
+}
+
+// ElevenLabs 기본 안정 보이스로 fallback (Sola — 부드러운 한국어 여성)
+async function tryFallbackVoice(text, apiKey, draftId, script, res) {
+  const fallbackVoiceId = 'KlstlYt9VVf3zgie2Oht'; // Sola
+  const fallbackRes = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${fallbackVoiceId}`,
+    {
+      method: 'POST',
+      headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+      body: JSON.stringify({
+        text,
+        model_id: 'eleven_multilingual_v2',
+        language_code: 'ko',
+        voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.3, use_speaker_boost: true, speed: 1.0 },
+        output_format: 'mp3_44100_128',
+      }),
+    }
+  );
+  if (!fallbackRes.ok) {
+    const err = await fallbackRes.text();
+    return res.status(502).json({ error: `ElevenLabs fallback 실패: ${err.substring(0, 200)}` });
+  }
+  const buf = Buffer.from(await fallbackRes.arrayBuffer());
+  const audioBase64 = buf.toString('base64');
+  const durationSec = Math.max(1, Math.round(buf.length / 16000));
+
+  if (draftId) {
+    const raw = await redis.get(`creator:draft:${draftId}`).catch(() => null);
+    if (raw) {
+      const draft = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      await redis.set(`creator:draft:${draftId}`, { ...draft, audioBase64, audioDuration: durationSec, updatedAt: new Date().toISOString() }, { ex: 86400 * 30 }).catch(() => {});
+    }
+  }
+  return res.status(200).json({ success: true, audioBase64, mimeType: 'audio/mp3', durationSec, voiceName: 'Sola (fallback)' });
 }

@@ -53,6 +53,151 @@ async function ensureHttpUrl(imageUrl) {
   return proxyUrl;
 }
 
+// ── HeyGen Talking Photo API ──────────────────────────────────────
+// 실제 사람처럼 보이는 립싱크 영상 생성
+// 1) 페르소나 이미지 → 토킹 포토 업로드 → talking_photo_id (Redis 캐시)
+// 2) ElevenLabs 오디오 → HeyGen 오디오 에셋 → asset_id
+// 3) video/generate → video_id → cron이 폴링
+
+function heygenHeaders(extra = {}) {
+  const key = process.env.HEYGEN_API_KEY;
+  if (!key) throw new Error('HEYGEN_API_KEY 없음');
+  return { 'X-Api-Key': key, ...extra };
+}
+
+// 페르소나 이미지 → HeyGen 토킹 포토 (캐시: 30일)
+async function getOrCreateTalkingPhoto(personaImageUrl, cacheKey) {
+  // 1. 캐시 확인
+  const cached = await redis.get(`heygen:talking_photo:${cacheKey}`).catch(() => null);
+  if (cached) {
+    console.log(`[HeyGen] 토킹 포토 캐시 히트: ${cached}`);
+    return cached;
+  }
+
+  // 2. 이미지 다운로드
+  const imgUrl = await ensureHttpUrl(personaImageUrl);
+  const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(15000) });
+  if (!imgRes.ok) throw new Error(`페르소나 이미지 다운로드 실패 ${imgRes.status}`);
+  const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+  const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+
+  // 3. HeyGen 토킹 포토 업로드 (multipart form-data)
+  const FormData = (await import('form-data')).default;
+  const form = new FormData();
+  form.append('image', imgBuffer, { filename: 'persona.jpg', contentType });
+
+  const uploadRes = await fetch('https://upload.heygen.com/v1/talking_photo', {
+    method: 'POST',
+    headers: {
+      ...heygenHeaders(),
+      ...form.getHeaders(),
+    },
+    body: form,
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    throw new Error(`HeyGen 토킹 포토 업로드 실패 ${uploadRes.status}: ${errText.substring(0, 300)}`);
+  }
+
+  const uploadData = await uploadRes.json();
+  const talkingPhotoId = uploadData?.data?.talking_photo_id || uploadData?.talking_photo_id;
+  if (!talkingPhotoId) throw new Error(`talking_photo_id 없음: ${JSON.stringify(uploadData).substring(0, 200)}`);
+
+  console.log(`[HeyGen] 토킹 포토 생성 완료: ${talkingPhotoId}`);
+  await redis.set(`heygen:talking_photo:${cacheKey}`, talkingPhotoId, { ex: 86400 * 30 }).catch(() => {});
+  return talkingPhotoId;
+}
+
+// ElevenLabs 오디오(base64) → HeyGen 오디오 에셋 업로드 → asset_id
+async function uploadAudioToHeyGen(audioBase64) {
+  const audioBuffer = Buffer.from(audioBase64, 'base64');
+  const uploadRes = await fetch('https://upload.heygen.com/v1/asset', {
+    method: 'POST',
+    headers: {
+      ...heygenHeaders({ 'Content-Type': 'audio/mpeg' }),
+    },
+    body: audioBuffer,
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    throw new Error(`HeyGen 오디오 업로드 실패 ${uploadRes.status}: ${errText.substring(0, 300)}`);
+  }
+
+  const uploadData = await uploadRes.json();
+  const assetId = uploadData?.data?.id;
+  if (!assetId) throw new Error(`HeyGen 오디오 asset_id 없음: ${JSON.stringify(uploadData).substring(0, 200)}`);
+  console.log(`[HeyGen] 오디오 업로드 완료: ${assetId}`);
+  return assetId;
+}
+
+// HeyGen 영상 생성 요청 → video_id
+async function createHeyGenVideo(talkingPhotoId, audioAssetId) {
+  const body = {
+    video_inputs: [{
+      character: {
+        type: 'talking_photo',
+        talking_photo_id: talkingPhotoId,
+        talking_photo_style: 'circle',
+        talking_style: 'expressive',
+        expression: 'happy',
+        super_resolution: true,
+        matting: true,          // 배경 제거 (나중에 배경 합성 가능)
+      },
+      voice: {
+        type: 'audio',
+        audio_asset_id: audioAssetId,
+      },
+      background: {
+        type: 'color',
+        value: '#FAFAFA',       // 밝은 뉴트럴 배경 (K-뷰티 스튜디오 느낌)
+      },
+    }],
+    dimension: { width: 1080, height: 1920 },  // 9:16 세로형
+    caption: false,
+  };
+
+  const genRes = await fetch('https://api.heygen.com/v2/video/generate', {
+    method: 'POST',
+    headers: heygenHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (!genRes.ok) {
+    const errText = await genRes.text();
+    throw new Error(`HeyGen 영상 생성 실패 ${genRes.status}: ${errText.substring(0, 300)}`);
+  }
+
+  const genData = await genRes.json();
+  const videoId = genData?.data?.video_id;
+  if (!videoId) throw new Error(`HeyGen video_id 없음: ${JSON.stringify(genData).substring(0, 200)}`);
+  console.log(`[HeyGen] 영상 생성 요청 완료: ${videoId}`);
+  return videoId;
+}
+
+// HeyGen 영상 상태 조회
+export async function checkHeyGenStatus(videoId) {
+  const res = await fetch(`https://api.heygen.com/v1/video_status.get?video_id=${videoId}`, {
+    headers: heygenHeaders(),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`HeyGen status ${res.status}: ${err.substring(0, 200)}`);
+  }
+  const data = await res.json();
+  const d = data?.data || data;
+  return {
+    status: d.status,           // pending | processing | completed | failed
+    videoUrl: d.video_url || null,
+    duration: d.duration || null,
+  };
+}
+
 // 영상 생성 요청 → request_id 반환 (비동기)
 async function requestHiggsfieldVideo(visualPrompt, personaImageUrl) {
   // base64면 자동으로 Vercel Blob에 업로드해서 HTTP URL 획득
@@ -227,6 +372,35 @@ export default async function handler(req, res) {
     if (isVideo) {
       if (!draft.visualPrompt) return res.status(400).json({ error: 'visualPrompt 없음 (generate 먼저)' });
 
+      // ── HeyGen 우선: 오디오가 있으면 립싱크 토킹 포토 영상 생성 ──
+      if (draft.audioBase64 && process.env.HEYGEN_API_KEY) {
+        try {
+          console.log('[Creator Media] HeyGen Talking Photo 모드 시작');
+          if (!draft.personaImageUrl) throw new Error('페르소나 이미지 없음 — 크리에이터 설정에서 이미지를 먼저 생성해주세요');
+
+          // 캐시 키: 페르소나 이미지 URL의 앞 40자
+          const cacheKey = (draft.personaImageUrl || '').substring(0, 40).replace(/[^a-zA-Z0-9]/g, '_');
+
+          const talkingPhotoId = await getOrCreateTalkingPhoto(draft.personaImageUrl, cacheKey);
+          const audioAssetId = await uploadAudioToHeyGen(draft.audioBase64);
+          const videoId = await createHeyGenVideo(talkingPhotoId, audioAssetId);
+
+          const updated = {
+            ...draft,
+            heygenVideoId: videoId,
+            videoEngine: 'heygen',
+            status: 'generating',
+            updatedAt: new Date().toISOString(),
+          };
+          await redis.set(`creator:draft:${id}`, updated, { ex: 86400 * 30 });
+          return res.status(200).json({ success: true, draft: updated, message: 'HeyGen 립싱크 영상 생성 시작 (완료까지 1-3분)' });
+        } catch (heygenErr) {
+          console.warn('[Creator Media] HeyGen 실패, Higgsfield로 폴백:', heygenErr.message);
+          // HeyGen 실패 시 Higgsfield로 폴백
+        }
+      }
+
+      // ── Higgsfield 폴백 (오디오 없거나 HeyGen 실패 시) ──
       const { requestId, model: usedModel } = await requestHiggsfieldVideo(
         draft.visualPrompt,
         draft.personaImageUrl,
@@ -234,8 +408,9 @@ export default async function handler(req, res) {
 
       const updated = {
         ...draft,
-        higgsfieldJobId: requestId,   // request_id 저장 (cron이 폴링)
-        higgsfieldModel: usedModel,   // 사용된 모델 기록
+        higgsfieldJobId: requestId,
+        higgsfieldModel: usedModel,
+        videoEngine: 'higgsfield',
         status: 'generating',
         updatedAt: new Date().toISOString(),
       };

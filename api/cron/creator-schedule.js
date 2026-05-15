@@ -35,6 +35,28 @@ async function checkHiggsfieldJob(requestId) {
   };
 }
 
+// HeyGen 상태 폴링 (video_id 기반)
+async function checkHeyGenJob(videoId) {
+  const key = process.env.HEYGEN_API_KEY;
+  if (!key) return null;
+  try {
+    const res = await fetch(`https://api.heygen.com/v1/video_status.get?video_id=${videoId}`, {
+      headers: { 'X-Api-Key': key },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const d = data?.data || data;
+    // status: pending | processing | completed | failed
+    return {
+      status: d.status,
+      videoUrl: d.video_url || null,
+      duration: d.duration || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // 5분마다 실행
 // 1) generating 상태 드래프트 → Higgsfield 완료 확인 → review로 전환
 // 2) scheduled 상태 드래프트 → 예약 시간 도달 시 발행
@@ -62,12 +84,39 @@ export default async function handler(req, res) {
         if (!raw) continue;
         const draft = typeof raw === 'string' ? JSON.parse(raw) : raw;
 
-        // ── 1. Higgsfield 영상 생성 중인 드래프트 폴링 ──
+        // ── 1a. HeyGen 영상 생성 중인 드래프트 폴링 ──
+        if (draft.status === 'generating' && draft.heygenVideoId) {
+          const job = await checkHeyGenJob(draft.heygenVideoId).catch(() => null);
+
+          if (job?.status === 'completed' && job.videoUrl) {
+            const updated = {
+              ...draft,
+              status: 'ready',          // compose 단계 대기 (자막 합성 필요)
+              mediaUrl: job.videoUrl,
+              heygenDuration: job.duration,
+              updatedAt: new Date().toISOString(),
+            };
+            await redis.set(`creator:draft:${id}`, updated, { ex: 86400 * 30 });
+            polled++;
+            console.log(`[Creator Schedule] HeyGen video ready: ${id}`);
+          } else if (job?.status === 'failed') {
+            const failed = {
+              ...draft,
+              status: 'failed',
+              error: 'HeyGen 영상 생성 실패',
+              updatedAt: new Date().toISOString(),
+            };
+            await redis.set(`creator:draft:${id}`, failed, { ex: 86400 * 30 });
+            console.warn(`[Creator Schedule] HeyGen video failed: ${id}`);
+          }
+          continue;
+        }
+
+        // ── 1b. Higgsfield 영상 생성 중인 드래프트 폴링 ──
         if (draft.status === 'generating' && draft.higgsfieldJobId) {
           const job = await checkHiggsfieldJob(draft.higgsfieldJobId).catch(() => null);
 
           if ((job?.status === 'completed') && job.videoUrl) {
-            // 영상 완료 → review로 전환, mediaUrl 저장
             const updated = {
               ...draft,
               status: 'review',
@@ -76,9 +125,8 @@ export default async function handler(req, res) {
             };
             await redis.set(`creator:draft:${id}`, updated, { ex: 86400 * 30 });
             polled++;
-            console.log(`[Creator Schedule] Video ready: ${id} (${job.videoUrl.substring(0, 60)})`);
+            console.log(`[Creator Schedule] Higgsfield video ready: ${id}`);
           } else if (job?.status === 'failed' || job?.status === 'nsfw') {
-            // 영상 실패
             const failed = {
               ...draft,
               status: 'failed',
@@ -86,9 +134,8 @@ export default async function handler(req, res) {
               updatedAt: new Date().toISOString(),
             };
             await redis.set(`creator:draft:${id}`, failed, { ex: 86400 * 30 });
-            console.warn(`[Creator Schedule] Video failed: ${id}`);
+            console.warn(`[Creator Schedule] Higgsfield video failed: ${id}`);
           }
-          // pending/running 이면 그냥 pass — 다음 5분에 다시 확인
           continue;
         }
 

@@ -1205,6 +1205,25 @@ function CreateForm({ onGenerated }) {
       if (refreshed.draft) setDraft(refreshed.draft);
       // 자막 자동 생성
       await handleGenerateSubtitle(draft.script, d.durationSec, draft.id);
+
+      // HeyGen 립싱크 영상 자동 요청 (보이스 생성 직후 — audioBase64가 draft에 저장됨)
+      if (process.env.NODE_ENV !== 'test') {
+        try {
+          console.log('[Creator] HeyGen 영상 자동 요청...');
+          const mediaRes = await fetch('/api/creator/media', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: draft.id }),
+          });
+          const mediaData = await mediaRes.json();
+          if (mediaData.success) {
+            setDraft(mediaData.draft);
+            console.log('[Creator] HeyGen 영상 생성 시작됨 — 크론이 완료 폴링 중');
+          }
+        } catch (me) {
+          console.warn('[Creator] HeyGen 영상 요청 실패 (무시):', me.message);
+        }
+      }
     } catch (e) {
       setVoiceError(e.message);
     } finally {
