@@ -477,6 +477,8 @@ export default async function handler(req, res) {
             heygenVideoId: videoId,
             videoEngine: 'heygen',
             status: 'generating',
+            higgsfieldJobId: null,   // Higgsfield 폴링 방지 (draft.js GET에서 override 안 되게)
+            mediaUrl: null,          // 이전 Higgsfield URL 제거
             updatedAt: new Date().toISOString(),
           };
           await redis.set(`creator:draft:${id}`, updated, { ex: 86400 * 30 });
