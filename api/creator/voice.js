@@ -143,7 +143,7 @@ async function tryFallbackVoice(text, _elevenApiKey, draftId, _script, res) {
     return res.status(502).json({ error: 'ElevenLabs 유료 플랜 또는 GOOGLE_TTS_API_KEY 필요' });
   }
 
-  console.log('[Voice] Google TTS 폴백 사용 (ko-KR-Neural2-C)');
+  console.log('[Voice] Google TTS 폴백 사용 (ko-KR-Neural2-A)');
   const ttsRes = await fetch(
     `https://texttospeech.googleapis.com/v1/text:synthesize?key=${googleKey}`,
     {
@@ -153,7 +153,7 @@ async function tryFallbackVoice(text, _elevenApiKey, draftId, _script, res) {
         input: { text },
         voice: {
           languageCode: 'ko-KR',
-          name: 'ko-KR-Neural2-C',   // 자연스러운 여성 한국어
+          name: 'ko-KR-Neural2-A',   // 자연스러운 여성 한국어 (A = Female)
           ssmlGender: 'FEMALE',
         },
         audioConfig: {
@@ -183,10 +183,10 @@ async function tryFallbackVoice(text, _elevenApiKey, draftId, _script, res) {
       const draft = typeof raw === 'string' ? JSON.parse(raw) : raw;
       await redis.set(
         `creator:draft:${draftId}`,
-        { ...draft, audioBase64: audioContent, audioDuration: durationSec, voiceName: 'Google Neural2-C', updatedAt: new Date().toISOString() },
+        { ...draft, audioBase64: audioContent, audioDuration: durationSec, voiceName: 'Google Neural2-A', updatedAt: new Date().toISOString() },
         { ex: 86400 * 30 }
       ).catch(() => {});
     }
   }
-  return res.status(200).json({ success: true, audioBase64: audioContent, mimeType: 'audio/mp3', durationSec, voiceName: 'Google Neural2-C (fallback)' });
+  return res.status(200).json({ success: true, audioBase64: audioContent, mimeType: 'audio/mp3', durationSec, voiceName: 'Google Neural2-A (fallback)' });
 }
