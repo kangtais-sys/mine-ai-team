@@ -411,6 +411,10 @@
       "destination": "/api/creator/subtitle"
     },
     {
+      "source": "/api/env-check",
+      "destination": "/api/env-check"
+    },
+    {
       "source": "/api/creator/accounts",
       "destination": "/api/creator/accounts"
     },
