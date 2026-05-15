@@ -17,16 +17,11 @@ const VOICE_MAP = {
   'male':         { name: 'ko-KR-Wavenet-C', ssmlGender: 'MALE' },
 };
 
-async function getGoogleAccessToken() {
-  const { google } = await import('googleapis');
-  const auth = new google.auth.JWT(
-    process.env.GOOGLE_CLIENT_EMAIL,
-    null,
-    process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    ['https://www.googleapis.com/auth/cloud-platform'],
-  );
-  const tokens = await auth.authorize();
-  return tokens.access_token;
+// Google TTS는 API Key 방식으로 호출 (JWT보다 단순하고 안정적)
+function getTtsApiKey() {
+  const key = process.env.GOOGLE_API_KEY;
+  if (!key) throw new Error('GOOGLE_API_KEY 환경변수 미설정');
+  return key;
 }
 
 function buildSsml(script) {
@@ -58,13 +53,12 @@ export default async function handler(req, res) {
   const voiceConfig = VOICE_MAP[voice] || VOICE_MAP['female-warm'];
 
   try {
-    const accessToken = await getGoogleAccessToken();
+    const apiKey = getTtsApiKey();
     const ssml = buildSsml(script);
 
-    const ttsRes = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize', {
+    const ttsRes = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
