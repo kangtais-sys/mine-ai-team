@@ -5,8 +5,8 @@
 
 import { Redis } from '@upstash/redis';
 import { promises as fs } from 'fs';
-import { createReadStream } from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 export const config = { maxDuration: 60 };
 
@@ -16,7 +16,6 @@ const redis = new Redis({
 });
 
 // ── 서비스 계정 토큰 (crypto 모듈로 직접 JWT 서명) ──────────────
-import crypto from 'crypto';
 
 async function getServiceAccountToken(scope) {
   const email = process.env.GOOGLE_CLIENT_EMAIL;
