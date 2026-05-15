@@ -53,7 +53,11 @@ async function getServiceAccountToken(scope) {
 // ── Google Drive 업로드 (multipart REST) ──────────────────────────
 async function uploadToGoogleDrive(filePath, filename) {
   const token = await getServiceAccountToken('https://www.googleapis.com/auth/drive.file');
-  const folderId = process.env.GOOGLE_DRIVE_MEDIA_FOLDER_ID || null;
+  // 서비스 계정은 자체 스토리지 없음 → 사용자가 공유한 폴더에 업로드 필수
+  const folderId = process.env.GOOGLE_DRIVE_MEDIA_FOLDER_ID
+    || process.env.GOOGLE_DRIVE_UPLOAD_FOLDER_ID
+    || null;
+  if (!folderId) throw new Error('GOOGLE_DRIVE_MEDIA_FOLDER_ID 또는 GOOGLE_DRIVE_UPLOAD_FOLDER_ID 미설정 — 공유 폴더 ID 필요');
 
   // 파일 읽기
   const fileData = await fs.readFile(filePath);
