@@ -85,16 +85,19 @@ function heygenHeaders(extra = {}) {
 // 파일(Buffer) → HeyGen /v3/assets → asset_id
 // form-data npm 패키지 사용 (package.json에 ^4.0.5)
 async function uploadAssetToHeyGen(buffer, filename, mimeType) {
+  // form-data를 native fetch에 넘길 때: getBuffer()로 직렬화 후 Content-Type(boundary 포함) 수동 설정
   const form = new FormDataPkg();
   form.append('file', buffer, { filename, contentType: mimeType });
+  const formBuffer = form.getBuffer();
+  const formHeaders = form.getHeaders(); // { 'content-type': 'multipart/form-data; boundary=...' }
 
   const uploadRes = await fetch('https://api.heygen.com/v3/assets', {
     method: 'POST',
     headers: {
       'X-Api-Key': process.env.HEYGEN_API_KEY,
-      ...form.getHeaders(),
+      ...formHeaders,
     },
-    body: form,
+    body: formBuffer,
     signal: AbortSignal.timeout(60000),
   });
 
