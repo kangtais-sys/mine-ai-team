@@ -415,6 +415,10 @@
       "destination": "/api/env-check"
     },
     {
+      "source": "/api/heygen-status",
+      "destination": "/api/heygen-status"
+    },
+    {
       "source": "/api/creator/accounts",
       "destination": "/api/creator/accounts"
     },
