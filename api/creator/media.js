@@ -67,11 +67,13 @@ async function getPrimaryPersonaImageUrl(personaKey) {
   return primary?.url || null;
 }
 
-// ── HeyGen Talking Photo API ──────────────────────────────────────
-// 실제 사람처럼 보이는 립싱크 영상 생성
-// 1) 페르소나 이미지 → 토킹 포토 업로드 → talking_photo_id (Redis 캐시)
-// 2) ElevenLabs 오디오 → HeyGen 오디오 에셋 → asset_id
-// 3) video/generate → video_id → cron이 폴링
+// ── HeyGen v3 API ────────────────────────────────────────────────
+// 문서: https://developers.heygen.com
+// 실제 사람처럼 보이는 립싱크 영상 생성 (Image-to-Video)
+// 1) 페르소나 이미지 → POST /v3/assets → image asset_id (캐시 24hr)
+// 2) 오디오 base64 → POST /v3/assets → audio asset_id
+// 3) POST /v3/videos (type:"image") → video_id → cron이 폴링
+// 4) GET /v3/videos/{video_id} → status:completed → video URL
 
 function heygenHeaders(extra = {}) {
   const key = process.env.HEYGEN_API_KEY;
@@ -79,104 +81,89 @@ function heygenHeaders(extra = {}) {
   return { 'X-Api-Key': key, ...extra };
 }
 
-// 페르소나 이미지 → HeyGen 토킹 포토 (캐시: 30일)
-async function getOrCreateTalkingPhoto(personaImageUrl, cacheKey) {
-  // 1. 캐시 확인
-  const cached = await redis.get(`heygen:talking_photo:${cacheKey}`).catch(() => null);
-  if (cached) {
-    console.log(`[HeyGen] 토킹 포토 캐시 히트: ${cached}`);
-    return cached;
-  }
+// 파일(Buffer) → HeyGen /v3/assets → asset_id
+// form-data npm 패키지 사용 (package.json에 ^4.0.5)
+async function uploadAssetToHeyGen(buffer, filename, mimeType) {
+  const { default: FormDataPkg } = await import('form-data');
+  const form = new FormDataPkg();
+  form.append('file', buffer, { filename, contentType: mimeType });
 
-  // 2. 이미지 다운로드
-  const imgUrl = await ensureHttpUrl(personaImageUrl);
-  const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(15000) });
-  if (!imgRes.ok) throw new Error(`페르소나 이미지 다운로드 실패 ${imgRes.status}`);
-  const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
-  const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
-
-  // 3. HeyGen 토킹 포토 업로드 (image_url 방식 — multipart 대신 JSON으로 URL 전달)
-  // 프록시 URL은 이미 ensureHttpUrl()에서 만들어진 상태 (imgUrl)
-  const uploadRes = await fetch('https://upload.heygen.com/v1/talking_photo', {
-    method: 'POST',
-    headers: heygenHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ image_url: imgUrl }),
-    signal: AbortSignal.timeout(30000),
-  });
-
-  if (!uploadRes.ok) {
-    const errText = await uploadRes.text();
-    throw new Error(`HeyGen 토킹 포토 업로드 실패 ${uploadRes.status}: ${errText.substring(0, 300)}`);
-  }
-
-  const uploadData = await uploadRes.json();
-  const talkingPhotoId = uploadData?.data?.talking_photo_id || uploadData?.talking_photo_id;
-  if (!talkingPhotoId) throw new Error(`talking_photo_id 없음: ${JSON.stringify(uploadData).substring(0, 200)}`);
-
-  console.log(`[HeyGen] 토킹 포토 생성 완료: ${talkingPhotoId}`);
-  await redis.set(`heygen:talking_photo:${cacheKey}`, talkingPhotoId, { ex: 86400 * 30 }).catch(() => {});
-  return talkingPhotoId;
-}
-
-// ElevenLabs 오디오(base64) → HeyGen 오디오 에셋 업로드 → asset_id
-async function uploadAudioToHeyGen(audioBase64) {
-  const audioBuffer = Buffer.from(audioBase64, 'base64');
-  const uploadRes = await fetch('https://upload.heygen.com/v1/asset', {
+  const uploadRes = await fetch('https://api.heygen.com/v3/assets', {
     method: 'POST',
     headers: {
-      ...heygenHeaders({ 'Content-Type': 'audio/mpeg' }),
+      'X-Api-Key': process.env.HEYGEN_API_KEY,
+      ...form.getHeaders(),
     },
-    body: audioBuffer,
-    signal: AbortSignal.timeout(30000),
+    body: form,
+    signal: AbortSignal.timeout(60000),
   });
 
   if (!uploadRes.ok) {
     const errText = await uploadRes.text();
-    throw new Error(`HeyGen 오디오 업로드 실패 ${uploadRes.status}: ${errText.substring(0, 300)}`);
+    throw new Error(`HeyGen /v3/assets 업로드 실패 ${uploadRes.status}: ${errText.substring(0, 300)}`);
   }
 
-  const uploadData = await uploadRes.json();
-  const assetId = uploadData?.data?.id;
-  if (!assetId) throw new Error(`HeyGen 오디오 asset_id 없음: ${JSON.stringify(uploadData).substring(0, 200)}`);
-  console.log(`[HeyGen] 오디오 업로드 완료: ${assetId}`);
+  const data = await uploadRes.json();
+  const assetId = data?.data?.asset_id;
+  if (!assetId) throw new Error(`HeyGen asset_id 없음: ${JSON.stringify(data).substring(0, 200)}`);
+  console.log(`[HeyGen] 에셋 업로드 완료: ${assetId} (${filename})`);
   return assetId;
 }
 
-// HeyGen 영상 생성 요청 → video_id
-// backgroundImageUrl: Higgsfield로 생성한 K뷰티 배경 이미지 URL (선택)
-// scriptSentiment: 스크립트 분석 결과 ('serious'|'excited'|'default')
-async function createHeyGenVideo(talkingPhotoId, audioAssetId, backgroundImageUrl, scriptSentiment) {
-  // 표현식: 스크립트 감정에 따라 동적으로 설정
-  // serious(경고/진지) → 기본, excited(신남/놀라움) → 행복, default → 기본
-  const expression = scriptSentiment === 'excited' ? 'happy' : 'default';
+// 페르소나 이미지 → image asset_id (24시간 캐시)
+async function getOrCreateImageAsset(personaImageUrl) {
+  // 프록시 URL로 변환
+  const imgUrl = await ensureHttpUrl(personaImageUrl);
 
-  // 배경: 실제 K뷰티 스튜디오 이미지 > 따뜻한 크림 단색
-  const background = backgroundImageUrl
-    ? { type: 'image', value: backgroundImageUrl }
-    : { type: 'color', value: '#FEF0E8' }; // 따뜻한 살구/크림 (차가운 흰색 → K뷰티 피부톤)
+  // 캐시 키: URL 앞 60자 기반
+  const cacheKey = `heygen:image_asset:${imgUrl.substring(0, 60).replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const cached = await redis.get(cacheKey).catch(() => null);
+  if (cached) {
+    console.log(`[HeyGen] 이미지 에셋 캐시 히트: ${cached}`);
+    return cached;
+  }
+
+  // 이미지 다운로드
+  const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(20000) });
+  if (!imgRes.ok) throw new Error(`페르소나 이미지 다운로드 실패 ${imgRes.status}: ${imgUrl}`);
+  const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+  const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+  const ext = contentType.includes('png') ? 'png' : 'jpg';
+
+  const assetId = await uploadAssetToHeyGen(imgBuffer, `persona.${ext}`, contentType);
+  await redis.set(cacheKey, assetId, { ex: 86400 }).catch(() => {}); // 24시간 캐시
+  return assetId;
+}
+
+// 오디오 base64 → HeyGen audio asset_id
+async function uploadAudioAsset(audioBase64) {
+  const audioBuffer = Buffer.from(audioBase64, 'base64');
+  return uploadAssetToHeyGen(audioBuffer, 'audio.mp3', 'audio/mpeg');
+}
+
+// HeyGen v3 영상 생성 (image-to-video with lipsync)
+// docs: https://developers.heygen.com/image-to-video-1.md
+async function createHeyGenVideo(imageAssetId, audioAssetId, _bgUrl, scriptSentiment) {
+  // expressiveness: 스크립트 감정에 따라
+  const expressiveness = scriptSentiment === 'excited' ? 'high' : 'medium';
+  // motion_prompt: 자연스러운 움직임 유도
+  const motion_prompt = '자연스럽게 고개를 끄덕이며 카메라를 바라보기';
 
   const body = {
-    video_inputs: [{
-      character: {
-        type: 'talking_photo',
-        talking_photo_id: talkingPhotoId,
-        // talking_photo_style 제거 — circle 크롭 없이 자연스러운 전신 프레이밍
-        talking_style: 'expressive',
-        expression,
-        super_resolution: true,
-        matting: true,          // 배경 분리 → 실제 배경 이미지 합성
-      },
-      voice: {
-        type: 'audio',
-        audio_asset_id: audioAssetId,
-      },
-      background,
-    }],
-    dimension: { width: 1080, height: 1920 },  // 9:16 세로형
-    caption: false,
+    type: 'image',
+    image: {
+      type: 'asset_id',
+      asset_id: imageAssetId,
+    },
+    audio_asset_id: audioAssetId,
+    aspect_ratio: '9:16',      // 세로형 숏츠
+    resolution: '1080p',
+    expressiveness,
+    motion_prompt,
+    title: 'K-beauty Shorts',
   };
 
-  const genRes = await fetch('https://api.heygen.com/v2/video/generate', {
+  const genRes = await fetch('https://api.heygen.com/v3/videos', {
     method: 'POST',
     headers: heygenHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
@@ -185,13 +172,13 @@ async function createHeyGenVideo(talkingPhotoId, audioAssetId, backgroundImageUr
 
   if (!genRes.ok) {
     const errText = await genRes.text();
-    throw new Error(`HeyGen 영상 생성 실패 ${genRes.status}: ${errText.substring(0, 300)}`);
+    throw new Error(`HeyGen v3 영상 생성 실패 ${genRes.status}: ${errText.substring(0, 300)}`);
   }
 
   const genData = await genRes.json();
   const videoId = genData?.data?.video_id;
   if (!videoId) throw new Error(`HeyGen video_id 없음: ${JSON.stringify(genData).substring(0, 200)}`);
-  console.log(`[HeyGen] 영상 생성 요청 완료: ${videoId}`);
+  console.log(`[HeyGen] v3 영상 생성 요청 완료: ${videoId}`);
   return videoId;
 }
 
@@ -469,19 +456,18 @@ export default async function handler(req, res) {
           }
           if (!personaImageUrl) throw new Error('페르소나 대표 이미지 없음 — 크리에이터 설정에서 이미지를 먼저 등록해주세요');
 
-          // 캐시 키: 페르소나 이미지 URL의 앞 40자
-          const cacheKey = personaImageUrl.substring(0, 40).replace(/[^a-zA-Z0-9]/g, '_');
+          // v3: 이미지 → /v3/assets → image asset_id (캐시 24hr)
+          const imageAssetId = await getOrCreateImageAsset(personaImageUrl);
+          // v3: 오디오 base64 → /v3/assets → audio asset_id
+          const audioAssetId = await uploadAudioAsset(draft.audioBase64);
 
-          const talkingPhotoId = await getOrCreateTalkingPhoto(personaImageUrl, cacheKey);
-          const audioAssetId = await uploadAudioToHeyGen(draft.audioBase64);
-
-          // 배경 이미지 생성 (실패해도 단색 폴백으로 진행)
+          // 배경 이미지 생성 (실패해도 진행 — v3 image-to-video는 배경 별도 지정 불필요)
           const bgUrl = draft.visualPrompt
             ? await generateBackgroundImage(draft.visualPrompt).catch(() => null)
             : null;
           const sentiment = analyzeScriptSentiment(draft.script);
 
-          const videoId = await createHeyGenVideo(talkingPhotoId, audioAssetId, bgUrl, sentiment);
+          const videoId = await createHeyGenVideo(imageAssetId, audioAssetId, bgUrl, sentiment);
 
           const updated = {
             ...draft,

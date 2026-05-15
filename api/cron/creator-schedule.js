@@ -40,13 +40,14 @@ async function checkHeyGenJob(videoId) {
   const key = process.env.HEYGEN_API_KEY;
   if (!key) return null;
   try {
-    const res = await fetch(`https://api.heygen.com/v1/video_status.get?video_id=${videoId}`, {
+    // v3 API: GET /v3/videos/{video_id}
+    // status: pending → processing → completed | failed
+    const res = await fetch(`https://api.heygen.com/v3/videos/${videoId}`, {
       headers: { 'X-Api-Key': key },
     });
     if (!res.ok) return null;
     const data = await res.json();
     const d = data?.data || data;
-    // status: pending | processing | completed | failed
     return {
       status: d.status,
       videoUrl: d.video_url || null,
