@@ -53,6 +53,20 @@ async function ensureHttpUrl(imageUrl) {
   return proxyUrl;
 }
 
+// ── 페르소나 대표 이미지 자동 조회 ──────────────────────────────
+// draft.personaImageUrl 없을 때 Redis에서 isPrimary 이미지 자동으로 가져옴
+async function getPrimaryPersonaImageUrl(personaKey) {
+  const key = personaKey
+    ? `creator:persona:${personaKey}:images`
+    : 'creator:persona:millimilli:images';
+  const raw = await redis.get(key).catch(() => null);
+  if (!raw) return null;
+  const images = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  if (!Array.isArray(images) || images.length === 0) return null;
+  const primary = images.find(img => img.isPrimary) || images[0];
+  return primary?.url || null;
+}
+
 // ── HeyGen Talking Photo API ──────────────────────────────────────
 // 실제 사람처럼 보이는 립싱크 영상 생성
 // 1) 페르소나 이미지 → 토킹 포토 업로드 → talking_photo_id (Redis 캐시)
@@ -376,12 +390,18 @@ export default async function handler(req, res) {
       if (draft.audioBase64 && process.env.HEYGEN_API_KEY) {
         try {
           console.log('[Creator Media] HeyGen Talking Photo 모드 시작');
-          if (!draft.personaImageUrl) throw new Error('페르소나 이미지 없음 — 크리에이터 설정에서 이미지를 먼저 생성해주세요');
+
+          // 페르소나 이미지: 드래프트에 있으면 그대로, 없으면 Redis 대표 이미지 자동 조회
+          let personaImageUrl = draft.personaImageUrl;
+          if (!personaImageUrl) {
+            personaImageUrl = await getPrimaryPersonaImageUrl(draft.personaKey || null);
+          }
+          if (!personaImageUrl) throw new Error('페르소나 대표 이미지 없음 — 크리에이터 설정에서 이미지를 먼저 등록해주세요');
 
           // 캐시 키: 페르소나 이미지 URL의 앞 40자
-          const cacheKey = (draft.personaImageUrl || '').substring(0, 40).replace(/[^a-zA-Z0-9]/g, '_');
+          const cacheKey = personaImageUrl.substring(0, 40).replace(/[^a-zA-Z0-9]/g, '_');
 
-          const talkingPhotoId = await getOrCreateTalkingPhoto(draft.personaImageUrl, cacheKey);
+          const talkingPhotoId = await getOrCreateTalkingPhoto(personaImageUrl, cacheKey);
           const audioAssetId = await uploadAudioToHeyGen(draft.audioBase64);
           const videoId = await createHeyGenVideo(talkingPhotoId, audioAssetId);
 
@@ -401,9 +421,13 @@ export default async function handler(req, res) {
       }
 
       // ── Higgsfield 폴백 (오디오 없거나 HeyGen 실패 시) ──
+      let fallbackImageUrl = draft.personaImageUrl;
+      if (!fallbackImageUrl) {
+        fallbackImageUrl = await getPrimaryPersonaImageUrl(draft.personaKey || null);
+      }
       const { requestId, model: usedModel } = await requestHiggsfieldVideo(
         draft.visualPrompt,
-        draft.personaImageUrl,
+        fallbackImageUrl,
       );
 
       const updated = {
