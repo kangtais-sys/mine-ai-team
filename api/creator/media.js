@@ -1,5 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { randomUUID } from 'crypto';
+import FormDataPkg from 'form-data';
 
 const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
@@ -84,7 +85,6 @@ function heygenHeaders(extra = {}) {
 // 파일(Buffer) → HeyGen /v3/assets → asset_id
 // form-data npm 패키지 사용 (package.json에 ^4.0.5)
 async function uploadAssetToHeyGen(buffer, filename, mimeType) {
-  const { default: FormDataPkg } = await import('form-data');
   const form = new FormDataPkg();
   form.append('file', buffer, { filename, contentType: mimeType });
 
