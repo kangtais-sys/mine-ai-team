@@ -1117,6 +1117,17 @@ function CreateForm({ onGenerated }) {
   // 소스 이미지 (제품 누끼, 성분 캡처, 랭킹 자료 등)
   const [sourceImages, setSourceImages] = useState([]); // [{ data, mimeType, preview, label }]
 
+  // ── 보이스 & 자막 & 합성 상태 ──
+  const [voiceType, setVoiceType]                 = useState('female-warm');
+  const [generatingVoice, setGeneratingVoice]     = useState(false);
+  const [audioBase64, setAudioBase64]             = useState(null);
+  const [audioDuration, setAudioDuration]         = useState(null);
+  const [generatingSubtitle, setGeneratingSubtitle] = useState(false);
+  const [subtitleSegments, setSubtitleSegments]   = useState(null);
+  const [composing, setComposing]                 = useState(false);
+  const [composedVideoUrl, setComposedVideoUrl]   = useState(null);
+  const [voiceError, setVoiceError]               = useState('');
+
   useEffect(() => {
     fetch('/api/creator/persona').then(r => r.json()).then(d => { if (d.persona) setPersona(d.persona); }).catch(() => {});
     fetch('/api/creator/persona-images').then(r => r.json()).then(d => {
@@ -1155,6 +1166,72 @@ function CreateForm({ onGenerated }) {
       };
       img.src = url;
     });
+  };
+
+  // ── 보이스 생성 → 자막 자동 생성 ──
+  const handleGenerateSubtitle = async (script, durationSec, draftId) => {
+    if (!script || !durationSec) return;
+    setGeneratingSubtitle(true);
+    try {
+      const r = await fetch('/api/creator/subtitle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script, durationSec, draftId }),
+      });
+      const d = await r.json();
+      if (d.success) setSubtitleSegments(d.segments);
+    } catch (e) {
+      console.warn('[Subtitle]', e.message);
+    } finally {
+      setGeneratingSubtitle(false);
+    }
+  };
+
+  const handleGenerateVoice = async () => {
+    if (!draft?.script) return;
+    setGeneratingVoice(true); setVoiceError('');
+    try {
+      const r = await fetch('/api/creator/voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script: draft.script, voice: voiceType, draftId: draft.id }),
+      });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.error || '보이스 생성 실패');
+      setAudioBase64(d.audioBase64);
+      setAudioDuration(d.durationSec);
+      // 최신 드래프트(mediaUrl 포함) 다시 로드
+      const refreshed = await fetch(`/api/creator/draft?id=${draft.id}`).then(r => r.json()).catch(() => ({}));
+      if (refreshed.draft) setDraft(refreshed.draft);
+      // 자막 자동 생성
+      await handleGenerateSubtitle(draft.script, d.durationSec, draft.id);
+    } catch (e) {
+      setVoiceError(e.message);
+    } finally {
+      setGeneratingVoice(false);
+    }
+  };
+
+  const handleCompose = async () => {
+    if (!draft?.id) return;
+    setComposing(true); setVoiceError('');
+    try {
+      const r = await fetch('/api/creator/compose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draftId: draft.id }),
+      });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.error || '합성 실패');
+      setComposedVideoUrl(d.videoUrl);
+      // 드래프트 갱신 (status: review, composedVideoUrl)
+      const refreshed = await fetch(`/api/creator/draft?id=${draft.id}`).then(r => r.json()).catch(() => ({}));
+      if (refreshed.draft) setDraft(refreshed.draft);
+    } catch (e) {
+      setVoiceError(e.message);
+    } finally {
+      setComposing(false);
+    }
   };
 
   const handleGenerate = async () => {
@@ -1207,10 +1284,114 @@ function CreateForm({ onGenerated }) {
             <span style={{ fontSize: 14, fontWeight: 600, color: '#1D1D1F' }}>콘텐츠 생성 완료!</span>
           </div>
           <p style={{ fontSize: 13, color: '#6E6E73', margin: 0 }}>
-            {draft.status === 'generating' ? '영상 생성 중 (1-3분 소요) — "검토 대기" 탭에서 확인하세요.' : '"검토 대기" 탭에서 확인·편집·발행할 수 있어요.'}
+            {draft.status === 'generating' ? '영상 생성 중 (1-3분 소요) — 아래에서 보이스·자막을 먼저 만들어두세요.' : '"검토 대기" 탭에서 확인·편집·발행할 수 있어요.'}
           </p>
         </div>
-        <button onClick={() => { setStep('idle'); setError(''); setDraft(null); setTopic(''); setSourceImages([]); }}
+
+        {/* ── 보이스 & 자막 & 합성 (영상 포맷만) ── */}
+        {(format === 'reel' || format === 'shorts') && (
+          <div style={{ ...CARD, marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#1D1D1F', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+              🎙 보이스 & 자막 합성
+            </div>
+
+            {/* 목소리 선택 */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#AEAEB2', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>목소리</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[{ key: 'female-warm', label: '여성 따뜻 (Wavenet-B)' }, { key: 'female-clear', label: '여성 청량 (Wavenet-A)' }].map(v => (
+                  <button key={v.key} onClick={() => setVoiceType(v.key)} style={{
+                    padding: '7px 13px', borderRadius: 8, cursor: 'pointer',
+                    border: `1.5px solid ${voiceType === v.key ? '#5E6AD2' : '#E5E5EA'}`,
+                    background: voiceType === v.key ? '#F0F0FF' : '#FFF',
+                    color: voiceType === v.key ? '#5E6AD2' : '#6E6E73',
+                    fontSize: 12, fontWeight: voiceType === v.key ? 600 : 400,
+                  }}>{v.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* 보이스 생성 버튼 */}
+            <button onClick={handleGenerateVoice} disabled={generatingVoice || generatingSubtitle}
+              style={{
+                width: '100%', padding: '10px', borderRadius: 8, border: 'none', marginBottom: 10, cursor: generatingVoice ? 'default' : 'pointer',
+                background: generatingVoice || generatingSubtitle ? '#E5E5EA' : '#5E6AD2',
+                color: generatingVoice || generatingSubtitle ? '#AEAEB2' : '#FFF',
+                fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}>
+              {generatingVoice
+                ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> 보이스 생성 중...</>
+                : generatingSubtitle
+                  ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> 자막 생성 중...</>
+                  : audioBase64 ? '보이스 재생성' : '🎙 보이스 생성'}
+            </button>
+
+            {/* 오디오 미리듣기 */}
+            {audioBase64 && (
+              <div style={{ marginBottom: 10 }}>
+                <audio controls src={`data:audio/mp3;base64,${audioBase64}`} style={{ width: '100%', borderRadius: 8 }} />
+                <div style={{ fontSize: 11, color: '#AEAEB2', marginTop: 4 }}>
+                  {audioDuration ? `약 ${audioDuration}초` : ''}
+                  {subtitleSegments ? ` · 자막 ${subtitleSegments.length}개 생성됨` : ''}
+                </div>
+              </div>
+            )}
+
+            {/* 자막 재생성 버튼 */}
+            {audioBase64 && audioDuration && (
+              <button onClick={() => handleGenerateSubtitle(draft.script, audioDuration, draft.id)} disabled={generatingSubtitle}
+                style={{
+                  width: '100%', padding: '8px', borderRadius: 8, border: '1px dashed #C8C8D0',
+                  background: '#FAFAFA', color: '#6E6E73', fontSize: 12, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 10,
+                }}>
+                {generatingSubtitle ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> 자막 재생성 중...</> : '↺ 자막 재생성'}
+              </button>
+            )}
+
+            {/* 합성 버튼 */}
+            {audioBase64 && (
+              <button onClick={handleCompose} disabled={composing}
+                style={{
+                  width: '100%', padding: '11px', borderRadius: 8, border: 'none', cursor: composing ? 'default' : 'pointer',
+                  background: composing ? '#E5E5EA' : '#1D1D1F',
+                  color: composing ? '#AEAEB2' : '#FFF',
+                  fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}>
+                {composing
+                  ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> 합성 중 (최대 60초)...</>
+                  : '✂️ 최종 영상 합성 (자막+보이스)'}
+              </button>
+            )}
+
+            {/* 합성 완료 */}
+            {composedVideoUrl && (
+              <div style={{ marginTop: 12, padding: '12px', background: '#F0FFF4', borderRadius: 8, border: '1px solid #34C75930' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#34C759', marginBottom: 8 }}>✅ 합성 완료 — Zernio로 바로 발행 가능</div>
+                <video src={composedVideoUrl} controls style={{ width: '100%', borderRadius: 6, maxHeight: 260 }} />
+                <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                  <a href={composedVideoUrl} target="_blank" rel="noopener noreferrer"
+                    style={{ fontSize: 12, color: '#5E6AD2', textDecoration: 'none', background: '#F0F0FF', padding: '4px 10px', borderRadius: 6 }}>
+                    Drive에서 보기
+                  </a>
+                  <span style={{ fontSize: 12, color: '#6E6E73', padding: '4px 0' }}>"검토 대기" 탭 → 발행 버튼으로 Zernio 업로드</span>
+                </div>
+              </div>
+            )}
+
+            {voiceError && (
+              <div style={{ marginTop: 8, padding: '8px 12px', background: '#FFF5F5', borderRadius: 8, fontSize: 12, color: '#FF3B30' }}>
+                {voiceError}
+              </div>
+            )}
+          </div>
+        )}
+
+        <button onClick={() => {
+          setStep('idle'); setError(''); setDraft(null); setTopic(''); setSourceImages([]);
+          setAudioBase64(null); setAudioDuration(null); setSubtitleSegments(null);
+          setComposedVideoUrl(null); setVoiceError('');
+        }}
           style={{ padding: '10px 20px', borderRadius: 8, border: '1px solid #E5E5EA', background: '#FFF', fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
           <Plus size={14} /> 새 콘텐츠 만들기
         </button>
