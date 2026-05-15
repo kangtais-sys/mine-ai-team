@@ -463,6 +463,7 @@ export default async function handler(req, res) {
       if (!draft.visualPrompt) return res.status(400).json({ error: 'visualPrompt 없음 (generate 먼저)' });
 
       // ── HeyGen 우선: 오디오가 있으면 립싱크 토킹 포토 영상 생성 ──
+      console.log(`[Creator Media] audioBase64 있음: ${!!draft.audioBase64}, HEYGEN_API_KEY 있음: ${!!process.env.HEYGEN_API_KEY}`);
       if (draft.audioBase64 && process.env.HEYGEN_API_KEY) {
         try {
           console.log('[Creator Media] HeyGen Talking Photo 모드 시작');
