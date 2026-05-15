@@ -27,9 +27,13 @@ function getApiKey() {
 }
 
 // 스크립트를 자연스러운 말투로 전처리
+// 개행을 공백으로 뭉개지 않고 → ElevenLabs가 인식하는 자연 pause로 변환
 function preprocessScript(script) {
   return script
     .replace(/\r\n/g, '\n')
+    // 개행 = 숨 고르는 포인트 → 짧은 정지 처리 (마침표가 없으면 추가)
+    .replace(/([^.!?。])\n/g, '$1. ')
+    .replace(/([.!?。])\n/g, '$1 ')
     .replace(/\n+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -68,11 +72,11 @@ export default async function handler(req, res) {
           model_id: 'eleven_multilingual_v2',
           language_code: 'ko',
           voice_settings: {
-            stability: 0.45,          // 약간 자연스러운 변화
-            similarity_boost: 0.80,   // 보이스 일관성
-            style: 0.35,              // 표현력 (0=중립, 1=과장)
+            stability: 0.40,          // 더 자연스러운 변화 (낮을수록 생동감)
+            similarity_boost: 0.80,   // 보이스 일관성 유지
+            style: 0.48,              // 표현력 올림 (0.35 → 0.48) — 더 자연스러운 억양
             use_speaker_boost: true,  // 더 선명한 음질
-            speed: 1.05,              // 살짝 빠르게 (숏츠 스타일)
+            speed: 1.0,               // 자연 속도 (1.05는 약간 급해보임)
           },
           output_format: 'mp3_44100_128',
         }),

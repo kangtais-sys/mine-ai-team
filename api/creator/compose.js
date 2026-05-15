@@ -147,14 +147,22 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath) {
         const txt = escapeDrawtext(seg.text);
         const start = parseFloat(seg.startSec) || 0;
         const end = parseFloat(seg.endSec) || start + 1;
-        // 흰 텍스트 + 검정 외곽선 + 하단 중앙 배치
-        return `drawtext=text='${txt}':enable='between(t\\,${start}\\,${end})':fontsize=64:fontcolor=white:bordercolor=black:borderw=4:x=(w-text_w)/2:y=h*0.82:line_spacing=8`;
+        // 흰 텍스트 + 두꺼운 검정 외곽선 + 하단 중앙 (바이럴 숏츠 스타일)
+        return `drawtext=text='${txt}':enable='between(t\\,${start}\\,${end})':fontsize=68:fontcolor=white:bordercolor=black:borderw=5:x=(w-text_w)/2:y=h*0.80:line_spacing=10`;
       });
 
-      // 필터 체인: [0:v]drawtext=...,drawtext=...[v]
-      filterChain = `[0:v]${drawtextFilters.join(',')}[v]`;
+      // 첫 2초 줌인 효과 + 색감 보정 (따뜻한 톤 + 살짝 대비 강화) + 자막
+      // zoompan: 1.0→1.04 줌인 (처음 2초, 이후 고정)
+      const zoomFilter = `zoompan=z='if(lte(on\\,48)\\,1+0.04*(on/48)\\,1.04)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=24`;
+      // 색감: 살짝 따뜻하게 + 대비 강화 (AI 영상 특유의 평탄한 색감 보정)
+      const colorFilter = `eq=saturation=1.15:contrast=1.05:brightness=0.02`;
+
+      filterChain = `[0:v]${zoomFilter},${colorFilter},${drawtextFilters.join(',')}[v]`;
     } else {
-      filterChain = '[0:v]copy[v]';
+      // 자막 없어도 줌인 + 색보정은 적용
+      const zoomFilter = `zoompan=z='if(lte(on\\,48)\\,1+0.04*(on/48)\\,1.04)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=24`;
+      const colorFilter = `eq=saturation=1.15:contrast=1.05:brightness=0.02`;
+      filterChain = `[0:v]${zoomFilter},${colorFilter}[v]`;
     }
 
     const outputOpts = [

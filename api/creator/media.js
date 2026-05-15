@@ -149,26 +149,34 @@ async function uploadAudioToHeyGen(audioBase64) {
 }
 
 // HeyGen 영상 생성 요청 → video_id
-async function createHeyGenVideo(talkingPhotoId, audioAssetId) {
+// backgroundImageUrl: Higgsfield로 생성한 K뷰티 배경 이미지 URL (선택)
+// scriptSentiment: 스크립트 분석 결과 ('serious'|'excited'|'default')
+async function createHeyGenVideo(talkingPhotoId, audioAssetId, backgroundImageUrl, scriptSentiment) {
+  // 표현식: 스크립트 감정에 따라 동적으로 설정
+  // serious(경고/진지) → 기본, excited(신남/놀라움) → 행복, default → 기본
+  const expression = scriptSentiment === 'excited' ? 'happy' : 'default';
+
+  // 배경: 실제 K뷰티 스튜디오 이미지 > 따뜻한 크림 단색
+  const background = backgroundImageUrl
+    ? { type: 'image', value: backgroundImageUrl }
+    : { type: 'color', value: '#FEF0E8' }; // 따뜻한 살구/크림 (차가운 흰색 → K뷰티 피부톤)
+
   const body = {
     video_inputs: [{
       character: {
         type: 'talking_photo',
         talking_photo_id: talkingPhotoId,
-        talking_photo_style: 'circle',
+        // talking_photo_style 제거 — circle 크롭 없이 자연스러운 전신 프레이밍
         talking_style: 'expressive',
-        expression: 'happy',
+        expression,
         super_resolution: true,
-        matting: true,          // 배경 제거 (나중에 배경 합성 가능)
+        matting: true,          // 배경 분리 → 실제 배경 이미지 합성
       },
       voice: {
         type: 'audio',
         audio_asset_id: audioAssetId,
       },
-      background: {
-        type: 'color',
-        value: '#FAFAFA',       // 밝은 뉴트럴 배경 (K-뷰티 스튜디오 느낌)
-      },
+      background,
     }],
     dimension: { width: 1080, height: 1920 },  // 9:16 세로형
     caption: false,
@@ -191,6 +199,74 @@ async function createHeyGenVideo(talkingPhotoId, audioAssetId) {
   if (!videoId) throw new Error(`HeyGen video_id 없음: ${JSON.stringify(genData).substring(0, 200)}`);
   console.log(`[HeyGen] 영상 생성 요청 완료: ${videoId}`);
   return videoId;
+}
+
+// ── Higgsfield 배경 이미지 생성 (K뷰티 스튜디오) ─────────────────
+// visualPrompt → 사람 없는 배경만 생성 → HeyGen 배경으로 사용
+// Redis 24시간 캐시
+async function generateBackgroundImage(visualPrompt) {
+  const cacheKey = `heygen:bg:${Buffer.from(visualPrompt).toString('base64').substring(0, 40)}`;
+  const cached = await redis.get(cacheKey).catch(() => null);
+  if (cached) { console.log('[HeyGen BG] 캐시 히트'); return cached; }
+
+  const headers = higgsfieldHeaders();
+  // Reve text-to-image (배경 씬 전용)
+  const bgPrompt = `${visualPrompt}, no people, no person, background only, ultra realistic, 9:16 vertical`;
+
+  // 1차 시도: reve/text-to-image
+  try {
+    const res = await fetch(`${HIGGSFIELD_BASE}/reve/text-to-image`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ params: { prompt: bgPrompt, aspect_ratio: '9:16' } }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const url = data?.image?.url || data?.url || data?.images?.[0]?.url;
+      if (url) {
+        await redis.set(cacheKey, url, { ex: 86400 }).catch(() => {});
+        console.log('[HeyGen BG] Reve 배경 생성 완료:', url.substring(0, 60));
+        return url;
+      }
+    }
+  } catch (e) {
+    console.warn('[HeyGen BG] Reve 실패:', e.message);
+  }
+
+  // 2차 시도: soul/standard
+  try {
+    const res = await fetch(`${HIGGSFIELD_BASE}/v1/text2image/soul`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ params: { prompt: bgPrompt, model: 'higgsfield-ai/soul/standard' } }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const url = data?.image?.url || data?.url;
+      if (url) {
+        await redis.set(cacheKey, url, { ex: 86400 }).catch(() => {});
+        console.log('[HeyGen BG] Soul 배경 생성 완료:', url.substring(0, 60));
+        return url;
+      }
+    }
+  } catch (e) {
+    console.warn('[HeyGen BG] Soul 실패:', e.message);
+  }
+
+  console.warn('[HeyGen BG] 배경 생성 실패 — 단색 폴백');
+  return null;
+}
+
+// 스크립트 감정 분석 (표정 설정용)
+function analyzeScriptSentiment(script) {
+  if (!script) return 'default';
+  const excited = /와|대박|충격|진짜요\?|믿기지|놀라운|엄청|역대급|핵심/;
+  const serious = /주의|위험|절대|금지|부작용|잘못|경고|사실은/;
+  if (excited.test(script)) return 'excited';
+  if (serious.test(script)) return 'serious';
+  return 'default';
 }
 
 // HeyGen 영상 상태 조회
@@ -403,7 +479,14 @@ export default async function handler(req, res) {
 
           const talkingPhotoId = await getOrCreateTalkingPhoto(personaImageUrl, cacheKey);
           const audioAssetId = await uploadAudioToHeyGen(draft.audioBase64);
-          const videoId = await createHeyGenVideo(talkingPhotoId, audioAssetId);
+
+          // 배경 이미지 생성 (실패해도 단색 폴백으로 진행)
+          const bgUrl = draft.visualPrompt
+            ? await generateBackgroundImage(draft.visualPrompt).catch(() => null)
+            : null;
+          const sentiment = analyzeScriptSentiment(draft.script);
+
+          const videoId = await createHeyGenVideo(talkingPhotoId, audioAssetId, bgUrl, sentiment);
 
           const updated = {
             ...draft,
