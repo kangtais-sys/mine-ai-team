@@ -245,7 +245,7 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgm
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { draftId } = req.body || {};
+  const { draftId, noSubtitles } = req.body || {};
   if (!draftId) return res.status(400).json({ error: 'draftId 필수' });
 
   // 드래프트 로드
@@ -257,10 +257,14 @@ export default async function handler(req, res) {
   // HeyGen 영상에는 이미 오디오가 내장됨 — audioBase64 없어도 자막 합성 가능
   const isHeyGen = draft.videoEngine === 'heygen';
 
-  // 자막 세그먼트 로드
-  const subRaw = await redis.get(`creator:subtitles:${draftId}`).catch(() => null);
-  const subData = subRaw ? (typeof subRaw === 'string' ? JSON.parse(subRaw) : subRaw) : null;
-  const segments = subData?.segments || draft.subtitleSegments || [];
+  // 자막 세그먼트 로드 (noSubtitles=true로 디버그용 스킵 가능)
+  let segments = [];
+  if (!noSubtitles) {
+    const subRaw = await redis.get(`creator:subtitles:${draftId}`).catch(() => null);
+    const subData = subRaw ? (typeof subRaw === 'string' ? JSON.parse(subRaw) : subRaw) : null;
+    segments = subData?.segments || draft.subtitleSegments || [];
+  }
+  console.log(`[Compose] segments: ${segments.length}개, isHeyGen: ${isHeyGen}, noSubtitles: ${!!noSubtitles}`);
 
   const safeId = draftId.replace(/[^a-z0-9-]/gi, '').substring(0, 40);
   const videoPath  = `/tmp/${safeId}_src.mp4`;
