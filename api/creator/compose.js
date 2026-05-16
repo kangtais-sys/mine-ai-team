@@ -178,7 +178,8 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgm
 
   console.log(`[Compose] 폰트 경로: ${resolvedFontPath || '없음 (한국어 자막 렌더링 불가)'}`);
   if (resolvedFontPath) {
-    fontParam = `:fontfile='${resolvedFontPath.replace(/'/g, "\\'")}'`;
+    // fontfile 경로는 따옴표 없이 (특수문자 없는 경로) — FFmpeg 파서 호환
+    fontParam = `:fontfile=${resolvedFontPath}`;
   }
 
   return new Promise((resolve, reject) => {
@@ -211,7 +212,8 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgm
         const start = parseFloat(seg.startSec) || 0;
         const end = parseFloat(seg.endSec) || start + 1;
         // 흰 텍스트 + 두꺼운 검정 외곽선 + 하단 중앙 (바이럴 숏츠 스타일)
-        return `drawtext=text='${txt}'${fontParam}:enable='between(t\\,${start}\\,${end})':fontsize=68:fontcolor=white:bordercolor=black:borderw=5:x=(w-text_w)/2:y=h*0.80:line_spacing=10`;
+        // fontfile은 따옴표 없이 — FFmpeg filter parser와 호환성 확보
+        return `drawtext=text='${txt}'${fontParam}:enable='between(t\\,${start}\\,${end})':fontsize=68:fontcolor=white:bordercolor=black:borderw=5:x=(w-text_w)/2:y=h*0.82`;
       });
 
       if (zoomFilter) {
