@@ -273,6 +273,30 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgm
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  // ── 폰트 디버그 ─────────────────────────────────────────────────────
+  if (req.query?.debug === 'font') {
+    const checks = {};
+    const paths = {
+      cwd: process.cwd(),
+      apiFont: path.join(process.cwd(), 'api/fonts/NanumGothicBold.ttf'),
+      publicFont: path.join(process.cwd(), 'public/fonts/NanumGothicBold.ttf'),
+      tmpFont: '/tmp/NanumGothicBold.ttf',
+    };
+    for (const [k, p] of Object.entries(paths)) {
+      checks[k] = { path: p, exists: await fs.access(p).then(() => true).catch(() => false) };
+    }
+    // CDN 다운로드 테스트
+    try {
+      const r = await fetch('https://mine-ai-team.vercel.app/fonts/NanumGothicBold.ttf', { signal: AbortSignal.timeout(15000) });
+      const buf = r.ok ? Buffer.from(await r.arrayBuffer()) : null;
+      if (buf) { await fs.writeFile('/tmp/NanumGothicBold.ttf', buf); }
+      checks.cdnDownload = { status: r.status, size: buf?.length || 0, writtenToTmp: !!buf };
+    } catch (e) {
+      checks.cdnDownload = { error: e.message };
+    }
+    return res.status(200).json(checks);
+  }
+
   const { draftId, noSubtitles } = req.body || {};
   if (!draftId) return res.status(400).json({ error: 'draftId 필수' });
 
