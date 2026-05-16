@@ -138,7 +138,7 @@ function selectBgmTrack(draft) {
 // ── FFmpeg 합성 ────────────────────────────────────────────────────
 // HeyGen 영상에는 이미 오디오가 포함되어 있으므로 audioPath는 선택적
 // 자막은 drawtext 필터로 렌더링 (ASS 필터 대신 — 폰트 의존성 없음)
-async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgmPath) {
+async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgmPath, isHeyGen = false) {
   const ffmpeg = (await import('fluent-ffmpeg')).default;
   const { path: ffmpegPath } = await import('@ffmpeg-installer/ffmpeg');
   ffmpeg.setFfmpegPath(ffmpegPath);
@@ -162,8 +162,17 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgm
 
     let filterChain = '[0:v]';
 
+    // 색감 보정 (따뜻한 톤 + 살짝 대비 강화 — AI 영상 특유의 평탄한 색감 보정)
+    const colorFilter = `eq=saturation=1.15:contrast=1.05:brightness=0.02`;
+
+    // HeyGen 영상: 자체 모션 있음 → zoompan 제외 (프레임레이트 변환으로 인한 길이 왜곡 방지)
+    // Higgsfield 영상: 정적 이미지 → zoompan 줌인 효과 적용
+    const zoomFilter = isHeyGen
+      ? null  // HeyGen은 zoompan 없이 원본 프레임레이트 유지
+      : `zoompan=z='if(lte(on\\,48)\\,1+0.04*(on/48)\\,1.04)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=24`;
+
     if (segments && segments.length > 0) {
-      const drawtextFilters = segments.map((seg, i) => {
+      const drawtextFilters = segments.map((seg) => {
         const txt = escapeDrawtext(seg.text);
         const start = parseFloat(seg.startSec) || 0;
         const end = parseFloat(seg.endSec) || start + 1;
@@ -171,18 +180,18 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgm
         return `drawtext=text='${txt}':enable='between(t\\,${start}\\,${end})':fontsize=68:fontcolor=white:bordercolor=black:borderw=5:x=(w-text_w)/2:y=h*0.80:line_spacing=10`;
       });
 
-      // 첫 2초 줌인 효과 + 색감 보정 (따뜻한 톤 + 살짝 대비 강화) + 자막
-      // zoompan: 1.0→1.04 줌인 (처음 2초, 이후 고정)
-      const zoomFilter = `zoompan=z='if(lte(on\\,48)\\,1+0.04*(on/48)\\,1.04)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=24`;
-      // 색감: 살짝 따뜻하게 + 대비 강화 (AI 영상 특유의 평탄한 색감 보정)
-      const colorFilter = `eq=saturation=1.15:contrast=1.05:brightness=0.02`;
-
-      filterChain = `[0:v]${zoomFilter},${colorFilter},${drawtextFilters.join(',')}[v]`;
+      if (zoomFilter) {
+        filterChain = `[0:v]${zoomFilter},${colorFilter},${drawtextFilters.join(',')}[v]`;
+      } else {
+        filterChain = `[0:v]${colorFilter},${drawtextFilters.join(',')}[v]`;
+      }
     } else {
-      // 자막 없어도 줌인 + 색보정은 적용
-      const zoomFilter = `zoompan=z='if(lte(on\\,48)\\,1+0.04*(on/48)\\,1.04)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=24`;
-      const colorFilter = `eq=saturation=1.15:contrast=1.05:brightness=0.02`;
-      filterChain = `[0:v]${zoomFilter},${colorFilter}[v]`;
+      // 자막 없어도 색보정 적용 (zoompan은 HeyGen 여부에 따라)
+      if (zoomFilter) {
+        filterChain = `[0:v]${zoomFilter},${colorFilter}[v]`;
+      } else {
+        filterChain = `[0:v]${colorFilter}[v]`;
+      }
     }
 
     // BGM 믹싱 설정
@@ -281,7 +290,7 @@ export default async function handler(req, res) {
     const bgmAbsPath = path.join(process.cwd(), bgmRelPath);
     const bgmPath = await fs.access(bgmAbsPath).then(() => bgmAbsPath).catch(() => null);
     if (bgmPath) console.log('[Compose] BGM 트랙:', path.basename(bgmPath));
-    await composeWithFfmpeg(videoPath, audioForMerge, segments, outputPath, bgmPath);
+    await composeWithFfmpeg(videoPath, audioForMerge, segments, outputPath, bgmPath, isHeyGen);
 
     // 5. preview 모드: 영상 파일을 직접 응답 (Drive 업로드 없이 품질 확인용)
     const isPreview = req.query?.preview === 'true';
