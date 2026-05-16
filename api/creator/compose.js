@@ -147,6 +147,12 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgm
   const hasExternalAudio = audioPath && await fs.access(audioPath).then(() => true).catch(() => false);
   const hasBgm = bgmPath && await fs.access(bgmPath).then(() => true).catch(() => false);
 
+  // 번들 폰트 경로 (한국어 지원 NanumGothicBold) — Promise 밖에서 await
+  const fontPath = path.join(process.cwd(), 'public/fonts/NanumGothicBold.ttf');
+  const fontExists = await fs.access(fontPath).then(() => true).catch(() => false);
+  const fontParam = fontExists ? `:fontfile='${fontPath.replace(/'/g, "\\'")}'` : '';
+  console.log(`[Compose] 폰트: ${fontExists ? fontPath : '시스템 기본 (한국어 깨질 수 있음)'}`);
+
   return new Promise((resolve, reject) => {
     let cmd = ffmpeg();
 
@@ -170,12 +176,6 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgm
     const zoomFilter = isHeyGen
       ? null  // HeyGen은 zoompan 없이 원본 프레임레이트 유지
       : `zoompan=z='if(lte(on\\,48)\\,1+0.04*(on/48)\\,1.04)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=24`;
-
-    // 번들 폰트 경로 (한국어 지원 NanumGothicBold)
-    const fontPath = path.join(process.cwd(), 'public/fonts/NanumGothicBold.ttf');
-    const fontExists = await fs.access(fontPath).then(() => true).catch(() => false);
-    const fontParam = fontExists ? `:fontfile='${fontPath.replace(/'/g, "'\\\\''")}'` : '';
-    if (!fontExists) console.warn('[Compose] NanumGothicBold.ttf 없음 — 시스템 기본 폰트 사용 (한국어 깨질 수 있음)');
 
     if (segments && segments.length > 0) {
       const drawtextFilters = segments.map((seg) => {
