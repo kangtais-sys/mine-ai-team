@@ -36,7 +36,7 @@ export default async function handler(req, res) {
 
   // ── PATCH: 드래프트 수정 ──
   if (req.method === 'PATCH') {
-    const { caption, hashtags, scheduledAt, status, notes } = req.body || {};
+    const { caption, hashtags, scheduledAt, status, notes, mediaUrl } = req.body || {};
 
     const updates = { updatedAt: new Date().toISOString() };
     if (caption !== undefined) updates.caption = caption;
@@ -44,6 +44,7 @@ export default async function handler(req, res) {
     if (notes !== undefined) updates.notes = notes;
     if (scheduledAt !== undefined) updates.scheduledAt = scheduledAt;
     if (status !== undefined) updates.status = status;
+    if (mediaUrl !== undefined) updates.mediaUrl = mediaUrl;
 
     const updated = { ...draft, ...updates };
     await redis.set(`creator:draft:${id}`, updated, { ex: 86400 * 30 });
