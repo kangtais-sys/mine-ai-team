@@ -171,13 +171,19 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgm
       ? null  // HeyGen은 zoompan 없이 원본 프레임레이트 유지
       : `zoompan=z='if(lte(on\\,48)\\,1+0.04*(on/48)\\,1.04)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=24`;
 
+    // 번들 폰트 경로 (한국어 지원 NanumGothicBold)
+    const fontPath = path.join(process.cwd(), 'public/fonts/NanumGothicBold.ttf');
+    const fontExists = await fs.access(fontPath).then(() => true).catch(() => false);
+    const fontParam = fontExists ? `:fontfile='${fontPath.replace(/'/g, "'\\\\''")}'` : '';
+    if (!fontExists) console.warn('[Compose] NanumGothicBold.ttf 없음 — 시스템 기본 폰트 사용 (한국어 깨질 수 있음)');
+
     if (segments && segments.length > 0) {
       const drawtextFilters = segments.map((seg) => {
         const txt = escapeDrawtext(seg.text);
         const start = parseFloat(seg.startSec) || 0;
         const end = parseFloat(seg.endSec) || start + 1;
         // 흰 텍스트 + 두꺼운 검정 외곽선 + 하단 중앙 (바이럴 숏츠 스타일)
-        return `drawtext=text='${txt}':enable='between(t\\,${start}\\,${end})':fontsize=68:fontcolor=white:bordercolor=black:borderw=5:x=(w-text_w)/2:y=h*0.80:line_spacing=10`;
+        return `drawtext=text='${txt}'${fontParam}:enable='between(t\\,${start}\\,${end})':fontsize=68:fontcolor=white:bordercolor=black:borderw=5:x=(w-text_w)/2:y=h*0.80:line_spacing=10`;
       });
 
       if (zoomFilter) {
