@@ -147,41 +147,38 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgm
   const hasExternalAudio = audioPath && await fs.access(audioPath).then(() => true).catch(() => false);
   const hasBgm = bgmPath && await fs.access(bgmPath).then(() => true).catch(() => false);
 
-  // 한국어 폰트 준비 — /public/fonts에서 우선 시도, 없으면 CDN에서 /tmp/에 다운로드
+  // 한국어 폰트 준비
+  // /api/fonts/는 Vercel 함수 번들에 포함됨 (서버사이드에서 직접 접근 가능)
   let fontParam = '';
-  const localFontPath = path.join(process.cwd(), 'public/fonts/NanumGothicBold.ttf');
+  const apiFontPath = path.join(process.cwd(), 'api/fonts/NanumGothicBold.ttf');
+  const publicFontPath = path.join(process.cwd(), 'public/fonts/NanumGothicBold.ttf');
   const tmpFontPath = '/tmp/NanumGothicBold.ttf';
-  let resolvedFontPath = null;
 
-  if (await fs.access(localFontPath).then(() => true).catch(() => false)) {
-    resolvedFontPath = localFontPath;
-    console.log('[Compose] 폰트: local bundle', localFontPath);
-  } else {
-    // Vercel /public은 CDN 서빙 → 함수 번들에서 직접 접근 불가 → /tmp/에 다운로드
+  let resolvedFontPath = null;
+  for (const fp of [apiFontPath, publicFontPath, tmpFontPath]) {
+    if (await fs.access(fp).then(() => true).catch(() => false)) {
+      resolvedFontPath = fp;
+      break;
+    }
+  }
+
+  if (!resolvedFontPath) {
+    // 최후 수단: CDN에서 /tmp/에 다운로드
     try {
-      const fontAlreadyInTmp = await fs.access(tmpFontPath).then(() => true).catch(() => false);
-      if (!fontAlreadyInTmp) {
-        const baseUrl = process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : 'https://mine-ai-team.vercel.app';
-        const fontRes = await fetch(`${baseUrl}/fonts/NanumGothicBold.ttf`, { signal: AbortSignal.timeout(10000) });
-        if (fontRes.ok) {
-          await fs.writeFile(tmpFontPath, Buffer.from(await fontRes.arrayBuffer()));
-          console.log('[Compose] 폰트: CDN 다운로드 완료 →', tmpFontPath);
-        }
-      } else {
-        console.log('[Compose] 폰트: /tmp/ 캐시 사용');
+      const fontRes = await fetch('https://mine-ai-team.vercel.app/fonts/NanumGothicBold.ttf', { signal: AbortSignal.timeout(15000) });
+      if (fontRes.ok) {
+        await fs.writeFile(tmpFontPath, Buffer.from(await fontRes.arrayBuffer()));
+        resolvedFontPath = tmpFontPath;
+        console.log('[Compose] 폰트: CDN 다운로드 완료');
       }
-      resolvedFontPath = await fs.access(tmpFontPath).then(() => tmpFontPath).catch(() => null);
     } catch (e) {
       console.warn('[Compose] 폰트 다운로드 실패:', e.message);
     }
   }
 
+  console.log(`[Compose] 폰트 경로: ${resolvedFontPath || '없음 (한국어 자막 렌더링 불가)'}`);
   if (resolvedFontPath) {
     fontParam = `:fontfile='${resolvedFontPath.replace(/'/g, "\\'")}'`;
-  } else {
-    console.warn('[Compose] 폰트 없음 — 자막 한국어 렌더링 안 될 수 있음');
   }
 
   return new Promise((resolve, reject) => {
