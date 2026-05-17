@@ -190,10 +190,21 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgm
     if (hasExternalAudio) cmd = cmd.input(audioPath);
     if (hasBgm) cmd = cmd.input(bgmPath);
 
-    // 자막 drawtext 필터 체인 구성 (시스템 폰트 사용)
-    // 텍스트 이스케이프: FFmpeg drawtext는 :, ', \\ 등을 이스케이프해야 함
+    // 자막 drawtext 필터 체인 구성
+    // FFmpeg drawtext 이스케이프 규칙:
+    //   \  → \\   (백슬래시)
+    //   '  → \'   (홑따옴표 — text='' 안에서)
+    //   :  → \:   (옵션 구분자)
+    //   %  → %%   (format specifier — 없으면 No such file 오류!)
     const escapeDrawtext = (str) =>
-      (str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/:/g, '\\:');
+      (str || '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/:/g, '\\:')
+        .replace(/%/g, '%%');
+
+    // enable 표현식: 단일 따옴표 안에서 콤마 이스케이프 불필요
+    const makeEnable = (start, end) => `enable='between(t,${start},${end})'`;
 
     let filterChain = '[0:v]';
 
@@ -212,8 +223,7 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgm
         const start = parseFloat(seg.startSec) || 0;
         const end = parseFloat(seg.endSec) || start + 1;
         // 흰 텍스트 + 두꺼운 검정 외곽선 + 하단 중앙 (바이럴 숏츠 스타일)
-        // fontfile은 따옴표 없이 — FFmpeg filter parser와 호환성 확보
-        return `drawtext=text='${txt}'${fontParam}:enable='between(t\\,${start}\\,${end})':fontsize=68:fontcolor=white:bordercolor=black:borderw=5:x=(w-text_w)/2:y=h*0.82`;
+        return `drawtext=text='${txt}'${fontParam}:${makeEnable(start, end)}:fontsize=68:fontcolor=white:bordercolor=black:borderw=5:x=(w-text_w)/2:y=h*0.82`;
       });
 
       if (zoomFilter) {
