@@ -147,12 +147,13 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgm
   const hasExternalAudio = audioPath && await fs.access(audioPath).then(() => true).catch(() => false);
   const hasBgm = bgmPath && await fs.access(bgmPath).then(() => true).catch(() => false);
 
-  // 한국어 폰트 준비
-  // /api/fonts/는 Vercel 함수 번들에 포함됨 (서버사이드에서 직접 접근 가능)
+  // 한국어 폰트 준비 — NotoSansKR-Bold.otf (OTF, FFmpeg freetype 호환)
+  // NanumGothicBold.ttf는 GitHub raw 다운로드 시 HTML로 받아져 사용 불가
   let fontParam = '';
-  const apiFontPath = path.join(process.cwd(), 'api/fonts/NanumGothicBold.ttf');
-  const publicFontPath = path.join(process.cwd(), 'public/fonts/NanumGothicBold.ttf');
-  const tmpFontPath = '/tmp/NanumGothicBold.ttf';
+  const FONT_FILENAME = 'NotoSansKR-Bold.otf';
+  const apiFontPath = path.join(process.cwd(), `api/fonts/${FONT_FILENAME}`);
+  const publicFontPath = path.join(process.cwd(), `public/fonts/${FONT_FILENAME}`);
+  const tmpFontPath = `/tmp/${FONT_FILENAME}`;
 
   let resolvedFontPath = null;
   for (const fp of [apiFontPath, publicFontPath, tmpFontPath]) {
@@ -163,9 +164,9 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgm
   }
 
   if (!resolvedFontPath) {
-    // 최후 수단: CDN에서 /tmp/에 다운로드
+    // 최후 수단: CDN(자기 자신)에서 /tmp/에 다운로드
     try {
-      const fontRes = await fetch('https://mine-ai-team.vercel.app/fonts/NanumGothicBold.ttf', { signal: AbortSignal.timeout(15000) });
+      const fontRes = await fetch(`https://mine-ai-team.vercel.app/fonts/${FONT_FILENAME}`, { signal: AbortSignal.timeout(20000) });
       if (fontRes.ok) {
         await fs.writeFile(tmpFontPath, Buffer.from(await fontRes.arrayBuffer()));
         resolvedFontPath = tmpFontPath;
@@ -178,7 +179,6 @@ async function composeWithFfmpeg(videoPath, audioPath, segments, outputPath, bgm
 
   console.log(`[Compose] 폰트 경로: ${resolvedFontPath || '없음 (한국어 자막 렌더링 불가)'}`);
   if (resolvedFontPath) {
-    // fontfile 경로는 따옴표 없이 (특수문자 없는 경로) — FFmpeg 파서 호환
     fontParam = `:fontfile=${resolvedFontPath}`;
   }
 
