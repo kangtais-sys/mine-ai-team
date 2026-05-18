@@ -1599,9 +1599,7 @@ export default function ChatView() {
   const agent = getAgent(activeAgent);
   const messages = conversations[activeAgent] || [];
 
-  // Guard: agent not found (e.g. 'chief' default before URL sync)
-  if (!agent) return null;
-
+  // hooks must come before any conditional return
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -1619,6 +1617,9 @@ export default function ChatView() {
     }
   }, []);
 
+  // Guard AFTER hooks
+  if (!agent) return <div style={{ flex: 1, background: '#F5F5F7' }} />;
+
   const send = () => {
     const text = input.trim();
     if (!text || isLoading) return;
@@ -1630,7 +1631,8 @@ export default function ChatView() {
   const AgentDashboard = AGENT_DASHBOARDS[activeAgent];
 
   return (
-    <>
+    // 명시적 full-size wrapper: fragment 대신 div로 height/width 100% 확보 (body #0F0F0F 노출 방지)
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', background: '#F5F5F7' }}>
       {/* Header */}
       <div style={{ height: 48, minHeight: 48, padding: '0 20px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid #E5E5EA', background: '#FFFFFF', flexShrink: 0 }}>
         <Icon size={16} strokeWidth={1.5} color="#5E6AD2" />
@@ -1735,6 +1737,6 @@ export default function ChatView() {
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

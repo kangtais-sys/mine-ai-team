@@ -105,7 +105,7 @@ export default function App() {
   const { page } = route;
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#F5F5F7' }}>
+    <div style={{ display: 'flex', width: '100%', height: '100vh', overflow: 'hidden', background: '#F5F5F7' }}>
       <div style={{ width: 240, minWidth: 240, maxWidth: 240, height: '100vh', position: 'fixed', left: 0, top: 0, zIndex: 50 }}>
         <Sidebar route={route} onNavigate={navigate} urgentCount={urgentCount} />
       </div>
