@@ -441,7 +441,7 @@ function PersonaSetup({ onGoCreate }) {
   ];
 
   return (
-    <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', maxWidth: 734 }}>
+    <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', maxWidth: 860 }}>
 
       {/* ── Lightbox Modal ── */}
       {lightbox && (
@@ -640,7 +640,7 @@ function PersonaSetup({ onGoCreate }) {
       </div>
 
       {/* ── Right: Sticky Panel ── */}
-      <div style={{ width: 220, flexShrink: 0, position: 'sticky', top: 0, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', paddingRight: 2 }}>
+      <div style={{ width: 280, flexShrink: 0, position: 'sticky', top: 0, display: 'flex', flexDirection: 'column', gap: 14, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', paddingRight: 2 }}>
 
         {/* Character Image Gallery */}
         <div style={{ ...CARD, padding: '16px' }}>
@@ -1127,6 +1127,8 @@ function CreateForm({ onGenerated }) {
   const [composing, setComposing]                 = useState(false);
   const [composedVideoUrl, setComposedVideoUrl]   = useState(null);
   const [voiceError, setVoiceError]               = useState('');
+  const [autoComposePending, setAutoComposePending] = useState(false);
+  const pollTimerRef = useRef(null);
 
   useEffect(() => {
     fetch('/api/creator/persona').then(r => r.json()).then(d => { if (d.persona) setPersona(d.persona); }).catch(() => {});
@@ -1136,6 +1138,69 @@ function CreateForm({ onGenerated }) {
       if (pri) setPrimaryImage(pri);
     }).catch(() => {});
   }, []);
+
+  // ── Auto-compose: HeyGen 완료(draft.status=ready) 감지 시 자동 합성 ──
+  useEffect(() => {
+    if (!draft?.id || !autoComposePending || composing) return;
+    if (draft.status === 'ready') {
+      // 이미 ready 상태이면 즉시 합성
+      setAutoComposePending(false);
+      (async () => {
+        setComposing(true); setVoiceError('');
+        try {
+          const r = await fetch('/api/creator/compose', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ draftId: draft.id }),
+          });
+          const d = await r.json();
+          if (!d.success) throw new Error(d.error || '합성 실패');
+          setComposedVideoUrl(d.videoUrl);
+          const refreshed = await fetch(`/api/creator/draft?id=${draft.id}`).then(res => res.json()).catch(() => ({}));
+          if (refreshed.draft) setDraft(refreshed.draft);
+        } catch (e) { setVoiceError(e.message); }
+        finally { setComposing(false); }
+      })();
+      return;
+    }
+    if (draft.status !== 'generating') { setAutoComposePending(false); return; }
+
+    // generating 상태: 15초마다 폴링
+    let cancelled = false;
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const res = await fetch(`/api/creator/draft?id=${draft.id}`);
+        const data = await res.json();
+        if (cancelled) return;
+        const freshDraft = data.draft;
+        if (freshDraft?.status === 'ready') {
+          setDraft(freshDraft);
+          setAutoComposePending(false);
+          setComposing(true); setVoiceError('');
+          try {
+            const r = await fetch('/api/creator/compose', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ draftId: freshDraft.id }),
+            });
+            const d = await r.json();
+            if (!d.success) throw new Error(d.error || '합성 실패');
+            setComposedVideoUrl(d.videoUrl);
+            const refreshed = await fetch(`/api/creator/draft?id=${freshDraft.id}`).then(res2 => res2.json()).catch(() => ({}));
+            if (refreshed.draft) setDraft(refreshed.draft);
+          } catch (e) { setVoiceError(e.message); }
+          finally { setComposing(false); }
+        } else if (freshDraft?.status === 'generating') {
+          pollTimerRef.current = setTimeout(poll, 15000);
+        } else {
+          setAutoComposePending(false);
+        }
+      } catch {
+        if (!cancelled) pollTimerRef.current = setTimeout(poll, 15000);
+      }
+    };
+    pollTimerRef.current = setTimeout(poll, 10000);
+    return () => { cancelled = true; clearTimeout(pollTimerRef.current); };
+  }, [draft?.id, draft?.status, autoComposePending]);
 
   const togglePlatform = (key) => setPlatforms(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]);
 
@@ -1218,7 +1283,8 @@ function CreateForm({ onGenerated }) {
           const mediaData = await mediaRes.json();
           if (mediaData.success) {
             setDraft(mediaData.draft);
-            console.log('[Creator] HeyGen 영상 생성 시작됨 — 크론이 완료 폴링 중');
+            setAutoComposePending(true); // HeyGen 완료 시 자동 합성 트리거
+            console.log('[Creator] HeyGen 영상 생성 시작됨 — 완료 시 자동 합성 예정');
           }
         } catch (me) {
           console.warn('[Creator] HeyGen 영상 요청 실패 (무시):', me.message);
@@ -1303,7 +1369,10 @@ function CreateForm({ onGenerated }) {
             <span style={{ fontSize: 14, fontWeight: 600, color: '#1D1D1F' }}>콘텐츠 생성 완료!</span>
           </div>
           <p style={{ fontSize: 13, color: '#6E6E73', margin: 0 }}>
-            {draft.status === 'generating' ? '영상 생성 중 (1-3분 소요) — 아래에서 보이스·자막을 먼저 만들어두세요.' : '"검토 대기" 탭에서 확인·편집·발행할 수 있어요.'}
+            {composing ? '🎞 자동 합성 중... (최대 60초)' :
+             autoComposePending ? '⏳ HeyGen 영상 완료 대기 중 — 완료되면 자동으로 합성합니다.' :
+             draft.status === 'generating' ? '영상 생성 중 (1-3분 소요) — 아래에서 보이스·자막을 먼저 만들어두세요.' :
+             '"검토 대기" 탭에서 확인·편집·발행할 수 있어요.'}
           </p>
         </div>
 
@@ -1576,7 +1645,8 @@ function CreateForm({ onGenerated }) {
             '📊 실시간 트렌드 반영',
             `🧬 ${persona?.name || '밀리'} 페르소나 적용`,
             primaryImage ? '🖼 페르소나 이미지 삽입' : '✍️ 스크립트 생성',
-            format === 'cardnews' ? '📱 카드뉴스 슬라이드 구성' : '🎬 영상 생성 (Higgsfield)',
+            format === 'cardnews' ? '📱 카드뉴스 슬라이드 구성' : '🎬 HeyGen 립싱크 영상',
+            ...(format !== 'cardnews' ? ['🎙 음성·자막 자동 생성', '✂️ 자동 편집 합성'] : []),
             '🏷 해시태그 자동 생성',
             '📅 발행 스케줄링',
           ].map((item, i) => (
