@@ -19,9 +19,13 @@ export default async function handler(req, res) {
 
   // GET — 목록
   if (req.method === 'GET') {
-    const raw = await redis.get(IMAGES_KEY).catch(() => null);
-    const images = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
-    return res.status(200).json({ images });
+    try {
+      const raw = await redis.get(IMAGES_KEY).catch(() => null);
+      const images = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
+      return res.status(200).json({ images });
+    } catch {
+      return res.status(200).json({ images: [] });
+    }
   }
 
   // POST — 저장

@@ -82,16 +82,25 @@ export default async function handler(req, res) {
   const redis = getRedis();
 
   if (req.method === 'GET') {
-    const stored = await redis.get(REDIS_KEY);
-    const persona = stored ?? DEFAULT_PERSONA;
-    return res.status(200).json({ persona });
+    try {
+      const stored = await redis.get(REDIS_KEY);
+      const persona = stored ?? DEFAULT_PERSONA;
+      return res.status(200).json({ persona });
+    } catch {
+      // Redis 한도 초과 또는 연결 실패 → DEFAULT_PERSONA 반환
+      return res.status(200).json({ persona: DEFAULT_PERSONA, _fallback: true });
+    }
   }
 
   if (req.method === 'PATCH') {
-    const existing = (await redis.get(REDIS_KEY)) ?? DEFAULT_PERSONA;
-    const updated = { ...existing, ...req.body };
-    await redis.set(REDIS_KEY, updated, { ex: TTL });
-    return res.status(200).json({ success: true, persona: updated });
+    try {
+      const existing = (await redis.get(REDIS_KEY)) ?? DEFAULT_PERSONA;
+      const updated = { ...existing, ...req.body };
+      await redis.set(REDIS_KEY, updated, { ex: TTL });
+      return res.status(200).json({ success: true, persona: updated });
+    } catch {
+      return res.status(200).json({ success: false, error: 'Redis unavailable', persona: DEFAULT_PERSONA });
+    }
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
