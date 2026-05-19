@@ -11,11 +11,13 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-const IMAGES_KEY = 'creator:persona:millimilli:images';
 const MAX_IMAGES = 10;
 const TTL = 86400 * 90; // 90일
 
 export default async function handler(req, res) {
+  // personaId 지원 — 없으면 기존 millimilli
+  const personaId = req.query?.personaId || req.body?.personaId || 'millimilli';
+  const IMAGES_KEY = `creator:persona:${personaId}:images`;
 
   // GET — 목록
   if (req.method === 'GET') {
@@ -30,7 +32,7 @@ export default async function handler(req, res) {
 
   // POST — 저장
   if (req.method === 'POST') {
-    const { imageUrl, prompt, via, label } = req.body || {};
+    const { imageUrl, prompt, via, label, angle } = req.body || {};
     if (!imageUrl) return res.status(400).json({ error: 'imageUrl 필수' });
 
     const raw = await redis.get(IMAGES_KEY).catch(() => null);
@@ -42,7 +44,8 @@ export default async function handler(req, res) {
       prompt: prompt || '',
       via: via || '',
       label: label || '',       // 예: '정면', '측면', '연구실', '제품 착용'
-      isPrimary: images.length === 0, // 첫 이미지는 대표로
+      angle: angle || '',       // 'front' | 'three-quarter' | 'closeup' | 'fullbody' | 'side'
+      isPrimary: images.length === 0 || angle === 'front', // front 이미지는 대표로
       savedAt: new Date().toISOString(),
     };
 

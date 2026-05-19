@@ -80,26 +80,29 @@ function getRedis() {
 
 export default async function handler(req, res) {
   const redis = getRedis();
+  // personaId: query(GET) 또는 body(PATCH) — 없으면 기존 'millimilli' 키 유지
+  const personaId = req.query?.personaId || req.body?.personaId || 'millimilli';
+  const REDIS_KEY = `creator:persona:${personaId}`;
 
   if (req.method === 'GET') {
     try {
       const stored = await redis.get(REDIS_KEY);
-      const persona = stored ?? DEFAULT_PERSONA;
+      const persona = stored ?? { ...DEFAULT_PERSONA, id: personaId };
       return res.status(200).json({ persona });
     } catch {
-      // Redis 한도 초과 또는 연결 실패 → DEFAULT_PERSONA 반환
-      return res.status(200).json({ persona: DEFAULT_PERSONA, _fallback: true });
+      return res.status(200).json({ persona: { ...DEFAULT_PERSONA, id: personaId }, _fallback: true });
     }
   }
 
   if (req.method === 'PATCH') {
     try {
-      const existing = (await redis.get(REDIS_KEY)) ?? DEFAULT_PERSONA;
-      const updated = { ...existing, ...req.body };
+      const existing = (await redis.get(REDIS_KEY)) ?? { ...DEFAULT_PERSONA, id: personaId };
+      const { personaId: _pid, ...rest } = req.body || {};
+      const updated = { ...existing, ...rest, id: personaId };
       await redis.set(REDIS_KEY, updated, { ex: TTL });
       return res.status(200).json({ success: true, persona: updated });
     } catch {
-      return res.status(200).json({ success: false, error: 'Redis unavailable', persona: DEFAULT_PERSONA });
+      return res.status(200).json({ success: false, error: 'Redis unavailable', persona: { ...DEFAULT_PERSONA, id: personaId } });
     }
   }
 

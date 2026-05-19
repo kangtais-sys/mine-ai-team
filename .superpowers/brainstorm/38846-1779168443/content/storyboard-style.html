@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>스토리보드 UI 스타일</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Apple SD Gothic Neo', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #0F0F12;
+    color: #E8E8EC;
+    padding: 36px 28px;
+  }
+  h2 { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+  .sub { font-size: 13px; color: #666; margin-bottom: 28px; }
+
+  .options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  .option {
+    border-radius: 16px;
+    border: 2px solid #2A2A35;
+    background: #16161C;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.15s;
+    overflow: hidden;
+  }
+  .option:hover { border-color: #5E6AD2; transform: translateY(-2px); }
+  .option.selected { border-color: #5E6AD2; box-shadow: 0 0 0 3px rgba(94,106,210,0.2); }
+
+  .opt-header {
+    padding: 16px 18px 12px;
+    border-bottom: 1px solid #222;
+  }
+  .opt-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #5E6AD2;
+    margin-bottom: 4px;
+  }
+  .opt-title { font-size: 15px; font-weight: 700; color: #fff; }
+  .opt-desc { font-size: 12px; color: #777; margin-top: 4px; line-height: 1.5; }
+
+  .mockup { padding: 16px 18px; }
+
+  /* ── Option A: Card storyboard ── */
+  .sb-card {
+    background: #1C1C24;
+    border: 1px solid #2A2A35;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .sb-thumb {
+    width: 48px;
+    height: 64px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+  .sb-info { flex: 1; min-width: 0; }
+  .sb-time { font-size: 10px; font-weight: 700; color: #5E6AD2; margin-bottom: 3px; }
+  .sb-prompt { font-size: 11px; color: #C0C0CC; line-height: 1.4; margin-bottom: 5px; }
+  .sb-script { font-size: 10.5px; color: #888; font-style: italic; }
+  .sb-edit-btn {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    background: #2A2A35;
+    border: none;
+    color: #AAA;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  /* ── Option B: Timeline ── */
+  .timeline {
+    position: relative;
+    padding-left: 16px;
+  }
+  .tl-bar {
+    position: absolute;
+    left: 6px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, #5E6AD2, #A78BFA, #EC4899);
+    border-radius: 1px;
+  }
+  .tl-item {
+    position: relative;
+    margin-bottom: 10px;
+    padding-left: 18px;
+  }
+  .tl-dot {
+    position: absolute;
+    left: -10px;
+    top: 6px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid #5E6AD2;
+    background: #0F0F12;
+  }
+  .tl-card {
+    background: #1C1C24;
+    border: 1px solid #2A2A35;
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .tl-ts { font-size: 10px; font-weight: 700; color: #5E6AD2; margin-bottom: 2px; }
+  .tl-text { font-size: 11px; color: #C0C0CC; line-height: 1.4; }
+  .tl-sub { font-size: 10px; color: #666; margin-top: 3px; }
+
+  .pros-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #222;
+  }
+  .pro-tag {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 99px;
+  }
+  .pro { background: rgba(16,185,129,0.15); color: #6EE7B7; border: 1px solid rgba(16,185,129,0.2); }
+  .con { background: rgba(239,68,68,0.12); color: #FCA5A5; border: 1px solid rgba(239,68,68,0.15); }
+
+  /* selection indicator */
+  .sel-indicator {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 13px;
+    color: #666;
+  }
+  .option.selected .sel-indicator { color: #5E6AD2; }
+</style>
+<script>
+function select(el) {
+  document.querySelectorAll('.option').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  // record choice
+  if (window.__recordChoice) window.__recordChoice(el.dataset.choice, el.querySelector('.opt-title').textContent);
+}
+</script>
+</head>
+<body>
+<h2>스토리보드 편집 화면 — 어떤 스타일?</h2>
+<p class="sub">장면별 프롬프트와 대사를 수정하는 화면이야. 두 가지 레이아웃 중 선택해줘.</p>
+
+<div class="options">
+
+  <!-- Option A: Card Storyboard -->
+  <div class="option" data-choice="A" onclick="select(this)">
+    <div class="opt-header">
+      <div class="opt-label">Option A</div>
+      <div class="opt-title">카드형 스토리보드</div>
+      <div class="opt-desc">장면마다 썸네일 + 프롬프트 + 대사를 카드로 표시. 한눈에 전체 흐름 파악.</div>
+    </div>
+    <div class="mockup">
+      <!-- Scene cards -->
+      <div class="sb-card">
+        <div class="sb-thumb" style="background:linear-gradient(135deg,#1a1030,#2d1b69)">🧬</div>
+        <div class="sb-info">
+          <div class="sb-time">00:00 – 00:03</div>
+          <div class="sb-prompt">연구실 배경, 흰 가운 착용, 카메라 응시, 밝은 조명</div>
+          <div class="sb-script">"이거 진짜 아무도 안 알려줘요"</div>
+        </div>
+        <button class="sb-edit-btn">✏️ 수정</button>
+      </div>
+      <div class="sb-card">
+        <div class="sb-thumb" style="background:linear-gradient(135deg,#0f1a30,#1e40af)">🔬</div>
+        <div class="sb-info">
+          <div class="sb-time">00:03 – 00:07</div>
+          <div class="sb-prompt">제품 클로즈업, 손에 들고 설명, 배경 흐림</div>
+          <div class="sb-script">"성분표에 이게 몇 번째에 있는지 보세요"</div>
+        </div>
+        <button class="sb-edit-btn">✏️ 수정</button>
+      </div>
+      <div class="sb-card">
+        <div class="sb-thumb" style="background:linear-gradient(135deg,#0e1f1a,#065f46)">✨</div>
+        <div class="sb-info">
+          <div class="sb-time">00:07 – 00:12</div>
+          <div class="sb-prompt">피부 클로즈업, 자연광, 모공 디테일</div>
+          <div class="sb-script">"500달톤이 뭔지 아세요?"</div>
+        </div>
+        <button class="sb-edit-btn">✏️ 수정</button>
+      </div>
+
+      <div class="pros-row">
+        <span class="pro-tag pro">✓ 전체 흐름 한눈에</span>
+        <span class="pro-tag pro">✓ 장면 순서 드래그</span>
+        <span class="pro-tag con">△ 세로로 길어짐</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Option B: Timeline -->
+  <div class="option" data-choice="B" onclick="select(this)">
+    <div class="opt-header">
+      <div class="opt-label">Option B</div>
+      <div class="opt-title">타임라인형</div>
+      <div class="opt-desc">시간축을 기준으로 장면·편집지시를 시각화. 영상 편집 소프트웨어 느낌.</div>
+    </div>
+    <div class="mockup">
+      <div class="timeline">
+        <div class="tl-bar"></div>
+
+        <div class="tl-item">
+          <div class="tl-dot" style="border-color:#A78BFA"></div>
+          <div class="tl-card">
+            <div class="tl-ts">🎬 00:00</div>
+            <div class="tl-text">연구실, 흰 가운, 카메라 응시</div>
+            <div class="tl-sub">💬 "이거 진짜 아무도 안 알려줘요"</div>
+          </div>
+        </div>
+
+        <div class="tl-item">
+          <div class="tl-dot" style="border-color:#60A5FA"></div>
+          <div class="tl-card">
+            <div class="tl-ts">🖼 00:03 — 편집 지시</div>
+            <div class="tl-text" style="color:#F472B6">배경을 클리닉으로 전환, 조명 따뜻하게</div>
+            <div class="tl-sub">📎 참고 이미지 첨부됨</div>
+          </div>
+        </div>
+
+        <div class="tl-item">
+          <div class="tl-dot" style="border-color:#34D399"></div>
+          <div class="tl-card">
+            <div class="tl-ts">🎬 00:07</div>
+            <div class="tl-text">제품 클로즈업, 손에 들고 설명</div>
+            <div class="tl-sub">💬 "성분표에 이게 몇 번째에 있는지 보세요"</div>
+          </div>
+        </div>
+
+        <div class="tl-item">
+          <div class="tl-dot" style="border-color:#F97316"></div>
+          <div class="tl-card">
+            <div class="tl-ts">✂️ 00:11 — 편집 지시</div>
+            <div class="tl-text" style="color:#FB923C">자막 색상 흰색, 텍스트 강조 효과 추가</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pros-row">
+        <span class="pro-tag pro">✓ 시간 기반 편집 직관적</span>
+        <span class="pro-tag pro">✓ 장면+편집지시 혼합</span>
+        <span class="pro-tag con">△ 좁은 화면서 복잡</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div style="text-align:center;margin-top:22px;font-size:12.5px;color:#555;">
+  클릭해서 선택하거나, 터미널에 A / B 로 알려줘
+</div>
+</body>
+</html>

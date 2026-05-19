@@ -56,13 +56,13 @@ function buildCatchphrasesHint(persona) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { topic, pillar: pillarOverride, format, platforms = ['instagram'], notes = '', cardnewsTemplate = 'clean', personaImageUrl, sourceImages = [] } = req.body || {};
+  const { topic, pillar: pillarOverride, format, platforms = ['instagram'], notes = '', cardnewsTemplate = 'clean', personaImageUrl, sourceImages = [], language = 'ko', personaId = 'millimilli' } = req.body || {};
   if ((!topic && !pillarOverride) || !format) return res.status(400).json({ error: 'topic 또는 pillar, format 필수' });
 
   // 상세 페르소나 로드 (Redis → persona API 저장값 우선)
   let persona = {};
   try {
-    const raw = await redis.get('creator:persona:millimilli');
+    const raw = await redis.get(`creator:persona:${personaId}`);
     if (raw) persona = typeof raw === 'string' ? JSON.parse(raw) : raw;
   } catch {}
 
@@ -106,6 +106,7 @@ export default async function handler(req, res) {
   const pillarInfo = pillars[pillar] || { label: pillar, desc: pillar };
   const isVideo = format === 'reel' || format === 'shorts';
   const isCardNews = format === 'cardnews';
+  const isStoryboard = format === 'storyboard';
 
   // 페르소나 이미지 URL (영상 생성 시 사용)
   const hasPersonaImage = !!personaImageUrl;
@@ -175,7 +176,44 @@ ${pillarInfo.label}: ${pillarInfo.desc}
   const topicLine = topic ? `콘텐츠 주제/아이디어: ${topic}${trendLine}` : `콘텐츠 기둥: ${pillarInfo.label} — ${pillarInfo.desc}`;
   const baseHashtags = `${hashtags.base.join(' ')} ${(hashtags[pillar] || hashtags.base).join(' ')}`;
 
-  const userPrompt = isVideo
+  const langLabel = language === 'ko' ? '한국어' : 'English';
+  const userPrompt = isStoryboard
+    ? `${topicLine}
+포맷: 스토리보드 (Kling AI 장면별 영상 생성용)
+출력 언어: ${langLabel}
+플랫폼: ${platforms.join(', ')}
+추가 메모: ${notes || '없음'}
+
+총 4-6개 장면으로 15-30초 분량의 9:16 세로형 숏폼 영상 스토리보드를 만들어줘.
+
+아래 JSON 형식으로 반환 (코드블록 없이 순수 JSON만):
+{
+  "detectedPillar": "ingredient|treatment|behind|collab|trend 중 주제에 맞는 것",
+  "title": "영상 제목 (후킹, 30자 이내)",
+  "caption": "인스타/틱톡 캡션 (이모지 포함, 200자 이내)",
+  "hashtags": "${baseHashtags} (주제 관련 해시태그 추가, 총 10-15개)",
+  "scenes": [
+    {
+      "order": 1,
+      "startSec": 0,
+      "endSec": 5,
+      "cameraAngle": "closeup",
+      "dialogue": "${language === 'ko' ? '한국어 대사 — 자막에 표시될 내용' : 'English dialogue shown as subtitle'}",
+      "visualPrompt": "English prompt for Kling AI image-to-video: camera angle + model activity + lighting + movement. Example: extreme close-up of Korean woman beauty creator, looking directly at camera with serious expression, slowly picking up serum bottle, professional studio soft lighting with warm bokeh, gentle zoom-in motion, photorealistic cinematic"
+    }
+  ]
+}
+
+장면 작성 원칙:
+- 각 장면 5-10초 분량, 총 4-6장면
+- cameraAngle: front | three-quarter | closeup | fullbody | side 중 선택
+- visualPrompt: 반드시 영어, 카메라 각도 + 모델의 구체적 행동 + 조명 방향 + 움직임 디테일 포함
+  예시: "three-quarter view, beauty creator turning to face camera holding product, golden hour warm lighting from left, slow dolly-in motion, cinematic 9:16 vertical"
+- dialogue: ${language === 'ko' ? '한국어로' : 'In English'} — 해당 장면에서 말할 내용
+- 장면 구성: 후킹 클로즈업 → 정보 전달 → 제품 쇼케이스 → CTA
+- 첫 장면은 반드시 closeup 또는 강렬한 액션으로 후킹
+- 마지막 장면은 CTA (저장/팔로우 유도 대사)`
+    : isVideo
     ? `${topicLine}
 포맷: ${format === 'reel' ? '인스타 Reels (15-30초 세로 영상)' : '유튜브/틱톡 숏츠 (15-60초 세로 영상)'}
 플랫폼: ${platforms.join(', ')}
@@ -228,7 +266,7 @@ ${pillarInfo.label}: ${pillarInfo.desc}
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1800,
+      max_tokens: isStoryboard ? 2500 : 1800,
       system: systemPrompt,
       messages: [{ role: 'user', content: userContent }],
     });
@@ -248,13 +286,19 @@ ${pillarInfo.label}: ${pillarInfo.desc}
     const detectedPillar = parsed.detectedPillar || pillar;
     const draft = {
       id,
-      brand: 'millimilli',
+      brand: personaId,
+      personaId,
       topic: topic || notes,
       pillar: detectedPillar,
       pillarLabel: (pillars[detectedPillar] || pillarInfo).label,
       format,
+      language,
       platforms,
       notes,
+      // 스토리보드 전용 필드
+      title: parsed.title || '',
+      scenes: parsed.scenes || [],
+      // 기존 포맷 필드
       hook: parsed.hook || '',
       script: parsed.script || '',
       subtitles: parsed.subtitles || [],

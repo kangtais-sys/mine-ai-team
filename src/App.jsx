@@ -4,6 +4,7 @@ import ChatView from './components/ChatView';
 import Dashboard from './components/Dashboard';
 import ChannelView from './components/ChannelView';
 import CreatorView from './components/CreatorView';
+import CreatorShell from './components/creator/CreatorShell';
 import useChatStore from './store/chatStore';
 
 // 에러 바운더리 — 컴포넌트 크래시 시 검정 화면 대신 오류 메시지 표시
@@ -112,7 +113,7 @@ export default function App() {
       <div style={{ marginLeft: 240, width: 'calc(100vw - 240px)', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#F5F5F7' }}>
         {page === 'dashboard' && <ErrorBoundary><Dashboard urgentCount={urgentCount} /></ErrorBoundary>}
         {page === 'channel' && <ErrorBoundary><ChannelView /></ErrorBoundary>}
-        {page === 'creator' && <ErrorBoundary><CreatorView /></ErrorBoundary>}
+        {page === 'creator' && <ErrorBoundary><CreatorShell /></ErrorBoundary>}
         {page === 'chat' && <ErrorBoundary><ChatView /></ErrorBoundary>}
       </div>
     </div>
