@@ -25,14 +25,14 @@
 
 | 단계 | 서비스 | 비고 |
 |------|--------|------|
-| 페르소나 이미지 훈련 | fal.ai FLUX Portrait Trainer | 페르소나당 1회 LoRA 훈련 |
+| 페르소나 이미지 훈련 | fal.ai FLUX Portrait Trainer | 페르소나당 1회 LoRA 훈련, 약 $2–5/회, 수~30분 소요 |
 | 초현실 이미지 생성 | fal.ai FLUX 1.1 Pro Ultra | $0.06/장, 모공 수준 실사 |
-| 장면 영상 생성 | fal.ai Kling 3.0 Pro (image-to-video) | $0.168–0.196/초, 최대 15초/클립 |
+| 장면 영상 생성 | fal.ai Kling 3.0 Pro (image-to-video) | $0.168–0.196/초, 최대 15초/클립, 순차 생성 (병렬 X — 비용 제어) |
 | 목소리 클로닝 | ElevenLabs IVC | 1분 한국어 샘플 필요 |
 | TTS | ElevenLabs v2 Multilingual | 클로닝된 보이스 ID 사용 |
 | 자막 타이밍 | Anthropic Claude Haiku | 기존 유지 |
 | 스크립트·트렌드 | Gemini 2.0 Flash + Claude Sonnet | 기존 유지 |
-| BGM | Udio API | pay-per-use, SNS 라이선스 포함 |
+| BGM | Udio API | pay-per-use, 트랙당 약 $0.05–0.10, SNS 라이선스 포함 |
 | 영상 합성 | FFmpeg (fluent-ffmpeg) | 기존 유지 |
 | 이미지 저장 | @vercel/blob | 기존 유지 |
 | 페르소나 데이터 | Upstash Redis | per-ID key 구조로 수정 |
