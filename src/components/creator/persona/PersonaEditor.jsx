@@ -65,11 +65,17 @@ export default function PersonaEditor({ personaId, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // 실제 얼굴 사진 업로드 (LoRA 훈련용)
-  const [facePhotos, setFacePhotos] = useState([]); // [{ preview, base64, mimeType }]
-  const [loraStatus, setLoraStatus] = useState(null); // null | 'queued' | 'training' | 'ready' | 'failed'
+  // 사진 업로드 — 카테고리별 분리
+  const [facePhotos, setFacePhotos] = useState([]);   // 얼굴 사진 (LoRA 훈련용)
+  const [hairPhotos, setHairPhotos] = useState([]);   // 헤어 참고 사진
+  const [outfitPhotos, setOutfitPhotos] = useState([]); // 의상 참고 사진
+  const [loraStatus, setLoraStatus] = useState(null);
   const [loraLoading, setLoraLoading] = useState(false);
-  const fileInputRef = useRef(null);
+  const faceInputRef = useRef(null);
+  const hairInputRef = useRef(null);
+  const outfitInputRef = useRef(null);
+  // 레거시 호환
+  const fileInputRef = faceInputRef;
 
   useEffect(() => {
     if (!personaId) return;
@@ -94,17 +100,20 @@ export default function PersonaEditor({ personaId, onSaved }) {
     }).finally(() => setLoading(false));
   }, [personaId]);
 
-  const handleFacePhotoUpload = (e) => {
+  const makePhotoUploadHandler = (setter) => (e) => {
     const files = Array.from(e.target.files || []);
     files.forEach(file => {
       const reader = new FileReader();
       reader.onload = (ev) => {
         const base64 = ev.target.result.split(',')[1];
-        setFacePhotos(prev => [...prev.slice(-9), { preview: ev.target.result, base64, mimeType: file.type }]);
+        setter(prev => [...prev.slice(-9), { preview: ev.target.result, base64, mimeType: file.type }]);
       };
       reader.readAsDataURL(file);
     });
   };
+  const handleFacePhotoUpload = makePhotoUploadHandler(setFacePhotos);
+  const handleHairPhotoUpload = makePhotoUploadHandler(setHairPhotos);
+  const handleOutfitPhotoUpload = makePhotoUploadHandler(setOutfitPhotos);
 
   const handleStartLoRA = async () => {
     if (facePhotos.length < 5) {
@@ -151,7 +160,11 @@ export default function PersonaEditor({ personaId, onSaved }) {
       const r = await fetch('/api/creator/persona', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ personaId, ...persona }),
+        body: JSON.stringify({
+          personaId, ...persona,
+          hairRefPhotos: hairPhotos.map(p => p.preview),
+          outfitRefPhotos: outfitPhotos.map(p => p.preview),
+        }),
       });
       const d = await r.json();
       if (d.success) {
@@ -263,79 +276,129 @@ export default function PersonaEditor({ personaId, onSaved }) {
           </div>
         </div>
 
-        {/* 실제 얼굴 사진 + LoRA 훈련 */}
+        {/* 참고 사진 업로드 — 3개 섹션 */}
         <div style={{ background: '#FFF', border: '1px solid #E5E5EA', borderRadius: 12, padding: '18px 20px' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#1D1D1F', marginBottom: 4 }}>실제 얼굴 사진 (초현실 이미지 생성용)</div>
-          <div style={{ fontSize: 12, color: '#6E6E73', marginBottom: 14, lineHeight: 1.5 }}>
-            실제 사람 사진을 업로드하면 FLUX LoRA 훈련을 통해 해당 얼굴을 초현실적으로 재현합니다.
-            최소 5장 이상, 다양한 각도·표정 권장. <span style={{ color: '#FF9500' }}>훈련 시간: 약 15-30분</span>
-          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#1D1D1F', marginBottom: 16 }}>참고 사진 업로드</div>
 
-          {/* LoRA 상태 표시 */}
-          {loraStatus && loraStatusInfo[loraStatus] && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8,
-              background: loraStatusInfo[loraStatus].bg, marginBottom: 12,
-            }}>
-              {loraStatus === 'training' || loraStatus === 'queued' ? (
-                <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} color={loraStatusInfo[loraStatus].color} />
-              ) : loraStatus === 'ready' ? (
-                <CheckCircle2 size={14} color={loraStatusInfo[loraStatus].color} />
-              ) : (
-                <AlertCircle size={14} color={loraStatusInfo[loraStatus].color} />
-              )}
-              <span style={{ fontSize: 12.5, color: loraStatusInfo[loraStatus].color, fontWeight: 600 }}>
-                {loraStatusInfo[loraStatus].label}
-              </span>
-              {(loraStatus === 'training' || loraStatus === 'queued') && (
-                <button onClick={checkLoraStatus} disabled={loraLoading} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#6E6E73' }}>
-                  <RefreshCw size={13} />
+          {/* 1. 얼굴 사진 (LoRA) */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>👤 얼굴 사진</span>
+              <span style={{ fontSize: 11, color: '#FF3B30', fontWeight: 600 }}>필수 · 최소 5장</span>
+            </div>
+            <div style={{ fontSize: 11.5, color: '#6E6E73', marginBottom: 10, lineHeight: 1.5 }}>
+              실제 본인 사진 — 다양한 각도·표정으로. FLUX LoRA 훈련에 사용되어 얼굴을 초현실적으로 재현합니다.
+              <span style={{ color: '#FF9500', marginLeft: 4 }}>훈련 시간 약 15-30분</span>
+            </div>
+
+            {loraStatus && loraStatusInfo[loraStatus] && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: loraStatusInfo[loraStatus].bg, marginBottom: 10 }}>
+                {loraStatus === 'training' || loraStatus === 'queued' ? (
+                  <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} color={loraStatusInfo[loraStatus].color} />
+                ) : loraStatus === 'ready' ? (
+                  <CheckCircle2 size={14} color={loraStatusInfo[loraStatus].color} />
+                ) : (
+                  <AlertCircle size={14} color={loraStatusInfo[loraStatus].color} />
+                )}
+                <span style={{ fontSize: 12.5, color: loraStatusInfo[loraStatus].color, fontWeight: 600 }}>{loraStatusInfo[loraStatus].label}</span>
+                {(loraStatus === 'training' || loraStatus === 'queued') && (
+                  <button onClick={checkLoraStatus} disabled={loraLoading} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#6E6E73' }}>
+                    <RefreshCw size={13} />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {facePhotos.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {facePhotos.map((p, i) => (
+                  <div key={i} style={{ position: 'relative' }}>
+                    <img src={p.preview} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover' }} />
+                    <button onClick={() => setFacePhotos(prev => prev.filter((_, j) => j !== i))}
+                      style={{ position: 'absolute', top: -5, right: -5, width: 16, height: 16, borderRadius: '50%', background: '#FF3B30', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <X size={9} color="#FFF" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input ref={faceInputRef} type="file" accept="image/*" multiple onChange={handleFacePhotoUpload} style={{ display: 'none' }} />
+              <button onClick={() => faceInputRef.current?.click()}
+                style={{ flex: 1, padding: '9px 14px', borderRadius: 8, border: '1.5px dashed #D0D0D8', background: '#FAFAFA', fontSize: 12, color: '#6E6E73', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <Upload size={12} /> 얼굴 사진 업로드 ({facePhotos.length}장)
+              </button>
+              {facePhotos.length >= 5 && loraStatus !== 'ready' && (
+                <button onClick={handleStartLoRA} disabled={loraLoading}
+                  style={{ padding: '9px 14px', borderRadius: 8, border: 'none', background: '#5E6AD2', color: '#FFF', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {loraLoading ? <Loader2 size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : '🚀'} LoRA 훈련 시작
                 </button>
               )}
             </div>
-          )}
-
-          {/* 업로드된 사진 프리뷰 */}
-          {facePhotos.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-              {facePhotos.map((p, i) => (
-                <div key={i} style={{ position: 'relative' }}>
-                  <img src={p.preview} alt="" style={{ width: 60, height: 60, borderRadius: 8, objectFit: 'cover' }} />
-                  <button
-                    onClick={() => setFacePhotos(prev => prev.filter((_, j) => j !== i))}
-                    style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', background: '#FF3B30', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <X size={10} color="#FFF" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFacePhotoUpload} style={{ display: 'none' }} />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1.5px dashed #D0D0D8', background: '#FAFAFA', fontSize: 12.5, color: '#6E6E73', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-            >
-              <Upload size={13} />
-              사진 업로드 ({facePhotos.length}장)
-            </button>
-            {facePhotos.length >= 5 && loraStatus !== 'ready' && (
-              <button
-                onClick={handleStartLoRA}
-                disabled={loraLoading}
-                style={{ padding: '10px 16px', borderRadius: 8, border: 'none', background: '#5E6AD2', color: '#FFF', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                {loraLoading ? <Loader2 size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : '🚀'}
-                LoRA 훈련 시작
-              </button>
+            {facePhotos.length > 0 && facePhotos.length < 5 && (
+              <div style={{ fontSize: 11, color: '#FF9500', marginTop: 5 }}>{5 - facePhotos.length}장 더 필요해요</div>
             )}
           </div>
-          {facePhotos.length > 0 && facePhotos.length < 5 && (
-            <div style={{ fontSize: 11.5, color: '#FF9500', marginTop: 6 }}>
-              {5 - facePhotos.length}장 더 업로드하면 훈련을 시작할 수 있어요
+
+          {/* 구분선 */}
+          <div style={{ borderTop: '1px solid #F2F2F7', marginBottom: 16 }} />
+
+          {/* 2. 헤어 참고 */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>💇 헤어 참고 사진</span>
+              <span style={{ fontSize: 11, color: '#AEAEB2' }}>선택</span>
             </div>
-          )}
+            <div style={{ fontSize: 11.5, color: '#6E6E73', marginBottom: 8 }}>원하는 헤어스타일 참고 이미지. 이미지 생성 시 스타일 힌트로 활용됩니다.</div>
+            {hairPhotos.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {hairPhotos.map((p, i) => (
+                  <div key={i} style={{ position: 'relative' }}>
+                    <img src={p.preview} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover' }} />
+                    <button onClick={() => setHairPhotos(prev => prev.filter((_, j) => j !== i))}
+                      style={{ position: 'absolute', top: -5, right: -5, width: 16, height: 16, borderRadius: '50%', background: '#FF3B30', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <X size={9} color="#FFF" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <input ref={hairInputRef} type="file" accept="image/*" multiple onChange={handleHairPhotoUpload} style={{ display: 'none' }} />
+            <button onClick={() => hairInputRef.current?.click()}
+              style={{ width: '100%', padding: '9px 14px', borderRadius: 8, border: '1.5px dashed #D0D0D8', background: '#FAFAFA', fontSize: 12, color: '#6E6E73', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <Upload size={12} /> 헤어 참고 업로드 ({hairPhotos.length}장)
+            </button>
+          </div>
+
+          {/* 구분선 */}
+          <div style={{ borderTop: '1px solid #F2F2F7', marginBottom: 16 }} />
+
+          {/* 3. 의상 참고 */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>👗 의상 참고 사진</span>
+              <span style={{ fontSize: 11, color: '#AEAEB2' }}>선택</span>
+            </div>
+            <div style={{ fontSize: 11.5, color: '#6E6E73', marginBottom: 8 }}>원하는 의상·스타일 참고 이미지. 이미지 생성 시 스타일 힌트로 활용됩니다.</div>
+            {outfitPhotos.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {outfitPhotos.map((p, i) => (
+                  <div key={i} style={{ position: 'relative' }}>
+                    <img src={p.preview} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover' }} />
+                    <button onClick={() => setOutfitPhotos(prev => prev.filter((_, j) => j !== i))}
+                      style={{ position: 'absolute', top: -5, right: -5, width: 16, height: 16, borderRadius: '50%', background: '#FF3B30', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <X size={9} color="#FFF" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <input ref={outfitInputRef} type="file" accept="image/*" multiple onChange={handleOutfitPhotoUpload} style={{ display: 'none' }} />
+            <button onClick={() => outfitInputRef.current?.click()}
+              style={{ width: '100%', padding: '9px 14px', borderRadius: 8, border: '1.5px dashed #D0D0D8', background: '#FAFAFA', fontSize: 12, color: '#6E6E73', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <Upload size={12} /> 의상 참고 업로드 ({outfitPhotos.length}장)
+            </button>
+          </div>
         </div>
 
         {/* 저장 버튼 */}
