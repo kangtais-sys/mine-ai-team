@@ -1,7 +1,4 @@
-import { Redis } from '@upstash/redis';
-
-const REDIS_KEY = 'creator:persona:millimilli';
-const TTL = 86400 * 365;
+import { getSupabase } from '../../lib/supabase.js';
 
 export const DEFAULT_PERSONA = {
   // 기본 프로필
@@ -71,23 +68,18 @@ export const DEFAULT_PERSONA = {
   },
 };
 
-function getRedis() {
-  return new Redis({
-    url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
-  });
-}
-
 export default async function handler(req, res) {
-  const redis = getRedis();
-  // personaId: query(GET) 또는 body(PATCH) — 없으면 기존 'millimilli' 키 유지
+  const sb = getSupabase();
   const personaId = req.query?.personaId || req.body?.personaId || 'millimilli';
-  const REDIS_KEY = `creator:persona:${personaId}`;
 
   if (req.method === 'GET') {
     try {
-      const stored = await redis.get(REDIS_KEY);
-      const persona = stored ?? { ...DEFAULT_PERSONA, id: personaId };
+      const { data, error } = await sb
+        .from('creator_personas')
+        .select('data')
+        .eq('id', personaId)
+        .single();
+      const persona = (data?.data) ?? { ...DEFAULT_PERSONA, id: personaId };
       return res.status(200).json({ persona });
     } catch {
       return res.status(200).json({ persona: { ...DEFAULT_PERSONA, id: personaId }, _fallback: true });
@@ -96,13 +88,18 @@ export default async function handler(req, res) {
 
   if (req.method === 'PATCH') {
     try {
-      const existing = (await redis.get(REDIS_KEY)) ?? { ...DEFAULT_PERSONA, id: personaId };
+      const { data: existing } = await sb
+        .from('creator_personas')
+        .select('data')
+        .eq('id', personaId)
+        .single();
+      const currentData = existing?.data ?? { ...DEFAULT_PERSONA, id: personaId };
       const { personaId: _pid, ...rest } = req.body || {};
-      const updated = { ...existing, ...rest, id: personaId };
-      await redis.set(REDIS_KEY, updated, { ex: TTL });
+      const updated = { ...currentData, ...rest, id: personaId };
+      await sb.from('creator_personas').upsert({ id: personaId, data: updated });
       return res.status(200).json({ success: true, persona: updated });
-    } catch {
-      return res.status(200).json({ success: false, error: 'Redis unavailable', persona: { ...DEFAULT_PERSONA, id: personaId } });
+    } catch (e) {
+      return res.status(500).json({ success: false, error: e.message });
     }
   }
 

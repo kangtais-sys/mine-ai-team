@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { Redis } from '@upstash/redis';
+import { getSupabase } from '../../lib/supabase.js';
 import { randomUUID } from 'crypto';
 
 // Gemini Google Search grounding — 트렌드 컨텍스트 수집
@@ -30,10 +30,6 @@ async function fetchTrendContext(topic) {
 }
 
 const anthropic = new Anthropic();
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
-});
 
 // 페르소나에서 비주얼 프롬프트 빌드
 function buildVisualStyle(persona) {
@@ -59,11 +55,12 @@ export default async function handler(req, res) {
   const { topic, pillar: pillarOverride, format, platforms = ['instagram'], notes = '', cardnewsTemplate = 'clean', personaImageUrl, sourceImages = [], language = 'ko', personaId = 'millimilli' } = req.body || {};
   if ((!topic && !pillarOverride) || !format) return res.status(400).json({ error: 'topic 또는 pillar, format 필수' });
 
-  // 상세 페르소나 로드 (Redis → persona API 저장값 우선)
+  // 상세 페르소나 로드 (Supabase)
   let persona = {};
   try {
-    const raw = await redis.get(`creator:persona:${personaId}`);
-    if (raw) persona = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const sb = getSupabase();
+    const { data } = await sb.from('creator_personas').select('data').eq('id', personaId).single();
+    if (data?.data) persona = data.data;
   } catch {}
 
   // fallback 기본값 보완
@@ -320,10 +317,9 @@ ${pillarInfo.label}: ${pillarInfo.desc}
       updatedAt: now,
     };
 
-    // Redis 저장
-    await redis.set(`creator:draft:${id}`, draft, { ex: 86400 * 30 }); // 30일 보관
-    await redis.lpush('creator:list', id);
-    await redis.ltrim('creator:list', 0, 199); // 최근 200개 유지
+    // Supabase 저장
+    const sb = getSupabase();
+    await sb.from('creator_drafts').upsert({ id, persona_id: personaId, data: draft });
 
     return res.status(200).json({ success: true, draft });
   } catch (e) {

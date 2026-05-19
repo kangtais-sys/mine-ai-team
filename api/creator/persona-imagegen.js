@@ -2,16 +2,9 @@
 // POST { personaId, angle, extraPrompt, personaDesc }
 // angle: 'front' | 'three-quarter' | 'closeup' | 'fullbody' | 'side'
 
-import { Redis } from '@upstash/redis';
+import { getSupabase } from '../../lib/supabase.js';
 
 export const config = { maxDuration: 60 };
-
-function getRedis() {
-  return new Redis({
-    url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
-  });
-}
 
 function falHeaders() {
   const key = process.env.FAL_API_KEY;
@@ -33,13 +26,12 @@ export default async function handler(req, res) {
   const { personaId, angle = 'front', extraPrompt = '', personaDesc = '' } = req.body || {};
   if (!personaId) return res.status(400).json({ error: 'personaId 필수' });
 
-  const redis = getRedis();
-
-  // LoRA 확인 (훈련 완료된 경우 적용)
+  // LoRA 확인 (Supabase)
   let loraUrl = null;
   try {
-    const loraData = await redis.get(`creator:persona:${personaId}:lora`).catch(() => null);
-    if (loraData?.status === 'ready' && loraData.loraUrl) loraUrl = loraData.loraUrl;
+    const sb = getSupabase();
+    const { data } = await sb.from('creator_persona_lora').select('data').eq('persona_id', personaId).single();
+    if (data?.data?.status === 'ready' && data.data.loraUrl) loraUrl = data.data.loraUrl;
   } catch {}
 
   const anglePrompt = ANGLE_PROMPTS[angle] || ANGLE_PROMPTS.front;

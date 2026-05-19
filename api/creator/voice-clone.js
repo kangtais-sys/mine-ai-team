@@ -1,34 +1,29 @@
-// ElevenLabs IVC (Instant Voice Cloning)
-// POST { personaId, audioBase64, mimeType, name } → voice_id 반환 + Redis 저장
+// ElevenLabs IVC (Instant Voice Cloning) — Supabase
+// POST { personaId, audioBase64, mimeType, name } → voice_id 반환
 // GET ?personaId=xxx → 저장된 voice_id 반환
 
-import { Redis } from '@upstash/redis';
+import { getSupabase } from '../../lib/supabase.js';
 
 export const config = { maxDuration: 60 };
 
-function getRedis() {
-  return new Redis({
-    url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
-  });
-}
-
 export default async function handler(req, res) {
-  const redis = getRedis();
+  const sb = getSupabase();
 
-  // GET — 저장된 voice_id 조회
   if (req.method === 'GET') {
     const { personaId } = req.query;
     if (!personaId) return res.status(400).json({ error: 'personaId 필수' });
     try {
-      const voiceData = await redis.get(`creator:persona:${personaId}:voice`).catch(() => null);
-      return res.status(200).json(voiceData || { voiceId: null });
+      const { data } = await sb
+        .from('creator_persona_voices')
+        .select('data')
+        .eq('persona_id', personaId)
+        .single();
+      return res.status(200).json(data?.data || { voiceId: null });
     } catch {
       return res.status(200).json({ voiceId: null });
     }
   }
 
-  // POST — 클로닝 실행
   if (req.method === 'POST') {
     const { personaId, audioBase64, mimeType = 'audio/mpeg', name } = req.body || {};
     if (!personaId || !audioBase64) {
@@ -43,7 +38,6 @@ export default async function handler(req, res) {
       const ext = mimeType.includes('mp3') || mimeType.includes('mpeg') ? 'mp3'
                : mimeType.includes('wav') ? 'wav' : 'm4a';
 
-      // Node 18+ native FormData
       const formData = new FormData();
       formData.append('name', name || `Persona-${personaId.substring(0, 8)}`);
       formData.append('description', `AI 크리에이터 페르소나 목소리 — ${personaId}`);
@@ -64,16 +58,13 @@ export default async function handler(req, res) {
 
       const data = await cloneRes.json();
       const voiceId = data?.voice_id;
-      if (!voiceId) {
-        return res.status(500).json({ error: 'voice_id 없음', raw: JSON.stringify(data).substring(0, 200) });
-      }
+      if (!voiceId) return res.status(500).json({ error: 'voice_id 없음' });
 
-      // Redis 저장 (1년)
-      await redis.set(
-        `creator:persona:${personaId}:voice`,
-        { voiceId, name: data.name || name, personaId, createdAt: new Date().toISOString() },
-        { ex: 86400 * 365 }
-      ).catch(() => {});
+      await sb.from('creator_persona_voices').upsert({
+        persona_id: personaId,
+        data: { voiceId, name: data.name || name, personaId, createdAt: new Date().toISOString() },
+        updated_at: new Date().toISOString(),
+      });
 
       return res.status(200).json({ success: true, voiceId, name: data.name });
     } catch (e) {

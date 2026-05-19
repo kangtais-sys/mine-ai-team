@@ -1,17 +1,10 @@
-// FLUX Portrait Trainer LoRA 훈련 관리
-// POST { personaId, imageUrls[] } → fal.ai 비동기 제출 → requestId 저장
+// FLUX Portrait Trainer LoRA 훈련 관리 (Supabase)
+// POST { personaId, imageUrls[] } → fal.ai 비동기 제출
 // GET ?personaId=xxx → 훈련 상태 / loraUrl 반환
 
-import { Redis } from '@upstash/redis';
+import { getSupabase } from '../../lib/supabase.js';
 
 export const config = { maxDuration: 60 };
-
-function getRedis() {
-  return new Redis({
-    url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
-  });
-}
 
 function falHeaders() {
   const key = process.env.FAL_API_KEY;
@@ -19,19 +12,35 @@ function falHeaders() {
   return { 'Authorization': `Key ${key}`, 'Content-Type': 'application/json' };
 }
 
-export default async function handler(req, res) {
-  const redis = getRedis();
+async function getLoraData(sb, personaId) {
+  const { data } = await sb
+    .from('creator_persona_lora')
+    .select('data')
+    .eq('persona_id', personaId)
+    .single();
+  return data?.data || null;
+}
 
-  // GET — 훈련 상태 확인
+async function setLoraData(sb, personaId, loraData) {
+  await sb.from('creator_persona_lora').upsert({
+    persona_id: personaId,
+    data: loraData,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+export default async function handler(req, res) {
+  const sb = getSupabase();
+
   if (req.method === 'GET') {
     const { personaId } = req.query;
     if (!personaId) return res.status(400).json({ error: 'personaId 필수' });
     try {
-      const loraData = await redis.get(`creator:persona:${personaId}:lora`).catch(() => null);
+      const loraData = await getLoraData(sb, personaId);
       if (!loraData) return res.status(200).json({ status: 'none' });
       if (loraData.status === 'ready') return res.status(200).json(loraData);
 
-      // 훈련 중 — fal.ai 큐 상태 확인
+      // 훈련 중 — fal.ai 상태 확인
       const statusRes = await fetch(
         `https://queue.fal.run/fal-ai/flux-lora-portrait-trainer/requests/${loraData.requestId}`,
         { headers: falHeaders() }
@@ -41,12 +50,12 @@ export default async function handler(req, res) {
       if (statusData.status === 'COMPLETED') {
         const loraUrl = statusData.output?.diffusers_lora_file?.url;
         const updated = { status: 'ready', loraUrl, requestId: loraData.requestId, personaId };
-        await redis.set(`creator:persona:${personaId}:lora`, updated, { ex: 86400 * 30 }).catch(() => {});
+        await setLoraData(sb, personaId, updated);
         return res.status(200).json(updated);
       }
       if (statusData.status === 'FAILED') {
         const failed = { status: 'failed', error: statusData.error, requestId: loraData.requestId };
-        await redis.set(`creator:persona:${personaId}:lora`, failed, { ex: 3600 }).catch(() => {});
+        await setLoraData(sb, personaId, failed);
         return res.status(200).json(failed);
       }
       return res.status(200).json({
@@ -58,7 +67,6 @@ export default async function handler(req, res) {
     }
   }
 
-  // POST — 훈련 시작
   if (req.method === 'POST') {
     const { personaId, imageUrls = [], triggerWord = 'PERSONA' } = req.body || {};
     if (!personaId || !imageUrls.length) {
@@ -85,13 +93,11 @@ export default async function handler(req, res) {
 
       const submitData = await submitRes.json();
       const requestId = submitData.request_id;
-      if (!requestId) return res.status(500).json({ error: 'requestId 없음', raw: JSON.stringify(submitData).substring(0, 200) });
+      if (!requestId) return res.status(500).json({ error: 'requestId 없음' });
 
-      await redis.set(
-        `creator:persona:${personaId}:lora`,
-        { status: 'queued', requestId, personaId, startedAt: new Date().toISOString() },
-        { ex: 86400 * 7 }
-      ).catch(() => {});
+      await setLoraData(sb, personaId, {
+        status: 'queued', requestId, personaId, startedAt: new Date().toISOString(),
+      });
 
       return res.status(200).json({ success: true, requestId, status: 'queued' });
     } catch (e) {
