@@ -100,16 +100,30 @@ export default function PersonaEditor({ personaId, onSaved }) {
     }).finally(() => setLoading(false));
   }, [personaId]);
 
-  const makePhotoUploadHandler = (setter) => (e) => {
+  // 이미지 리사이즈 후 base64 반환 (최대 512px, quality 0.7 → ~50KB 이하)
+  const resizeImage = (file) => new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 512;
+      const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * ratio);
+      canvas.height = Math.round(img.height * ratio);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      resolve({ preview: dataUrl, base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
+    };
+    img.src = url;
+  });
+
+  const makePhotoUploadHandler = (setter) => async (e) => {
     const files = Array.from(e.target.files || []);
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const base64 = ev.target.result.split(',')[1];
-        setter(prev => [...prev.slice(-9), { preview: ev.target.result, base64, mimeType: file.type }]);
-      };
-      reader.readAsDataURL(file);
-    });
+    for (const file of files) {
+      const resized = await resizeImage(file);
+      setter(prev => [...prev.slice(-9), resized]);
+    }
   };
   const handleFacePhotoUpload = makePhotoUploadHandler(setFacePhotos);
   const handleHairPhotoUpload = makePhotoUploadHandler(setHairPhotos);
@@ -286,9 +300,11 @@ export default function PersonaEditor({ personaId, onSaved }) {
               <span style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>👤 얼굴 사진</span>
               <span style={{ fontSize: 11, color: '#FF3B30', fontWeight: 600 }}>필수 · 최소 5장</span>
             </div>
-            <div style={{ fontSize: 11.5, color: '#6E6E73', marginBottom: 10, lineHeight: 1.5 }}>
-              실제 본인 사진 — 다양한 각도·표정으로. FLUX LoRA 훈련에 사용되어 얼굴을 초현실적으로 재현합니다.
-              <span style={{ color: '#FF9500', marginLeft: 4 }}>훈련 시간 약 15-30분</span>
+            <div style={{ fontSize: 11.5, color: '#6E6E73', marginBottom: 10, lineHeight: 1.6 }}>
+              실제 본인 사진 — 다양한 각도·표정으로 5장 이상 올리면 AI가 얼굴을 학습해서 이미지 생성 시 실제 얼굴과 똑같이 재현해줘요.
+              <br />
+              <span style={{ color: '#AEAEB2' }}>선택사항 — 없어도 텍스트 설명(헤어, 의상 등)만으로 이미지 생성 가능.</span>
+              <span style={{ color: '#FF9500', marginLeft: 4 }}>학습 시간 약 15-30분</span>
             </div>
 
             {loraStatus && loraStatusInfo[loraStatus] && (
@@ -330,8 +346,9 @@ export default function PersonaEditor({ personaId, onSaved }) {
               </button>
               {facePhotos.length >= 5 && loraStatus !== 'ready' && (
                 <button onClick={handleStartLoRA} disabled={loraLoading}
-                  style={{ padding: '9px 14px', borderRadius: 8, border: 'none', background: '#5E6AD2', color: '#FFF', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5 }}>
-                  {loraLoading ? <Loader2 size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : '🚀'} LoRA 훈련 시작
+                  style={{ padding: '9px 14px', borderRadius: 8, border: 'none', background: '#5E6AD2', color: '#FFF', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5 }}
+                  title="얼굴 사진으로 AI 학습 시작 — 학습 후 이미지 생성 시 실제 얼굴이 정확하게 재현됩니다 (약 15-30분 소요)">
+                  {loraLoading ? <Loader2 size={12} style={{ animation: 'spin 0.8s linear infinite' }} /> : '🚀'} 얼굴 AI 학습 시작
                 </button>
               )}
             </div>
