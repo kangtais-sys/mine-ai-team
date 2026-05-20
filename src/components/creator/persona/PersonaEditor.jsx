@@ -97,6 +97,10 @@ export default function PersonaEditor({ personaId, onSaved }) {
         });
       }
       if (loraData.status && loraData.status !== 'none') setLoraStatus(loraData.status);
+      // 저장된 사진 URL 복원
+      if (pData.persona?.facePhotoUrls?.length) setFacePhotos(pData.persona.facePhotoUrls.map(url => ({ url, preview: url })));
+      if (pData.persona?.hairRefUrls?.length) setHairPhotos(pData.persona.hairRefUrls.map(url => ({ url, preview: url })));
+      if (pData.persona?.outfitRefUrls?.length) setOutfitPhotos(pData.persona.outfitRefUrls.map(url => ({ url, preview: url })));
     }).finally(() => setLoading(false));
   }, [personaId]);
 
@@ -167,22 +171,55 @@ export default function PersonaEditor({ personaId, onSaved }) {
     setLoraLoading(false);
   };
 
+  // base64 사진을 fal.ai CDN에 올리고 URL 배열 반환
+  const uploadPhotos = async (photos) => {
+    const urls = [];
+    for (const p of photos) {
+      try {
+        const r = await fetch('/api/creator/upload-photo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ base64: p.base64, mimeType: p.mimeType }),
+        });
+        const d = await r.json();
+        if (d.url) urls.push(d.url);
+      } catch {}
+    }
+    return urls;
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setSaved(false);
     try {
+      // 새로 업로드된 사진만 CDN에 올리기 (이미 URL인 건 그대로)
+      const newFacePhotos = facePhotos.filter(p => p.base64);
+      const newHairPhotos = hairPhotos.filter(p => p.base64);
+      const newOutfitPhotos = outfitPhotos.filter(p => p.base64);
+
+      const [faceUrls, hairUrls, outfitUrls] = await Promise.all([
+        newFacePhotos.length ? uploadPhotos(newFacePhotos) : Promise.resolve(facePhotos.filter(p => p.url).map(p => p.url)),
+        newHairPhotos.length ? uploadPhotos(newHairPhotos) : Promise.resolve(hairPhotos.filter(p => p.url).map(p => p.url)),
+        newOutfitPhotos.length ? uploadPhotos(newOutfitPhotos) : Promise.resolve(outfitPhotos.filter(p => p.url).map(p => p.url)),
+      ]);
+
       const r = await fetch('/api/creator/persona', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           personaId, ...persona,
-          hairRefPhotos: hairPhotos.map(p => p.preview),
-          outfitRefPhotos: outfitPhotos.map(p => p.preview),
+          facePhotoUrls: faceUrls,
+          hairRefUrls: hairUrls,
+          outfitRefUrls: outfitUrls,
         }),
       });
       const d = await r.json();
       if (d.success) {
         setSaved(true);
+        // 로컬 상태를 URL 기반으로 업데이트 (새로고침 후에도 유지)
+        setFacePhotos(faceUrls.map(url => ({ url, preview: url })));
+        setHairPhotos(hairUrls.map(url => ({ url, preview: url })));
+        setOutfitPhotos(outfitUrls.map(url => ({ url, preview: url })));
         onSaved?.({ ...persona, id: personaId });
         setTimeout(() => setSaved(false), 3000);
       } else {
