@@ -1,7 +1,10 @@
 // Identity 메타 CRUD — creator_identity 테이블
-// GET  ?id=mine-primary           → { identity }
-// POST { id, displayName, ... }   → { success, identity }   (upsert)
-// PATCH { id, ...fields }         → { success, identity }
+// 스키마: (id TEXT PK, data JSONB, created_at, updated_at)
+//   → displayName / heygenAvatarId / voiceId / languages / brandTone 은 모두 data JSONB 안.
+//
+// GET  ?id=mine-primary           → { identity: { id, data, created_at, updated_at } }
+// POST { id, displayName, ... }   → upsert — 기존 data 와 merge (부분 갱신 OK)
+// PATCH { id, ...fields }         → 기존 data 와 merge update
 // DELETE ?id=mine-primary         → { success }
 
 import { getSupabase } from '../../lib/supabase.js';
@@ -9,6 +12,22 @@ import { getSupabase } from '../../lib/supabase.js';
 export const config = { maxDuration: 15 };
 
 const DEFAULT_ID = 'mine-primary';
+
+// body 필드 → data JSONB 키 매핑 (snake_case 도 받음)
+function pickDataFields(body, prev = {}) {
+  const out = { ...prev };
+  const has = (k) => body[k] !== undefined;
+  if (has('displayName') || has('display_name'))
+    out.displayName = body.displayName ?? body.display_name;
+  if (has('heygenAvatarId') || has('heygen_avatar_id'))
+    out.heygenAvatarId = body.heygenAvatarId ?? body.heygen_avatar_id;
+  if (has('voiceId') || has('voice_id'))
+    out.voiceId = body.voiceId ?? body.voice_id;
+  if (has('languages')) out.languages = body.languages;
+  if (has('brandTone') || has('brand_tone'))
+    out.brandTone = body.brandTone ?? body.brand_tone;
+  return out;
+}
 
 export default async function handler(req, res) {
   const sb = getSupabase();
@@ -28,42 +47,52 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     const body = req.body || {};
     const id = body.id || DEFAULT_ID;
-    const payload = {
-      id,
-      display_name: body.displayName ?? body.display_name ?? 'MINE',
-      heygen_avatar_id: body.heygenAvatarId ?? body.heygen_avatar_id ?? null,
-      voice_id: body.voiceId ?? body.voice_id ?? null,
-      languages: body.languages ?? ['en', 'zh', 'ja', 'ko'],
-      brand_tone: body.brandTone ?? body.brand_tone ?? null,
-      updated_at: new Date().toISOString(),
-    };
-    const { data, error } = await sb
+
+    const { data: existing } = await sb
       .from('creator_identity')
-      .upsert(payload, { onConflict: 'id' })
+      .select('data')
+      .eq('id', id)
+      .maybeSingle();
+
+    const prev = existing?.data || {};
+    const merged = pickDataFields(body, prev);
+    // 신규 생성 시 기본값 채우기
+    if (!existing) {
+      if (merged.displayName === undefined) merged.displayName = 'MINE';
+      if (merged.languages === undefined) merged.languages = ['en', 'zh', 'ja', 'ko'];
+    }
+
+    const { data: row, error } = await sb
+      .from('creator_identity')
+      .upsert({ id, data: merged, updated_at: new Date().toISOString() }, { onConflict: 'id' })
       .select()
       .single();
     if (error) return res.status(500).json({ error: error.message });
-    return res.status(200).json({ success: true, identity: data });
+    return res.status(200).json({ success: true, identity: row });
   }
 
   if (req.method === 'PATCH') {
     const body = req.body || {};
     const id = body.id || DEFAULT_ID;
-    const updates = { updated_at: new Date().toISOString() };
-    if (body.displayName !== undefined) updates.display_name = body.displayName;
-    if (body.heygenAvatarId !== undefined) updates.heygen_avatar_id = body.heygenAvatarId;
-    if (body.voiceId !== undefined) updates.voice_id = body.voiceId;
-    if (body.languages !== undefined) updates.languages = body.languages;
-    if (body.brandTone !== undefined) updates.brand_tone = body.brandTone;
 
-    const { data, error } = await sb
+    const { data: existing, error: getErr } = await sb
       .from('creator_identity')
-      .update(updates)
+      .select('data')
+      .eq('id', id)
+      .maybeSingle();
+    if (getErr) return res.status(500).json({ error: getErr.message });
+    if (!existing) return res.status(404).json({ error: 'identity 없음', id });
+
+    const merged = pickDataFields(body, existing.data || {});
+
+    const { data: row, error } = await sb
+      .from('creator_identity')
+      .update({ data: merged, updated_at: new Date().toISOString() })
       .eq('id', id)
       .select()
       .single();
     if (error) return res.status(500).json({ error: error.message });
-    return res.status(200).json({ success: true, identity: data });
+    return res.status(200).json({ success: true, identity: row });
   }
 
   if (req.method === 'DELETE') {
