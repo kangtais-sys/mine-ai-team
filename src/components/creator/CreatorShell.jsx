@@ -1,22 +1,24 @@
-// CreatorShell.jsx — V2 AI 크리에이터 메인 셸
-// 탭: 페르소나 | 콘텐츠 | 영상생성 | 발행
+// CreatorShell.jsx — V3 AI 크리에이터 메인 셸
+// 탭: Identity | 콘텐츠 | 영상생성 | 발행
+// (PersonaSection import 유지 — Phase 2 정리 전까지 보존)
 
 import { useState, useEffect } from 'react';
 import { User, Sparkles, Video, Send } from 'lucide-react';
 import PersonaSection from './persona/PersonaSection';
+import IdentityLibrary from './identity/IdentityLibrary';
 import ContentSetup from './content/ContentSetup';
 import VideoGenerator from './video/VideoGenerator';
 import PublishPanel from './finish/PublishPanel';
 
 const TABS = [
-  { key: 'persona',  label: '페르소나',  icon: User },
+  { key: 'identity', label: 'Identity',  icon: User },
   { key: 'content',  label: '콘텐츠',   icon: Sparkles },
   { key: 'video',    label: '영상생성',  icon: Video },
   { key: 'publish',  label: '발행',      icon: Send },
 ];
 
 export default function CreatorShell() {
-  const [tab, setTab] = useState('persona');
+  const [tab, setTab] = useState('identity');
 
   // 선택된 페르소나 ID (PersonaSection에서 설정)
   const [activePersonaId, setActivePersonaId] = useState(null);
@@ -97,15 +99,8 @@ export default function CreatorShell() {
 
       {/* 탭 컨텐츠 */}
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        {tab === 'persona' && (
-          <PersonaSection
-            activePersonaId={activePersonaId}
-            onPersonaChange={(id, persona, imgUrl) => {
-              setActivePersonaId(id);
-              setActivePersona(persona);
-              setPersonaImageUrl(imgUrl || null);
-            }}
-          />
+        {tab === 'identity' && (
+          <IdentityLibrary identityId="mine-primary" />
         )}
         {tab === 'content' && (
           <ContentSetup
