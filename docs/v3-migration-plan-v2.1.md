@@ -909,3 +909,17 @@ Phase 5: 검증 + V2 폐기
 - 영상 reference에서 모션 추출 → Kling 자동 적용
 - 음성 언어별 분리 학습 (영어 voice ID 별도)
 - 자동 A/B 베스트 선택 + 자동 부스팅
+
+---
+
+## Phase 1.5 트러블슈팅 기록 (2026-05-20 완료)
+
+- creator_identity 컬럼 구조: 별도 컬럼 X, data JSONB로 통합
+- 시드 시 RLS 막힘 → creator_identity, creator_video_renders DISABLE RLS
+- Vercel 4.5MB 제한 → Storage 직접 업로드 전환 (브라우저→Supabase)
+  - 신규: src/lib/supabaseClient.js
+  - 신규 env: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+  - 신규 컬럼: creator_assets.storage_path
+- Storage 정책: creator-library anon INSERT/UPDATE 정책 추가
+- creator_assets RLS 재활성화 이슈 → DISABLE 재실행으로 최종 해결
+- 자동 태깅: Claude Vision이 scene_type(hook_3sec 등)까지 추론 확인
