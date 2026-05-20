@@ -1,4 +1,5 @@
-// AssetUploader — 다중 파일 업로드 (드래그&드롭, Cmd+클릭 다중 선택, 모바일 카메라/앨범)
+// AssetUploader — Supabase Storage 직접 업로드 (Vercel 4.5MB 우회)
+//   브라우저 → Supabase Storage → 받은 URL/path만 /api/creator/identity-import 로 보내 row 생성
 // Props:
 //   identityId?: 'mine-primary'
 //   defaultAssetType?: 'photo'
@@ -7,6 +8,7 @@
 
 import { useRef, useState } from 'react';
 import { Upload, Loader2, Check, AlertCircle, X } from 'lucide-react';
+import { supabaseBrowser } from '../../../lib/supabaseClient';
 
 const ASSET_TYPES = [
   { value: 'photo', label: '내 사진' },
@@ -22,20 +24,19 @@ const SOURCES = [
   { value: 'reference', label: '레퍼런스' },
 ];
 
+const BUCKET = 'creator-library';
 const MAX_BATCH = 20;
 const MAX_FILE_MB = 50;
 
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result || '';
-      const comma = String(result).indexOf(',');
-      resolve(comma >= 0 ? String(result).slice(comma + 1) : String(result));
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+function safeName(name) {
+  return (name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+function buildPath(identityId, assetType, file) {
+  const name = safeName(file.name);
+  const hasExt = name.includes('.');
+  const suffix = hasExt ? '' : `.${(file.type.split('/')[1] || 'bin').toLowerCase()}`;
+  return `${identityId}/${assetType}/${crypto.randomUUID()}-${name}${suffix}`;
 }
 
 export default function AssetUploader({
@@ -86,50 +87,63 @@ export default function AssetUploader({
     const updateItem = (i, patch) =>
       setQueue((prev) => prev.map((q, idx) => (idx === i ? { ...q, ...patch } : q)));
 
-    const filesPayload = [];
+    // 1단계: Supabase Storage 직접 업로드
+    const uploaded = []; // { _i, url, path, mimeType, filename, assetType, source }
     for (let i = 0; i < queue.length; i++) {
       if (queue[i].status === 'done') continue;
       updateItem(i, { status: 'uploading' });
-      try {
-        const b64 = await fileToBase64(queue[i].file);
-        filesPayload.push({
-          _i: i,
-          base64: b64,
-          mimeType: queue[i].file.type || 'application/octet-stream',
-          filename: queue[i].file.name,
-          assetType,
-          source,
-        });
-      } catch (e) {
-        updateItem(i, { status: 'error', error: e.message });
+
+      const file = queue[i].file;
+      const path = buildPath(identityId, assetType, file);
+      const contentType = file.type || 'application/octet-stream';
+
+      const { error: upErr } = await supabaseBrowser.storage
+        .from(BUCKET)
+        .upload(path, file, { contentType, upsert: false });
+
+      if (upErr) {
+        updateItem(i, { status: 'error', error: upErr.message });
+        continue;
       }
+
+      const { data: pub } = supabaseBrowser.storage.from(BUCKET).getPublicUrl(path);
+      uploaded.push({
+        _i: i,
+        url: pub?.publicUrl,
+        path,
+        mimeType: contentType,
+        filename: file.name,
+        assetType,
+        source,
+      });
     }
 
-    if (filesPayload.length === 0) {
+    if (uploaded.length === 0) {
       setBusy(false);
       return;
     }
 
+    // 2단계: row 생성만 서버 호출 (작은 JSON)
     try {
       const res = await fetch('/api/creator/identity-import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           identityId,
-          files: filesPayload.map(({ _i, ...rest }) => rest),
+          files: uploaded.map(({ _i, ...rest }) => rest),
         }),
       });
       const data = await res.json();
       const errMap = new Map((data.errors || []).map((e) => [e.index, e.error]));
 
-      filesPayload.forEach((p, ord) => {
+      uploaded.forEach((p, ord) => {
         if (errMap.has(ord)) updateItem(p._i, { status: 'error', error: errMap.get(ord) });
         else updateItem(p._i, { status: 'done' });
       });
 
       if (onUploaded && data.assets?.length) onUploaded(data.assets);
     } catch (e) {
-      filesPayload.forEach((p) => updateItem(p._i, { status: 'error', error: e.message }));
+      uploaded.forEach((p) => updateItem(p._i, { status: 'error', error: e.message }));
     } finally {
       setBusy(false);
     }
@@ -181,7 +195,7 @@ export default function AssetUploader({
           탭하거나 파일 드롭 — 한 번에 최대 {MAX_BATCH}개, 파일당 {MAX_FILE_MB}MB
         </p>
         <p className="text-xs text-zinc-500 mt-1">
-          Cmd / Shift 클릭으로 다중 선택. 모바일에서는 카메라/앨범 모두 가능
+          Storage 직접 업로드 (Vercel 우회). Cmd / Shift 클릭으로 다중 선택
         </p>
         <input
           ref={inputRef}
