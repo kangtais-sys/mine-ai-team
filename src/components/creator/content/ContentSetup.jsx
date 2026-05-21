@@ -5,7 +5,7 @@
 //   3단계: placeholder
 // 하위 호환: generate API / StoryboardEditor 에 personaId 자리로 baseAssetId 전달
 import { useState, useEffect } from 'react';
-import { Loader2, Globe, UserSquare2, ChevronRight, ChevronLeft, Save, Trash2, ImageOff, Sparkles, Film, Pencil, Check, AlertCircle } from 'lucide-react';
+import { Loader2, Globe, UserSquare2, ChevronRight, ChevronLeft, Save, Trash2, ImageOff, Sparkles, Film, Pencil, Check, AlertCircle, RotateCcw, ArrowUp, ArrowDown, Plus } from 'lucide-react';
 
 // scene_type 별 스타일 (씬 종류 — 비주얼 분류)
 const SCENE_TYPES = {
@@ -241,6 +241,9 @@ export default function ContentSetup({ onDraftCreated, identityId = 'mine-primar
             generating={generating}
             topic={topic}
             aspectRatio={size}
+            language={language}
+            platforms={platforms}
+            notes={notes}
             baseAssetUrl={baseAssetUrl}
             baseDescription={baseDescription}
             onRegenerate={generateStoryboard}
@@ -626,9 +629,17 @@ function Step2Topic({
 }
 
 // ---------------- 3단계: 스토리보드 (장면 카드 리스트) ----------------
-function Step3Storyboard({ scenes, onScenesUpdate, generating, topic, aspectRatio, baseAssetUrl, baseDescription, onRegenerate, draftId }) {
+function Step3Storyboard({
+  scenes, onScenesUpdate, generating,
+  topic, aspectRatio, language, platforms, notes,
+  baseAssetUrl, baseDescription,
+  onRegenerate, draftId,
+}) {
   const [saveState, setSaveState] = useState({ status: 'idle', error: '', at: null });
-  // status: idle | saving | saved | error
+  // busyKey: `regen:${sceneIndex}` | `add:${afterSceneIndex}` | null
+  const [busyKey, setBusyKey] = useState(null);
+
+  const reindex = (arr) => arr.map((s, i) => ({ ...s, scene_index: i + 1 }));
 
   const persistScenes = async (nextScenes) => {
     if (!draftId) return;
@@ -659,6 +670,107 @@ function Step3Storyboard({ scenes, onScenesUpdate, generating, topic, aspectRati
     });
     onScenesUpdate(next);
     persistScenes(next);
+  };
+
+  const deleteScene = (sceneIndex) => {
+    if (!window.confirm(`장면 ${sceneIndex}번을 삭제할까?`)) return;
+    const next = reindex(scenes.filter((s) => s.scene_index !== sceneIndex));
+    onScenesUpdate(next);
+    persistScenes(next);
+  };
+
+  const moveScene = (sceneIndex, dir) => {
+    const i = scenes.findIndex((s) => s.scene_index === sceneIndex);
+    if (i < 0) return;
+    const j = i + dir;
+    if (j < 0 || j >= scenes.length) return;
+    const arr = [...scenes];
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    const next = reindex(arr);
+    onScenesUpdate(next);
+    persistScenes(next);
+  };
+
+  const regenerateOne = async (sceneIndex) => {
+    if (busyKey) return;
+    setBusyKey(`regen:${sceneIndex}`);
+    try {
+      const r = await fetch('/api/creator/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'regenerate_scene',
+          sceneIndex,
+          topic, baseDescription, aspectRatio, language, platforms, notes,
+          scenes,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d?.success || !d.scene) {
+        setSaveState({ status: 'error', error: d?.error || `재생성 실패 (${r.status})`, at: null });
+        return;
+      }
+      const next = reindex(scenes.map((s) =>
+        s.scene_index === sceneIndex ? { ...d.scene, scene_index: sceneIndex } : s
+      ));
+      onScenesUpdate(next);
+      persistScenes(next);
+    } catch (e) {
+      setSaveState({ status: 'error', error: e.message, at: null });
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const addBlankScene = (afterSceneIndex) => {
+    const insertAt = afterSceneIndex === 0
+      ? 0
+      : scenes.findIndex((s) => s.scene_index === afterSceneIndex) + 1;
+    if (insertAt < 0) return;
+    const blank = {
+      scene_index: 0,
+      scene_type: 'broll',
+      scene_mode: 'static',
+      message: { caption: '', voiceover: '', role: 'info', why_works: '' },
+      visual: '',
+      skin_state: '',
+      duration_sec: 4,
+    };
+    const next = reindex([...scenes.slice(0, insertAt), blank, ...scenes.slice(insertAt)]);
+    onScenesUpdate(next);
+    persistScenes(next);
+  };
+
+  const addAiScene = async (afterSceneIndex) => {
+    if (busyKey) return;
+    setBusyKey(`add:${afterSceneIndex}`);
+    try {
+      const r = await fetch('/api/creator/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'add_scene',
+          insertAfter: afterSceneIndex,
+          topic, baseDescription, aspectRatio, language, platforms, notes,
+          scenes,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d?.success || !d.scene) {
+        setSaveState({ status: 'error', error: d?.error || `장면 추가 실패 (${r.status})`, at: null });
+        return;
+      }
+      const insertAt = afterSceneIndex === 0
+        ? 0
+        : scenes.findIndex((s) => s.scene_index === afterSceneIndex) + 1;
+      const next = reindex([...scenes.slice(0, insertAt), d.scene, ...scenes.slice(insertAt)]);
+      onScenesUpdate(next);
+      persistScenes(next);
+    } catch (e) {
+      setSaveState({ status: 'error', error: e.message, at: null });
+    } finally {
+      setBusyKey(null);
+    }
   };
 
   if (generating) {
@@ -717,57 +829,112 @@ function Step3Storyboard({ scenes, onScenesUpdate, generating, topic, aspectRati
       </div>
 
       {/* 장면 카드 — message.text 메인, visual은 보조 */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {scenes.map((s) => {
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <AddSceneRow
+          afterSceneIndex={0}
+          onAddBlank={addBlankScene}
+          onAddAi={addAiScene}
+          busy={busyKey === 'add:0'}
+          disabled={!!busyKey}
+        />
+        {scenes.map((s, idx) => {
           const sceneMeta = SCENE_TYPES[s.scene_type] || SCENE_TYPES.broll;
           const msg = s.message || {};
           const roleMeta = ROLE_TYPES[msg.role] || ROLE_TYPES.info;
+          const isFirst = idx === 0;
+          const isLast = idx === scenes.length - 1;
+          const isRegenerating = busyKey === `regen:${s.scene_index}`;
           return (
-            <div
-              key={s.scene_index}
-              style={{
-                display: 'flex', gap: 14,
-                padding: 16, borderRadius: 14,
-                background: '#FFF', border: '1px solid #E5E5EA',
-              }}
-            >
-              {/* 좌측: 번호 + 타입 */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 56 }}>
-                <div style={{
-                  width: 32, height: 32, borderRadius: '50%',
-                  background: sceneMeta.bg, color: sceneMeta.color,
-                  fontWeight: 800, fontSize: 14,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  {s.scene_index}
-                </div>
-                <div style={{
-                  fontSize: 10, fontWeight: 700, color: sceneMeta.color,
-                  padding: '2px 6px', borderRadius: 4, background: sceneMeta.bg,
-                  whiteSpace: 'nowrap',
-                }}>
-                  {sceneMeta.label}
-                </div>
-                <div style={{ fontSize: 10, color: '#AEAEB2' }}>
-                  {s.scene_mode === 'cinematic' ? '🎥 시네마틱' : '📷 정적'}
-                </div>
-              </div>
-
-              {/* 우측: 메시지 메인 + 비주얼 보조 */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
-
-                {/* 메시지 영역 (메인) */}
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                    <span style={{
-                      fontSize: 10.5, fontWeight: 700, color: roleMeta.color,
-                      padding: '3px 8px', borderRadius: 4, background: roleMeta.bg,
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {roleMeta.label}
-                    </span>
-                    <span style={{ fontSize: 11, color: '#AEAEB2' }}>⏱ {s.duration_sec}초</span>
+            <div key={s.scene_index} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div
+                style={{
+                  display: 'flex', gap: 14,
+                  padding: 16, borderRadius: 14,
+                  background: '#FFF', border: '1px solid #E5E5EA',
+                  position: 'relative',
+                  opacity: isRegenerating ? 0.55 : 1,
+                  transition: 'opacity 0.15s',
+                }}
+              >
+                {isRegenerating && (
+                  <div style={{
+                    position: 'absolute', inset: 0, borderRadius: 14,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    background: 'rgba(255,255,255,0.55)', zIndex: 1,
+                    fontSize: 12.5, fontWeight: 600, color: '#5E6AD2',
+                  }}>
+                    <Loader2 size={16} style={{ animation: 'spin 0.8s linear infinite' }} />
+                    이 장면 재생성 중...
                   </div>
+                )}
+
+                {/* 좌측: 번호 + 타입 */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 56 }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: '50%',
+                    background: sceneMeta.bg, color: sceneMeta.color,
+                    fontWeight: 800, fontSize: 14,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {s.scene_index}
+                  </div>
+                  <div style={{
+                    fontSize: 10, fontWeight: 700, color: sceneMeta.color,
+                    padding: '2px 6px', borderRadius: 4, background: sceneMeta.bg,
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {sceneMeta.label}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#AEAEB2' }}>
+                    {s.scene_mode === 'cinematic' ? '🎥 시네마틱' : '📷 정적'}
+                  </div>
+                </div>
+
+                {/* 우측: 메시지 메인 + 비주얼 보조 */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+
+                  {/* 액션 바 */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+                    <SceneActionBtn
+                      title="이 장면만 AI 재생성"
+                      onClick={() => regenerateOne(s.scene_index)}
+                      disabled={!!busyKey}
+                      icon={<RotateCcw size={12} />}
+                      label="재생성"
+                    />
+                    <SceneActionBtn
+                      title="위로 이동"
+                      onClick={() => moveScene(s.scene_index, -1)}
+                      disabled={!!busyKey || isFirst}
+                      icon={<ArrowUp size={12} />}
+                    />
+                    <SceneActionBtn
+                      title="아래로 이동"
+                      onClick={() => moveScene(s.scene_index, +1)}
+                      disabled={!!busyKey || isLast}
+                      icon={<ArrowDown size={12} />}
+                    />
+                    <SceneActionBtn
+                      title="장면 삭제"
+                      onClick={() => deleteScene(s.scene_index)}
+                      disabled={!!busyKey}
+                      icon={<Trash2 size={12} />}
+                      danger
+                    />
+                  </div>
+
+                  {/* 메시지 영역 (메인) */}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      <span style={{
+                        fontSize: 10.5, fontWeight: 700, color: roleMeta.color,
+                        padding: '3px 8px', borderRadius: 4, background: roleMeta.bg,
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {roleMeta.label}
+                      </span>
+                      <span style={{ fontSize: 11, color: '#AEAEB2' }}>⏱ {s.duration_sec}초</span>
+                    </div>
 
                   {/* caption (자막) — 메인 */}
                   <EditableText
@@ -849,7 +1016,15 @@ function Step3Storyboard({ scenes, onScenesUpdate, generating, topic, aspectRati
                   }}
                   textareaStyle={{ fontSize: 12, lineHeight: 1.4 }}
                 />
+                </div>
               </div>
+              <AddSceneRow
+                afterSceneIndex={s.scene_index}
+                onAddBlank={addBlankScene}
+                onAddAi={addAiScene}
+                busy={busyKey === `add:${s.scene_index}`}
+                disabled={!!busyKey}
+              />
             </div>
           );
         })}
@@ -980,6 +1155,75 @@ function SaveStatus({ state }) {
     );
   }
   return null;
+}
+
+// ---------------- 장면 카드 액션 버튼 ----------------
+function SceneActionBtn({ title, onClick, disabled, icon, label, danger }) {
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 3,
+        padding: label ? '4px 8px' : '4px 6px', borderRadius: 6,
+        border: '1px solid #E5E5EA',
+        background: '#FFF',
+        color: danger ? '#FF3B30' : '#6E6E73',
+        fontSize: 11, fontWeight: 600, lineHeight: 1,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.35 : 1,
+        transition: 'background 0.15s',
+      }}
+    >
+      {icon}
+      {label && <span>{label}</span>}
+    </button>
+  );
+}
+
+// ---------------- 장면 사이 추가 ----------------
+function AddSceneRow({ afterSceneIndex, onAddBlank, onAddAi, busy, disabled }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+      padding: '2px 0',
+    }}>
+      <button
+        onClick={() => onAddBlank(afterSceneIndex)}
+        disabled={disabled}
+        title="빈 장면을 여기에 끼우기"
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 3,
+          padding: '4px 10px', borderRadius: 999,
+          border: '1px dashed #C7C7CC', background: '#FFF',
+          fontSize: 11, fontWeight: 600, color: '#6E6E73',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.35 : 1,
+        }}
+      >
+        <Plus size={11} /> 빈 장면
+      </button>
+      <button
+        onClick={() => onAddAi(afterSceneIndex)}
+        disabled={disabled}
+        title="AI가 여기에 맞는 장면을 생성"
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 3,
+          padding: '4px 10px', borderRadius: 999,
+          border: '1px solid #5E6AD230', background: '#5E6AD212',
+          fontSize: 11, fontWeight: 600, color: '#5E6AD2',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.35 : 1,
+        }}
+      >
+        {busy
+          ? <Loader2 size={11} style={{ animation: 'spin 0.8s linear infinite' }} />
+          : <Sparkles size={11} />}
+        AI 장면
+      </button>
+    </div>
+  );
 }
 
 // ---------------- 깨진 이미지 폴백 ----------------

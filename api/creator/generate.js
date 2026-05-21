@@ -31,28 +31,28 @@ async function fetchTrendContext(topic) {
 
 const anthropic = new Anthropic();
 
-// ────────────────────────────────────────────────────────────
-// V3: 메시지 중심 스토리보드 자동 생성
-// 입력: { baseAssetId, baseAssetUrl, baseDescription, topic, aspectRatio, language, platforms, notes, identityId }
-// 출력: { success, draft: { id, scenes: [{ scene_index, scene_type, scene_mode, message:{caption,voiceover,role,why_works}, visual, skin_state, duration_sec }], ... } }
-// ────────────────────────────────────────────────────────────
-async function handleV3BeforeAfter(req, res) {
-  const {
-    baseAssetId,
-    baseAssetUrl,
-    baseDescription = '',
-    topic,
-    aspectRatio = '9:16',
-    language = 'ko',
-    platforms = ['instagram'],
-    notes = '',
-    identityId = 'mine-primary',
-  } = req.body || {};
+// 단일 장면 normalize — handleV3BeforeAfter / handleSingleSceneRegen 공용
+function normalizeScene(s, fallbackIndex = 0) {
+  const msg = s.message && typeof s.message === 'object' ? s.message : {};
+  return {
+    scene_index: s.scene_index ?? fallbackIndex,
+    scene_type: s.scene_type || 'broll',
+    scene_mode: s.scene_mode || 'static',
+    message: {
+      caption: msg.caption || msg.text || s.suggested_caption || '',
+      voiceover: msg.voiceover || '',
+      role: msg.role || (s.scene_type === 'hook_3sec' ? 'hook' : s.scene_type === 'talking_head' ? 'cta' : 'info'),
+      why_works: msg.why_works || '',
+    },
+    visual: s.visual || s.description || '',
+    skin_state: s.skin_state || '',
+    duration_sec: typeof s.duration_sec === 'number' ? s.duration_sec : 4,
+  };
+}
 
-  if (!topic || !topic.trim()) return res.status(400).json({ error: 'topic 필수' });
-
-  const langLabel = language === 'ko' ? '한국어' : 'English';
-  const systemPrompt = `너는 K-뷰티 인플루언서 MINE의 컨텐츠 전략가다.
+// MINE 스토리보드 시스템 프롬프트 — handleV3BeforeAfter / handleSingleSceneRegen 공용
+function buildMineSystemPrompt(langLabel) {
+  return `너는 K-뷰티 인플루언서 MINE의 컨텐츠 전략가다.
 MINE은 30만 팔로워 뷰티 인플루언서이자 '밀리밀리' 화장품 브랜드 대표이며 화장품 개발자다.
 모든 컨텐츠의 목표는 단 하나: 저장/공유/댓글/팔로우를 유발하는 것.
 '잘 만든 영상'은 실패다. '터지는 컨텐츠'여야 한다.
@@ -179,6 +179,30 @@ voiceover는 '정보 낭독'이 아니라 '옆에서 친구가 비밀 흘리듯'
 - 정보: 하나씩 풀면서 계속 '근데 이게 끝이 아니에요' 식으로 다음 장면 끌기
 - 마지막: 여운 + CTA
 시청자가 '어 다음은?' 하며 끝까지 보게.`;
+}
+
+// ────────────────────────────────────────────────────────────
+// V3: 메시지 중심 스토리보드 자동 생성
+// 입력: { baseAssetId, baseAssetUrl, baseDescription, topic, aspectRatio, language, platforms, notes, identityId }
+// 출력: { success, draft: { id, scenes: [{ scene_index, scene_type, scene_mode, message:{caption,voiceover,role,why_works}, visual, skin_state, duration_sec }], ... } }
+// ────────────────────────────────────────────────────────────
+async function handleV3BeforeAfter(req, res) {
+  const {
+    baseAssetId,
+    baseAssetUrl,
+    baseDescription = '',
+    topic,
+    aspectRatio = '9:16',
+    language = 'ko',
+    platforms = ['instagram'],
+    notes = '',
+    identityId = 'mine-primary',
+  } = req.body || {};
+
+  if (!topic || !topic.trim()) return res.status(400).json({ error: 'topic 필수' });
+
+  const langLabel = language === 'ko' ? '한국어' : 'English';
+  const systemPrompt = buildMineSystemPrompt(langLabel);
 
   const userPrompt = `주제: ${topic}
 베이스 얼굴 설명: ${baseDescription || '(따로 지정 없음)'}
@@ -226,23 +250,7 @@ voiceover는 '정보 낭독'이 아니라 '옆에서 친구가 비밀 흘리듯'
     }
 
     // 정규화 — message 객체 보장 + scene_index 보정
-    scenes = scenes.map((s, i) => {
-      const msg = s.message && typeof s.message === 'object' ? s.message : {};
-      return {
-        scene_index: s.scene_index ?? i + 1,
-        scene_type: s.scene_type || 'broll',
-        scene_mode: s.scene_mode || 'static',
-        message: {
-          caption: msg.caption || msg.text || s.suggested_caption || '',
-          voiceover: msg.voiceover || '',
-          role: msg.role || (s.scene_type === 'hook_3sec' ? 'hook' : s.scene_type === 'talking_head' ? 'cta' : 'info'),
-          why_works: msg.why_works || '',
-        },
-        visual: s.visual || s.description || '',
-        skin_state: s.skin_state || '',
-        duration_sec: typeof s.duration_sec === 'number' ? s.duration_sec : 4,
-      };
-    });
+    scenes = scenes.map((s, i) => normalizeScene(s, i + 1));
 
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -280,6 +288,97 @@ voiceover는 '정보 낭독'이 아니라 '옆에서 친구가 비밀 흘리듯'
   }
 }
 
+// ────────────────────────────────────────────────────────────
+// V3: 단일 장면 재생성 또는 새 장면 추가
+// 입력: { mode: 'regenerate_scene'|'add_scene', sceneIndex|insertAfter, topic, baseDescription, aspectRatio, language, platforms, notes, scenes, draftId? }
+// 출력: { success, scene: { scene_index, scene_type, scene_mode, message, visual, skin_state, duration_sec } }
+// ────────────────────────────────────────────────────────────
+async function handleSingleSceneRegen(req, res) {
+  const {
+    mode,
+    sceneIndex,
+    insertAfter = 0,
+    topic = '',
+    baseDescription = '',
+    aspectRatio = '9:16',
+    language = 'ko',
+    platforms = ['instagram'],
+    notes = '',
+    scenes = [],
+  } = req.body || {};
+
+  if (!topic.trim()) return res.status(400).json({ error: 'topic 필수' });
+
+  const langLabel = language === 'ko' ? '한국어' : 'English';
+  const systemPrompt = buildMineSystemPrompt(langLabel);
+
+  // 현재 스토리보드 맥락 — caption/voiceover 까지 짧게
+  const sceneContext = scenes.length
+    ? scenes.map((s) => {
+        const msg = s.message || {};
+        const cap = (msg.caption || '').slice(0, 60);
+        const vo = (msg.voiceover || '').slice(0, 100);
+        return `[${s.scene_index}] ${s.scene_type}/${s.scene_mode || 'static'} · ${s.duration_sec || 4}s · role:${msg.role || '-'}
+   caption: "${cap}"
+   voiceover: "${vo}"`;
+      }).join('\n')
+    : '(아직 장면 없음)';
+
+  const target = mode === 'regenerate_scene'
+    ? `장면 ${sceneIndex}번을 새 버전으로 다시 작성하라. 같은 scene_type/role 결을 유지하되 다른 각도로 더 임팩트있게. caption/voiceover 모두 새로.`
+    : `장면 ${insertAfter}번 다음에 들어갈 새 장면 1개를 작성하라 (insertAfter=0 이면 맨 앞). 앞뒤 흐름과 자연스럽게 이어지게.`;
+
+  const userPrompt = `주제: ${topic}
+베이스 얼굴 설명: ${baseDescription || '(따로 지정 없음)'}
+영상 비율: ${aspectRatio}
+플랫폼: ${platforms.join(', ')}
+추가 메모: ${notes || '없음'}
+
+현재 스토리보드 (${scenes.length}개 장면):
+${sceneContext}
+
+${target}
+
+JSON 객체 1개만 출력 (배열·코드블록 금지):
+{
+  "scene_type": "hook_3sec | before | product | after | talking_head | broll",
+  "scene_mode": "static | cinematic",
+  "message": {
+    "caption": "화면 자막 (${langLabel}) — 강약 리듬",
+    "voiceover": "MINE 밀당 구어체 나레이션 (${langLabel}) — 1~3문장",
+    "role": "hook | info | cta | transition",
+    "why_works": "저장/공유/댓글/팔로우 유발 이유 한 줄"
+  },
+  "visual": "카메라·모델·조명 디테일",
+  "skin_state": "피부 상태",
+  "duration_sec": 4
+}`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1500,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    });
+
+    const raw = response.content[0]?.text || '';
+    let scene;
+    try {
+      const m = raw.match(/\{[\s\S]*\}/);
+      scene = JSON.parse(m ? m[0] : raw);
+    } catch (e) {
+      return res.status(500).json({ error: 'Claude 응답 파싱 실패', raw, parseError: e.message });
+    }
+
+    const normalized = normalizeScene(scene, 0);
+    return res.status(200).json({ success: true, scene: normalized });
+  } catch (e) {
+    console.error('[V3 single scene]', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+}
+
 
 // 페르소나에서 비주얼 프롬프트 빌드
 function buildVisualStyle(persona) {
@@ -301,6 +400,11 @@ function buildCatchphrasesHint(persona) {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // V3 단일 장면 모드 (regenerate_scene / add_scene)
+  if (req.body?.mode === 'regenerate_scene' || req.body?.mode === 'add_scene') {
+    return handleSingleSceneRegen(req, res);
+  }
 
   // V3: 베이스 얼굴이 지정되면 비포/애프터 스토리보드 경로
   if (req.body?.baseAssetId) {
