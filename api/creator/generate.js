@@ -31,6 +31,156 @@ async function fetchTrendContext(topic) {
 
 const anthropic = new Anthropic();
 
+// ────────────────────────────────────────────────────────────
+// V3: 비포/애프터 스토리보드 자동 생성
+// 입력: { baseAssetId, baseAssetUrl, baseDescription, topic, aspectRatio, language, platforms, notes, identityId }
+// 출력: { success, draft: { id, scenes: [{ scene_index, scene_type, scene_mode, description, skin_state, suggested_caption, duration_sec }], ... } }
+// ────────────────────────────────────────────────────────────
+async function handleV3BeforeAfter(req, res) {
+  const {
+    baseAssetId,
+    baseAssetUrl,
+    baseDescription = '',
+    topic,
+    aspectRatio = '9:16',
+    language = 'ko',
+    platforms = ['instagram'],
+    notes = '',
+    identityId = 'mine-primary',
+  } = req.body || {};
+
+  if (!topic || !topic.trim()) return res.status(400).json({ error: 'topic 필수' });
+
+  const langLabel = language === 'ko' ? '한국어' : 'English';
+  const systemPrompt = `당신은 K-뷰티 인플루언서 숏폼 영상 디렉터입니다.
+영상의 핵심 구조는 "비포 → 제품 사용 → 애프터" — 시청자가 즉시 차이를 느끼게 만드는 변화 서사입니다.
+
+▶ 후킹 (0-3초): 스크롤 멈추는 강렬한 클로즈업
+- 보통 'before' 상태(트러블/건조/칙칙함)를 자극적으로 보여주는 closeup
+- "이거 진짜 효과 있어요" "한 번 써봤더니" 같은 자막 후킹
+
+▶ 비포 (3-7초): 문제 상태 강조
+- 모공, 트러블, 건조, 칙칙함 등 시각화
+- skin_state: 구체적 묘사 ("화장 들뜬 건조한 피부", "트러블 있는 칙칙한 톤")
+
+▶ 제품 (7-12초): 제품 쇼케이스 + 발리기
+- 제품을 들어 올리거나 손에 덜어 바르는 장면
+- 텍스처/색감 부각
+
+▶ 애프터 (12-20초): 변화된 상태
+- 광/투명/매끈 강조, 같은 각도로 대비 명확
+- skin_state: "촉촉하고 윤기 도는 피부", "결 정돈된 매끈한 톤"
+
+▶ CTA / talking_head (마지막 3-5초):
+- 카메라 정면 보고 "저장하고 따라해봐요" "팔로우하면 더 알려드려요"
+
+▶ scene_type 정의
+- hook_3sec: 첫 3초 강렬한 후킹 (보통 closeup before)
+- before: 사용 전 상태
+- product: 제품 쇼케이스
+- after: 사용 후 변화
+- talking_head: 정면 토킹 (CTA 또는 설명)
+- broll: 보조 컷 (분위기, 디테일)
+
+▶ scene_mode
+- static: 카메라 고정, 정적 샷 (talking_head, 제품 정물)
+- cinematic: 카메라 움직임 포함 (dolly-in, pan, tilt)
+
+▶ 출력 원칙
+- 4-6개 장면, 총 15-25초
+- 첫 장면은 반드시 hook_3sec
+- before → product → after 시퀀스 명확히
+- 마지막 또는 끝에서 두 번째에 talking_head (CTA)
+- 자막은 ${langLabel}로, 한 줄 12자 이내`;
+
+  const userPrompt = `주제: ${topic}
+베이스 얼굴 설명: ${baseDescription || '(따로 지정 없음)'}
+영상 비율: ${aspectRatio}
+플랫폼: ${platforms.join(', ')}
+추가 메모: ${notes || '없음'}
+
+위 주제로 K-뷰티 인플루언서 숏츠 스토리보드를 짜라.
+비포/애프터 구조 중심으로 4~6개 장면.
+
+각 장면을 다음 JSON 키로 생성하되, JSON 배열만 출력하라 (코드블록·설명 금지):
+[
+  {
+    "scene_index": 1,
+    "scene_type": "hook_3sec | before | product | after | talking_head | broll",
+    "scene_mode": "static | cinematic",
+    "description": "이 장면 연출 설명 (카메라 각도, 모델 행동, 조명 디테일 — 한 단락)",
+    "skin_state": "이 장면에서 보여줄 피부/얼굴 상태 (예: '트러블 있는 칙칙한 피부', '광 도는 매끈한 피부')",
+    "suggested_caption": "이 장면 자막 후보 (${langLabel}, 12자 이내 권장)",
+    "duration_sec": 4
+  }
+]`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2500,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    });
+
+    const raw = response.content[0]?.text || '';
+    let scenes;
+    try {
+      const arrMatch = raw.match(/\[[\s\S]*\]/);
+      scenes = JSON.parse(arrMatch ? arrMatch[0] : raw);
+      if (!Array.isArray(scenes)) throw new Error('not an array');
+    } catch (e) {
+      return res.status(500).json({ error: 'Claude 응답 파싱 실패', raw, parseError: e.message });
+    }
+
+    // scene_index 보정 (모델이 빠뜨려도 1부터 채워줌)
+    scenes = scenes.map((s, i) => ({
+      scene_index: s.scene_index ?? i + 1,
+      scene_type: s.scene_type || 'broll',
+      scene_mode: s.scene_mode || 'static',
+      description: s.description || '',
+      skin_state: s.skin_state || '',
+      suggested_caption: s.suggested_caption || '',
+      duration_sec: typeof s.duration_sec === 'number' ? s.duration_sec : 4,
+    }));
+
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const draft = {
+      id,
+      version: 'v3',
+      identityId,
+      baseAssetId,
+      baseAssetUrl,
+      baseDescription,
+      topic,
+      aspectRatio,
+      language,
+      platforms,
+      notes,
+      scenes,
+      status: 'storyboard',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    try {
+      const sb = getSupabase();
+      // persona_id 컬럼이 NOT NULL인 경우를 대비해 baseAssetId 로 fallback
+      await sb.from('creator_drafts').upsert({ id, persona_id: baseAssetId, data: draft });
+    } catch (e) {
+      console.error('[V3 storyboard save]', e.message);
+      // 저장 실패해도 응답은 줘서 사용자가 다시 시도 가능
+    }
+
+    return res.status(200).json({ success: true, draft });
+  } catch (e) {
+    console.error('[V3 storyboard]', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+
 // 페르소나에서 비주얼 프롬프트 빌드
 function buildVisualStyle(persona) {
   const parts = [];
@@ -51,6 +201,11 @@ function buildCatchphrasesHint(persona) {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // V3: 베이스 얼굴이 지정되면 비포/애프터 스토리보드 경로
+  if (req.body?.baseAssetId) {
+    return handleV3BeforeAfter(req, res);
+  }
 
   const { topic, pillar: pillarOverride, format, platforms = ['instagram'], notes = '', cardnewsTemplate = 'clean', personaImageUrl, sourceImages = [], language = 'ko', personaId = 'millimilli' } = req.body || {};
   if ((!topic && !pillarOverride) || !format) return res.status(400).json({ error: 'topic 또는 pillar, format 필수' });

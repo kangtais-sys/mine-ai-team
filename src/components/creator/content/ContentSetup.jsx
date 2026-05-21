@@ -5,7 +5,17 @@
 //   3단계: placeholder
 // 하위 호환: generate API / StoryboardEditor 에 personaId 자리로 baseAssetId 전달
 import { useState, useEffect } from 'react';
-import { Loader2, Globe, UserSquare2, ChevronRight, ChevronLeft, Save, Trash2, ImageOff } from 'lucide-react';
+import { Loader2, Globe, UserSquare2, ChevronRight, ChevronLeft, Save, Trash2, ImageOff, Sparkles, Film } from 'lucide-react';
+
+// scene_type 별 스타일
+const SCENE_TYPES = {
+  hook_3sec:    { label: '후킹 3초',  color: '#FF3B30', bg: '#FF3B3015' },
+  before:       { label: '비포',      color: '#FF9500', bg: '#FF950015' },
+  product:      { label: '제품',      color: '#5E6AD2', bg: '#5E6AD215' },
+  after:        { label: '애프터',    color: '#34C759', bg: '#34C75915' },
+  talking_head: { label: '토킹',      color: '#007AFF', bg: '#007AFF15' },
+  broll:        { label: 'B-roll',    color: '#AEAEB2', bg: '#AEAEB215' },
+};
 
 const PLATFORMS = [
   { key: 'instagram', label: 'Instagram' },
@@ -45,7 +55,52 @@ export default function ContentSetup({ onDraftCreated, identityId = 'mine-primar
   const [platforms, setPlatforms] = useState(['instagram', 'tiktok']);
   const [notes, setNotes] = useState('');
 
+  // 3단계 — 스토리보드 결과
+  const [generating, setGenerating] = useState(false);
+  const [scenes, setScenes] = useState([]);
+  const [draftId, setDraftId] = useState(null);
+
   const [error, setError] = useState('');
+
+  const generateStoryboard = async () => {
+    if (generating) return;
+    if (!baseAssetId || !topic.trim()) {
+      setError('베이스 얼굴 + 주제 둘 다 필요해.');
+      return;
+    }
+    setGenerating(true);
+    setError('');
+    setStep(3);
+    try {
+      const r = await fetch('/api/creator/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseAssetId,
+          baseAssetUrl,
+          baseDescription,
+          topic,
+          aspectRatio: size,
+          language,
+          platforms,
+          notes,
+          identityId,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d?.success) {
+        setError(d?.error || `생성 실패 (${r.status})`);
+        setScenes([]);
+        return;
+      }
+      setScenes(d.draft?.scenes || []);
+      setDraftId(d.draft?.id || null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   // photo 자산 fetch
   useEffect(() => {
@@ -166,11 +221,22 @@ export default function ContentSetup({ onDraftCreated, identityId = 'mine-primar
             notes={notes} setNotes={setNotes}
             baseAssetUrl={baseAssetUrl}
             baseDescription={baseDescription}
+            onGenerate={generateStoryboard}
+            generating={generating}
           />
         )}
 
         {step === 3 && (
-          <Step3Storyboard />
+          <Step3Storyboard
+            scenes={scenes}
+            generating={generating}
+            topic={topic}
+            aspectRatio={size}
+            baseAssetUrl={baseAssetUrl}
+            baseDescription={baseDescription}
+            onRegenerate={generateStoryboard}
+            draftId={draftId}
+          />
         )}
 
         {error && (
@@ -421,7 +487,9 @@ function Step2Topic({
   platforms, togglePlatform,
   notes, setNotes,
   baseAssetUrl, baseDescription,
+  onGenerate, generating,
 }) {
+  const canGenerate = !!topic.trim() && !generating;
   return (
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 600 }}>
       {/* 베이스 요약 */}
@@ -522,28 +590,155 @@ function Step2Topic({
       </div>
 
       <button
-        disabled
+        onClick={onGenerate}
+        disabled={!canGenerate}
         style={{
-          width: '100%', padding: '13px 20px', borderRadius: 10, border: '1px dashed #AEAEB2',
-          background: '#F5F5F7', color: '#AEAEB2', fontSize: 13, fontWeight: 600,
-          cursor: 'not-allowed',
+          width: '100%', padding: '13px 20px', borderRadius: 10, border: 'none',
+          background: canGenerate ? '#5E6AD2' : '#F5F5F7',
+          color: canGenerate ? '#FFF' : '#AEAEB2',
+          fontSize: 14, fontWeight: 700,
+          cursor: canGenerate ? 'pointer' : 'not-allowed',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         }}
       >
-        스토리보드 생성 — 준비중
+        {generating ? (
+          <><Loader2 size={16} style={{ animation: 'spin 0.8s linear infinite' }} /> AI가 장면을 구성하는 중...</>
+        ) : (
+          <><Sparkles size={16} /> 스토리보드 생성</>
+        )}
       </button>
     </div>
   );
 }
 
-// ---------------- 3단계: 스토리보드 placeholder ----------------
-function Step3Storyboard() {
+// ---------------- 3단계: 스토리보드 (장면 카드 리스트) ----------------
+function Step3Storyboard({ scenes, generating, topic, aspectRatio, baseAssetUrl, baseDescription, onRegenerate, draftId }) {
+  if (generating) {
+    return (
+      <div style={{ padding: 60, textAlign: 'center', color: '#AEAEB2', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, height: '100%', justifyContent: 'center' }}>
+        <Loader2 size={32} style={{ animation: 'spin 0.8s linear infinite', color: '#5E6AD2' }} />
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#1D1D1F' }}>AI가 장면을 구성하는 중...</div>
+        <div style={{ fontSize: 12.5, color: '#AEAEB2', maxWidth: 320, lineHeight: 1.6 }}>
+          비포/애프터 구조로 4~6개 장면을 짜고 있어. 10초쯤 걸려.
+        </div>
+      </div>
+    );
+  }
+
+  if (!scenes || scenes.length === 0) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: '#AEAEB2', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, height: '100%', justifyContent: 'center' }}>
+        <Film size={36} strokeWidth={1.5} />
+        <div style={{ fontSize: 14, fontWeight: 500, color: '#6E6E73' }}>아직 생성된 스토리보드가 없어</div>
+        <div style={{ fontSize: 12, color: '#AEAEB2' }}>2단계로 돌아가서 [스토리보드 생성]을 눌러줘.</div>
+      </div>
+    );
+  }
+
+  const totalSec = scenes.reduce((sum, s) => sum + (s.duration_sec || 0), 0);
+
   return (
-    <div style={{ padding: 40, textAlign: 'center', color: '#AEAEB2', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, height: '100%', justifyContent: 'center' }}>
-      <div style={{ fontSize: 32 }}>🎬</div>
-      <div style={{ fontSize: 15, fontWeight: 600, color: '#6E6E73' }}>스토리보드 생성</div>
-      <div style={{ fontSize: 12.5, maxWidth: 320, lineHeight: 1.6 }}>
-        2단계가 확정되면 여기서 AI가 장면을 나눠서 카메라 각도·대사·조명까지 설계해. <br/>
-        (이번 빌드 범위 외 — 다음 단계에서)
+    <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 880 }}>
+      {/* 상단 요약 */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', background: '#F5F5F7', borderRadius: 12 }}>
+        <SafeImage src={baseAssetUrl} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#1D1D1F', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{topic}</div>
+          <div style={{ fontSize: 11.5, color: '#AEAEB2', marginTop: 2 }}>
+            {aspectRatio} · {scenes.length}장면 · 총 {totalSec}초
+            {baseDescription ? ` · ${baseDescription}` : ''}
+          </div>
+        </div>
+        <button
+          onClick={onRegenerate}
+          disabled={generating}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            padding: '7px 12px', borderRadius: 8, border: '1px solid #E5E5EA',
+            background: '#FFF', color: '#5E6AD2', fontSize: 12, fontWeight: 600,
+            cursor: generating ? 'not-allowed' : 'pointer',
+          }}
+        >
+          <Sparkles size={12} /> 다시 생성
+        </button>
+      </div>
+
+      {/* 장면 카드 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {scenes.map((s) => {
+          const meta = SCENE_TYPES[s.scene_type] || SCENE_TYPES.broll;
+          return (
+            <div
+              key={s.scene_index}
+              style={{
+                display: 'flex', gap: 14,
+                padding: 14, borderRadius: 12,
+                background: '#FFF', border: '1px solid #E5E5EA',
+              }}
+            >
+              {/* 좌측: 번호 + 타입 */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 56 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%',
+                  background: meta.bg, color: meta.color,
+                  fontWeight: 800, fontSize: 14,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {s.scene_index}
+                </div>
+                <div style={{
+                  fontSize: 10, fontWeight: 700, color: meta.color,
+                  padding: '2px 6px', borderRadius: 4, background: meta.bg,
+                  whiteSpace: 'nowrap',
+                }}>
+                  {meta.label}
+                </div>
+                <div style={{ fontSize: 10, color: '#AEAEB2' }}>
+                  {s.scene_mode === 'cinematic' ? '🎥 시네마틱' : '📷 정적'}
+                </div>
+              </div>
+
+              {/* 우측: 본문 */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+                <div style={{ fontSize: 13, color: '#1D1D1F', lineHeight: 1.55 }}>
+                  {s.description}
+                </div>
+
+                {s.skin_state && (
+                  <div style={{ display: 'flex', gap: 6, fontSize: 11.5, color: '#6E6E73', alignItems: 'flex-start' }}>
+                    <span style={{ color: '#AEAEB2', fontWeight: 600, minWidth: 48 }}>피부 상태</span>
+                    <span style={{ flex: 1 }}>{s.skin_state}</span>
+                  </div>
+                )}
+
+                {s.suggested_caption && (
+                  <div style={{
+                    display: 'inline-block', alignSelf: 'flex-start',
+                    padding: '5px 10px', borderRadius: 14,
+                    background: '#1D1D1F', color: '#FFF',
+                    fontSize: 12, fontWeight: 600,
+                  }}>
+                    💬 {s.suggested_caption}
+                  </div>
+                )}
+
+                <div style={{ fontSize: 11, color: '#AEAEB2', marginTop: 2 }}>
+                  ⏱ {s.duration_sec}초
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {draftId && (
+        <div style={{ fontSize: 10.5, color: '#AEAEB2', textAlign: 'center', marginTop: 4 }}>
+          draft: {draftId}
+        </div>
+      )}
+
+      <div style={{ padding: '10px 12px', borderRadius: 8, background: '#F5F5F7', fontSize: 11.5, color: '#6E6E73', lineHeight: 1.55, textAlign: 'center' }}>
+        다음 조각: 각 장면에 라이브러리 자산 끼우기 + 영상 생성
       </div>
     </div>
   );
