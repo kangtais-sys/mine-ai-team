@@ -7,7 +7,7 @@
 import { useState, useEffect } from 'react';
 import { Loader2, Globe, UserSquare2, ChevronRight, ChevronLeft, Save, Trash2, ImageOff, Sparkles, Film } from 'lucide-react';
 
-// scene_type 별 스타일
+// scene_type 별 스타일 (씬 종류 — 비주얼 분류)
 const SCENE_TYPES = {
   hook_3sec:    { label: '후킹 3초',  color: '#FF3B30', bg: '#FF3B3015' },
   before:       { label: '비포',      color: '#FF9500', bg: '#FF950015' },
@@ -15,6 +15,14 @@ const SCENE_TYPES = {
   after:        { label: '애프터',    color: '#34C759', bg: '#34C75915' },
   talking_head: { label: '토킹',      color: '#007AFF', bg: '#007AFF15' },
   broll:        { label: 'B-roll',    color: '#AEAEB2', bg: '#AEAEB215' },
+};
+
+// message.role 별 스타일 (카피의 역할 — 후킹/정보/CTA/전환)
+const ROLE_TYPES = {
+  hook:       { label: '🪝 후킹', color: '#FF3B30', bg: '#FF3B3015' },
+  info:       { label: '💡 정보', color: '#007AFF', bg: '#007AFF15' },
+  cta:        { label: '📣 CTA',  color: '#34C759', bg: '#34C75915' },
+  transition: { label: '↪ 전환',  color: '#AEAEB2', bg: '#AEAEB215' },
 };
 
 const PLATFORMS = [
@@ -663,16 +671,18 @@ function Step3Storyboard({ scenes, generating, topic, aspectRatio, baseAssetUrl,
         </button>
       </div>
 
-      {/* 장면 카드 */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* 장면 카드 — message.text 메인, visual은 보조 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {scenes.map((s) => {
-          const meta = SCENE_TYPES[s.scene_type] || SCENE_TYPES.broll;
+          const sceneMeta = SCENE_TYPES[s.scene_type] || SCENE_TYPES.broll;
+          const msg = s.message || {};
+          const roleMeta = ROLE_TYPES[msg.role] || ROLE_TYPES.info;
           return (
             <div
               key={s.scene_index}
               style={{
                 display: 'flex', gap: 14,
-                padding: 14, borderRadius: 12,
+                padding: 16, borderRadius: 14,
                 background: '#FFF', border: '1px solid #E5E5EA',
               }}
             >
@@ -680,51 +690,78 @@ function Step3Storyboard({ scenes, generating, topic, aspectRatio, baseAssetUrl,
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 56 }}>
                 <div style={{
                   width: 32, height: 32, borderRadius: '50%',
-                  background: meta.bg, color: meta.color,
+                  background: sceneMeta.bg, color: sceneMeta.color,
                   fontWeight: 800, fontSize: 14,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
                   {s.scene_index}
                 </div>
                 <div style={{
-                  fontSize: 10, fontWeight: 700, color: meta.color,
-                  padding: '2px 6px', borderRadius: 4, background: meta.bg,
+                  fontSize: 10, fontWeight: 700, color: sceneMeta.color,
+                  padding: '2px 6px', borderRadius: 4, background: sceneMeta.bg,
                   whiteSpace: 'nowrap',
                 }}>
-                  {meta.label}
+                  {sceneMeta.label}
                 </div>
                 <div style={{ fontSize: 10, color: '#AEAEB2' }}>
                   {s.scene_mode === 'cinematic' ? '🎥 시네마틱' : '📷 정적'}
                 </div>
               </div>
 
-              {/* 우측: 본문 */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
-                <div style={{ fontSize: 13, color: '#1D1D1F', lineHeight: 1.55 }}>
-                  {s.description}
+              {/* 우측: 메시지 메인 + 비주얼 보조 */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+
+                {/* 메시지 영역 (메인) */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <span style={{
+                      fontSize: 10.5, fontWeight: 700, color: roleMeta.color,
+                      padding: '3px 8px', borderRadius: 4, background: roleMeta.bg,
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {roleMeta.label}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#AEAEB2' }}>⏱ {s.duration_sec}초</span>
+                  </div>
+
+                  {msg.text && (
+                    <div style={{
+                      fontSize: 18, fontWeight: 700, color: '#1D1D1F',
+                      lineHeight: 1.4, letterSpacing: '-0.01em',
+                      padding: '10px 12px', borderRadius: 10,
+                      background: '#F5F5F7',
+                    }}>
+                      “{msg.text}”
+                    </div>
+                  )}
+
+                  {msg.why_works && (
+                    <div style={{
+                      marginTop: 6, fontSize: 11.5, color: '#8E8E93',
+                      lineHeight: 1.5, fontStyle: 'italic',
+                    }}>
+                      → {msg.why_works}
+                    </div>
+                  )}
                 </div>
+
+                {/* 비주얼 (보조) */}
+                {s.visual && (
+                  <div style={{
+                    fontSize: 11.5, color: '#6E6E73', lineHeight: 1.55,
+                    padding: '8px 10px', borderRadius: 8,
+                    background: '#FAFAFA', border: '1px solid #F0F0F2',
+                  }}>
+                    <span style={{ fontWeight: 600, color: '#AEAEB2', marginRight: 6 }}>🎬 비주얼</span>
+                    {s.visual}
+                  </div>
+                )}
 
                 {s.skin_state && (
-                  <div style={{ display: 'flex', gap: 6, fontSize: 11.5, color: '#6E6E73', alignItems: 'flex-start' }}>
-                    <span style={{ color: '#AEAEB2', fontWeight: 600, minWidth: 48 }}>피부 상태</span>
-                    <span style={{ flex: 1 }}>{s.skin_state}</span>
+                  <div style={{ fontSize: 11, color: '#AEAEB2' }}>
+                    <span style={{ fontWeight: 600, marginRight: 4 }}>피부 상태</span> · {s.skin_state}
                   </div>
                 )}
-
-                {s.suggested_caption && (
-                  <div style={{
-                    display: 'inline-block', alignSelf: 'flex-start',
-                    padding: '5px 10px', borderRadius: 14,
-                    background: '#1D1D1F', color: '#FFF',
-                    fontSize: 12, fontWeight: 600,
-                  }}>
-                    💬 {s.suggested_caption}
-                  </div>
-                )}
-
-                <div style={{ fontSize: 11, color: '#AEAEB2', marginTop: 2 }}>
-                  ⏱ {s.duration_sec}초
-                </div>
               </div>
             </div>
           );

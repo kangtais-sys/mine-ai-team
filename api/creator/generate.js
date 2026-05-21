@@ -32,9 +32,9 @@ async function fetchTrendContext(topic) {
 const anthropic = new Anthropic();
 
 // ────────────────────────────────────────────────────────────
-// V3: 비포/애프터 스토리보드 자동 생성
+// V3: 메시지 중심 스토리보드 자동 생성
 // 입력: { baseAssetId, baseAssetUrl, baseDescription, topic, aspectRatio, language, platforms, notes, identityId }
-// 출력: { success, draft: { id, scenes: [{ scene_index, scene_type, scene_mode, description, skin_state, suggested_caption, duration_sec }], ... } }
+// 출력: { success, draft: { id, scenes: [{ scene_index, scene_type, scene_mode, message:{text,role,why_works}, visual, skin_state, duration_sec }], ... } }
 // ────────────────────────────────────────────────────────────
 async function handleV3BeforeAfter(req, res) {
   const {
@@ -52,46 +52,57 @@ async function handleV3BeforeAfter(req, res) {
   if (!topic || !topic.trim()) return res.status(400).json({ error: 'topic 필수' });
 
   const langLabel = language === 'ko' ? '한국어' : 'English';
-  const systemPrompt = `당신은 K-뷰티 인플루언서 숏폼 영상 디렉터입니다.
-영상의 핵심 구조는 "비포 → 제품 사용 → 애프터" — 시청자가 즉시 차이를 느끼게 만드는 변화 서사입니다.
+  const systemPrompt = `너는 K-뷰티 인플루언서 MINE의 컨텐츠 전략가다.
+MINE은 30만 팔로워 뷰티 인플루언서이자 '밀리밀리' 화장품 브랜드 대표이며 화장품 개발자다.
+모든 컨텐츠의 목표는 단 하나: 저장/공유/댓글/팔로우를 유발하는 것.
+'잘 만든 영상'은 실패다. '터지는 컨텐츠'여야 한다.
 
-▶ 후킹 (0-3초): 스크롤 멈추는 강렬한 클로즈업
-- 보통 'before' 상태(트러블/건조/칙칙함)를 자극적으로 보여주는 closeup
-- "이거 진짜 효과 있어요" "한 번 써봤더니" 같은 자막 후킹
+== 절대 원칙 ==
+1. 메시지(후킹·정보·CTA)가 비주얼 연출보다 우선한다.
+2. 뻔한 멘트 금지. '선크림 발랐니?' 같은 거 절대 X.
+3. 정보성이 강해야 저장한다. 개발자/전문가 권위를 적극 활용.
+4. 실제 사람처럼. AI 티 나면 실패.
 
-▶ 비포 (3-7초): 문제 상태 강조
-- 모공, 트러블, 건조, 칙칙함 등 시각화
-- skin_state: 구체적 묘사 ("화장 들뜬 건조한 피부", "트러블 있는 칙칙한 톤")
+== 후킹 (장면1, 첫 3초) — 4가지 중 주제에 맞는 것 선택, 매번 다르게 ==
+- 충격/반전형: '이거 틀리면 다 소용없어요', '90%가 잘못하고 있는'
+- 손해회피형: '이거 모르면 돈 버리는 거', '안 한 거랑 똑같아요'
+- 전문가 폭로형: '화장품 개발자만 아는', '제조사가 말 안 해주는'
+- 공감/질문형: '다들 이런 적 있죠?', '저만 그런 줄 알았는데'
 
-▶ 제품 (7-12초): 제품 쇼케이스 + 발리기
-- 제품을 들어 올리거나 손에 덜어 바르는 장면
-- 텍스처/색감 부각
+== 정보 구조 (중간 장면) — 저장각 만들기 ==
+- 스텝/숫자 구조화: '1단계… 2단계…', '동전 크기', '2번 덧발라'
+- 의외의 디테일 1개 이상 (대부분 모르는 사실)
+- 개발자 관점: 'CEO이자 개발자로서', '성분표 보면'
+- 막연한 말 금지. 구체적이고 따라할 수 있게.
 
-▶ 애프터 (12-20초): 변화된 상태
-- 광/투명/매끈 강조, 같은 각도로 대비 명확
-- skin_state: "촉촉하고 윤기 도는 피부", "결 정돈된 매끈한 톤"
+== CTA (마지막 장면) — 주제에 맞게 1~2개 ==
+- 댓글 키워드 → DM: '댓글에 [키워드] 쓰면 추천 리스트 DM 드려요'
+  ([키워드]는 주제 관련 짧고 기억하기 쉬운 단어로. 예: 선크림, 성분, 루틴)
+- 팔로우 → 시리즈: '팔로우하면 개발자 리얼 썰 더 받아요'
+- 저장 유도: '저장해두고 따라 하세요'
+- 제품 연결: 밀리밀리 제품으로 자연스럽게 (광고 티 X)
 
-▶ CTA / talking_head (마지막 3-5초):
-- 카메라 정면 보고 "저장하고 따라해봐요" "팔로우하면 더 알려드려요"
+== 페르소나 ==
+- 본인 경험담/솔직한 톤. '제가 10년 개발하면서', '솔직히 광고 아니고'
 
-▶ scene_type 정의
-- hook_3sec: 첫 3초 강렬한 후킹 (보통 closeup before)
+== scene_type 정의 ==
+- hook_3sec: 첫 3초 강렬한 후킹 (보통 closeup)
 - before: 사용 전 상태
 - product: 제품 쇼케이스
 - after: 사용 후 변화
 - talking_head: 정면 토킹 (CTA 또는 설명)
 - broll: 보조 컷 (분위기, 디테일)
 
-▶ scene_mode
-- static: 카메라 고정, 정적 샷 (talking_head, 제품 정물)
-- cinematic: 카메라 움직임 포함 (dolly-in, pan, tilt)
+== scene_mode ==
+- static: 카메라 고정
+- cinematic: 카메라 움직임 (dolly-in/pan/tilt)
 
-▶ 출력 원칙
-- 4-6개 장면, 총 15-25초
+== 전체 흐름 원칙 ==
+- 4~6개 장면, 총 15~25초
+- [후킹 → 정보(스텝별) → CTA] 가 명확
 - 첫 장면은 반드시 hook_3sec
-- before → product → after 시퀀스 명확히
-- 마지막 또는 끝에서 두 번째에 talking_head (CTA)
-- 자막은 ${langLabel}로, 한 줄 12자 이내`;
+- 마지막 장면은 cta 역할 (talking_head 권장)
+- 자막은 ${langLabel}로 한 줄 12자 이내 (가로로 잘 읽혀야 함)`;
 
   const userPrompt = `주제: ${topic}
 베이스 얼굴 설명: ${baseDescription || '(따로 지정 없음)'}
@@ -99,8 +110,8 @@ async function handleV3BeforeAfter(req, res) {
 플랫폼: ${platforms.join(', ')}
 추가 메모: ${notes || '없음'}
 
-위 주제로 K-뷰티 인플루언서 숏츠 스토리보드를 짜라.
-비포/애프터 구조 중심으로 4~6개 장면.
+위 주제로 MINE의 숏츠 스토리보드를 짜라.
+메시지(후킹·정보·CTA)가 핵심. 비주얼은 보조.
 
 각 장면을 다음 JSON 키로 생성하되, JSON 배열만 출력하라 (코드블록·설명 금지):
 [
@@ -108,9 +119,13 @@ async function handleV3BeforeAfter(req, res) {
     "scene_index": 1,
     "scene_type": "hook_3sec | before | product | after | talking_head | broll",
     "scene_mode": "static | cinematic",
-    "description": "이 장면 연출 설명 (카메라 각도, 모델 행동, 조명 디테일 — 한 단락)",
-    "skin_state": "이 장면에서 보여줄 피부/얼굴 상태 (예: '트러블 있는 칙칙한 피부', '광 도는 매끈한 피부')",
-    "suggested_caption": "이 장면 자막 후보 (${langLabel}, 12자 이내 권장)",
+    "message": {
+      "text": "실제 화면에 나갈 자막/멘트 — ${langLabel}, 12자 이내 권장",
+      "role": "hook | info | cta | transition",
+      "why_works": "이 카피가 왜 저장/공유/댓글/팔로우를 유발하는지 한 줄 (한국어)"
+    },
+    "visual": "카메라 각도, 모델 행동, 조명 디테일 — 한 단락 (보조 정보)",
+    "skin_state": "이 장면의 피부/얼굴 상태 (예: '트러블 있는 칙칙한 피부')",
     "duration_sec": 4
   }
 ]`;
@@ -118,7 +133,7 @@ async function handleV3BeforeAfter(req, res) {
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2500,
+      max_tokens: 3500,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     });
@@ -133,16 +148,23 @@ async function handleV3BeforeAfter(req, res) {
       return res.status(500).json({ error: 'Claude 응답 파싱 실패', raw, parseError: e.message });
     }
 
-    // scene_index 보정 (모델이 빠뜨려도 1부터 채워줌)
-    scenes = scenes.map((s, i) => ({
-      scene_index: s.scene_index ?? i + 1,
-      scene_type: s.scene_type || 'broll',
-      scene_mode: s.scene_mode || 'static',
-      description: s.description || '',
-      skin_state: s.skin_state || '',
-      suggested_caption: s.suggested_caption || '',
-      duration_sec: typeof s.duration_sec === 'number' ? s.duration_sec : 4,
-    }));
+    // 정규화 — message 객체 보장 + scene_index 보정
+    scenes = scenes.map((s, i) => {
+      const msg = s.message && typeof s.message === 'object' ? s.message : {};
+      return {
+        scene_index: s.scene_index ?? i + 1,
+        scene_type: s.scene_type || 'broll',
+        scene_mode: s.scene_mode || 'static',
+        message: {
+          text: msg.text || s.suggested_caption || '',
+          role: msg.role || (s.scene_type === 'hook_3sec' ? 'hook' : s.scene_type === 'talking_head' ? 'cta' : 'info'),
+          why_works: msg.why_works || '',
+        },
+        visual: s.visual || s.description || '',
+        skin_state: s.skin_state || '',
+        duration_sec: typeof s.duration_sec === 'number' ? s.duration_sec : 4,
+      };
+    });
 
     const id = randomUUID();
     const now = new Date().toISOString();
