@@ -29,7 +29,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'PATCH') {
-    const { caption, hashtags, scheduledAt, status, notes, mediaUrl } = req.body || {};
+    const { caption, hashtags, scheduledAt, status, notes, mediaUrl, scenes } = req.body || {};
     const updates = { updatedAt: new Date().toISOString() };
     if (caption !== undefined) updates.caption = caption;
     if (hashtags !== undefined) updates.hashtags = hashtags;
@@ -37,6 +37,7 @@ export default async function handler(req, res) {
     if (scheduledAt !== undefined) updates.scheduledAt = scheduledAt;
     if (status !== undefined) updates.status = status;
     if (mediaUrl !== undefined) updates.mediaUrl = mediaUrl;
+    if (scenes !== undefined) updates.scenes = scenes;
     const updated = { ...draft, ...updates };
     await sb.from('creator_drafts').update({ data: updated }).eq('id', id);
     return res.status(200).json({ success: true, draft: updated });

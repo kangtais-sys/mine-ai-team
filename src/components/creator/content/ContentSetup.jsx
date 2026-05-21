@@ -5,7 +5,7 @@
 //   3단계: placeholder
 // 하위 호환: generate API / StoryboardEditor 에 personaId 자리로 baseAssetId 전달
 import { useState, useEffect } from 'react';
-import { Loader2, Globe, UserSquare2, ChevronRight, ChevronLeft, Save, Trash2, ImageOff, Sparkles, Film } from 'lucide-react';
+import { Loader2, Globe, UserSquare2, ChevronRight, ChevronLeft, Save, Trash2, ImageOff, Sparkles, Film, Pencil, Check, AlertCircle } from 'lucide-react';
 
 // scene_type 별 스타일 (씬 종류 — 비주얼 분류)
 const SCENE_TYPES = {
@@ -237,6 +237,7 @@ export default function ContentSetup({ onDraftCreated, identityId = 'mine-primar
         {step === 3 && (
           <Step3Storyboard
             scenes={scenes}
+            onScenesUpdate={setScenes}
             generating={generating}
             topic={topic}
             aspectRatio={size}
@@ -296,7 +297,12 @@ export default function ContentSetup({ onDraftCreated, identityId = 'mine-primar
         </button>
       </div>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .editable-text { transition: background 0.15s, outline 0.15s; outline: 1px dashed transparent; outline-offset: 1px; }
+        .editable-text:hover { outline-color: #5E6AD260; }
+        .editable-text:hover .editable-pencil { opacity: 1; }
+      `}</style>
     </div>
   );
 }
@@ -620,7 +626,41 @@ function Step2Topic({
 }
 
 // ---------------- 3단계: 스토리보드 (장면 카드 리스트) ----------------
-function Step3Storyboard({ scenes, generating, topic, aspectRatio, baseAssetUrl, baseDescription, onRegenerate, draftId }) {
+function Step3Storyboard({ scenes, onScenesUpdate, generating, topic, aspectRatio, baseAssetUrl, baseDescription, onRegenerate, draftId }) {
+  const [saveState, setSaveState] = useState({ status: 'idle', error: '', at: null });
+  // status: idle | saving | saved | error
+
+  const persistScenes = async (nextScenes) => {
+    if (!draftId) return;
+    setSaveState({ status: 'saving', error: '', at: null });
+    try {
+      const r = await fetch(`/api/creator/draft?id=${draftId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenes: nextScenes }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d?.success) {
+        setSaveState({ status: 'error', error: d?.error || `저장 실패 (${r.status})`, at: null });
+        return;
+      }
+      setSaveState({ status: 'saved', error: '', at: new Date() });
+    } catch (e) {
+      setSaveState({ status: 'error', error: e.message, at: null });
+    }
+  };
+
+  const updateSceneField = (sceneIndex, patch) => {
+    const next = scenes.map((s) => {
+      if (s.scene_index !== sceneIndex) return s;
+      const merged = { ...s, ...patch };
+      if (patch.message) merged.message = { ...(s.message || {}), ...patch.message };
+      return merged;
+    });
+    onScenesUpdate(next);
+    persistScenes(next);
+  };
+
   if (generating) {
     return (
       <div style={{ padding: 60, textAlign: 'center', color: '#AEAEB2', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, height: '100%', justifyContent: 'center' }}>
@@ -647,7 +687,7 @@ function Step3Storyboard({ scenes, generating, topic, aspectRatio, baseAssetUrl,
 
   return (
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 880 }}>
-      {/* 상단 요약 */}
+      {/* 상단 요약 + 저장 상태 */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', background: '#F5F5F7', borderRadius: 12 }}>
         <SafeImage src={baseAssetUrl} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -657,6 +697,7 @@ function Step3Storyboard({ scenes, generating, topic, aspectRatio, baseAssetUrl,
             {baseDescription ? ` · ${baseDescription}` : ''}
           </div>
         </div>
+        <SaveStatus state={saveState} />
         <button
           onClick={onRegenerate}
           disabled={generating}
@@ -669,6 +710,10 @@ function Step3Storyboard({ scenes, generating, topic, aspectRatio, baseAssetUrl,
         >
           <Sparkles size={12} /> 다시 생성
         </button>
+      </div>
+
+      <div style={{ fontSize: 11.5, color: '#AEAEB2', textAlign: 'center' }}>
+        💡 자막·음성·비주얼·피부 상태 텍스트를 <b>클릭</b>하면 직접 수정할 수 있어. Enter 또는 포커스 아웃으로 저장, Esc로 취소.
       </div>
 
       {/* 장면 카드 — message.text 메인, visual은 보조 */}
@@ -724,27 +769,44 @@ function Step3Storyboard({ scenes, generating, topic, aspectRatio, baseAssetUrl,
                     <span style={{ fontSize: 11, color: '#AEAEB2' }}>⏱ {s.duration_sec}초</span>
                   </div>
 
-                  {(msg.caption || msg.text) && (
-                    <div style={{
+                  {/* caption (자막) — 메인 */}
+                  <EditableText
+                    value={msg.caption || msg.text || ''}
+                    onSave={(v) => updateSceneField(s.scene_index, { message: { caption: v } })}
+                    multiline={false}
+                    textareaRows={2}
+                    placeholder="자막을 입력하세요"
+                    emptyHint="자막 없음 — 클릭해서 추가"
+                    quoted
+                    displayStyle={{
                       fontSize: 18, fontWeight: 700, color: '#1D1D1F',
                       lineHeight: 1.4, letterSpacing: '-0.01em',
                       padding: '10px 12px', borderRadius: 10,
                       background: '#F5F5F7',
-                    }}>
-                      “{msg.caption || msg.text}”
-                    </div>
-                  )}
+                    }}
+                    textareaStyle={{
+                      fontSize: 17, fontWeight: 700, color: '#1D1D1F', lineHeight: 1.4,
+                    }}
+                  />
 
-                  {msg.voiceover && (
-                    <div style={{
-                      marginTop: 8, padding: '8px 10px', borderRadius: 8,
-                      background: '#FAFAFA', border: '1px solid #F0F0F2',
-                      fontSize: 12.5, color: '#6E6E73', lineHeight: 1.6,
-                    }}>
-                      <span style={{ fontWeight: 600, color: '#AEAEB2', marginRight: 6 }}>🎙 음성</span>
-                      {msg.voiceover}
-                    </div>
-                  )}
+                  {/* voiceover (음성) — 보조 */}
+                  <div style={{ marginTop: 8 }}>
+                    <EditableText
+                      value={msg.voiceover || ''}
+                      onSave={(v) => updateSceneField(s.scene_index, { message: { voiceover: v } })}
+                      multiline
+                      textareaRows={3}
+                      placeholder="음성 나레이션을 입력하세요"
+                      emptyHint="음성 없음 — 클릭해서 추가"
+                      labelPrefix="🎙 음성"
+                      displayStyle={{
+                        padding: '8px 10px', borderRadius: 8,
+                        background: '#FAFAFA', border: '1px solid #F0F0F2',
+                        fontSize: 12.5, color: '#6E6E73', lineHeight: 1.6,
+                      }}
+                      textareaStyle={{ fontSize: 12.5, lineHeight: 1.6, color: '#1D1D1F' }}
+                    />
+                  </div>
 
                   {msg.why_works && (
                     <div style={{
@@ -756,23 +818,37 @@ function Step3Storyboard({ scenes, generating, topic, aspectRatio, baseAssetUrl,
                   )}
                 </div>
 
-                {/* 비주얼 (보조) */}
-                {s.visual && (
-                  <div style={{
+                {/* 비주얼 (보조) — 편집 가능 */}
+                <EditableText
+                  value={s.visual || ''}
+                  onSave={(v) => updateSceneField(s.scene_index, { visual: v })}
+                  multiline
+                  textareaRows={3}
+                  placeholder="카메라 각도·모델 행동·조명 등 비주얼 디테일"
+                  emptyHint="비주얼 디테일 없음 — 클릭해서 추가"
+                  labelPrefix="🎬 비주얼"
+                  displayStyle={{
                     fontSize: 11.5, color: '#6E6E73', lineHeight: 1.55,
                     padding: '8px 10px', borderRadius: 8,
                     background: '#FAFAFA', border: '1px solid #F0F0F2',
-                  }}>
-                    <span style={{ fontWeight: 600, color: '#AEAEB2', marginRight: 6 }}>🎬 비주얼</span>
-                    {s.visual}
-                  </div>
-                )}
+                  }}
+                  textareaStyle={{ fontSize: 11.5, lineHeight: 1.55, color: '#1D1D1F' }}
+                />
 
-                {s.skin_state && (
-                  <div style={{ fontSize: 11, color: '#AEAEB2' }}>
-                    <span style={{ fontWeight: 600, marginRight: 4 }}>피부 상태</span> · {s.skin_state}
-                  </div>
-                )}
+                {/* 피부 상태 — 편집 가능 */}
+                <EditableText
+                  value={s.skin_state || ''}
+                  onSave={(v) => updateSceneField(s.scene_index, { skin_state: v })}
+                  multiline={false}
+                  textareaRows={1}
+                  placeholder="예: 트러블 있는 칙칙한 피부"
+                  emptyHint="피부 상태 없음 — 클릭해서 추가"
+                  labelPrefix="피부 상태"
+                  displayStyle={{
+                    fontSize: 11, color: '#AEAEB2', padding: '4px 6px', borderRadius: 6,
+                  }}
+                  textareaStyle={{ fontSize: 12, lineHeight: 1.4 }}
+                />
               </div>
             </div>
           );
@@ -790,6 +866,120 @@ function Step3Storyboard({ scenes, generating, topic, aspectRatio, baseAssetUrl,
       </div>
     </div>
   );
+}
+
+// ---------------- 인라인 편집 텍스트 ----------------
+function EditableText({
+  value,
+  onSave,
+  multiline = false,
+  textareaRows = 1,
+  placeholder = '',
+  emptyHint = '클릭해서 편집',
+  quoted = false,         // caption — 따옴표로 감싸 표시
+  labelPrefix = '',       // voiceover/비주얼/피부 상태 등 prefix 라벨
+  displayStyle = {},
+  textareaStyle = {},
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value || '');
+
+  useEffect(() => {
+    if (!editing) setDraft(value || '');
+  }, [value, editing]);
+
+  if (editing) {
+    return (
+      <textarea
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          setEditing(false);
+          if ((draft || '') !== (value || '')) onSave(draft);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            setDraft(value || '');
+            setEditing(false);
+          } else if (e.key === 'Enter' && !multiline && !e.shiftKey) {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+        }}
+        rows={textareaRows}
+        placeholder={placeholder}
+        style={{
+          width: '100%', boxSizing: 'border-box',
+          padding: '8px 10px', borderRadius: 8,
+          border: '2px solid #5E6AD2',
+          fontFamily: 'inherit', outline: 'none',
+          resize: multiline ? 'vertical' : 'none',
+          background: '#FFF',
+          ...textareaStyle,
+        }}
+      />
+    );
+  }
+
+  const isEmpty = !value;
+  return (
+    <div
+      className="editable-text"
+      onClick={() => { setDraft(value || ''); setEditing(true); }}
+      title="클릭해서 편집 (Enter 저장, Esc 취소)"
+      style={{
+        cursor: 'pointer', position: 'relative', borderRadius: 8,
+        ...displayStyle,
+        ...(isEmpty ? { color: '#C7C7CC', fontStyle: 'italic' } : {}),
+      }}
+    >
+      {labelPrefix && !isEmpty && (
+        <span style={{ fontWeight: 600, color: '#AEAEB2', marginRight: 6 }}>{labelPrefix}</span>
+      )}
+      {isEmpty
+        ? emptyHint
+        : (quoted ? `“${value}”` : value)}
+      <Pencil
+        size={11}
+        className="editable-pencil"
+        style={{
+          position: 'absolute', top: 4, right: 6,
+          opacity: 0, color: '#5E6AD2',
+          transition: 'opacity 0.15s', pointerEvents: 'none',
+        }}
+      />
+    </div>
+  );
+}
+
+// ---------------- 저장 상태 표시 ----------------
+function SaveStatus({ state }) {
+  if (state.status === 'idle') return null;
+  if (state.status === 'saving') {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#AEAEB2' }}>
+        <Loader2 size={11} style={{ animation: 'spin 0.8s linear infinite' }} /> 저장중...
+      </span>
+    );
+  }
+  if (state.status === 'saved') {
+    const t = state.at ? state.at.toTimeString().slice(0, 8) : '';
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#34C759', fontWeight: 600 }}>
+        <Check size={11} /> 저장됨 {t}
+      </span>
+    );
+  }
+  if (state.status === 'error') {
+    return (
+      <span title={state.error} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#FF3B30', fontWeight: 600 }}>
+        <AlertCircle size={11} /> 저장 실패
+      </span>
+    );
+  }
+  return null;
 }
 
 // ---------------- 깨진 이미지 폴백 ----------------
