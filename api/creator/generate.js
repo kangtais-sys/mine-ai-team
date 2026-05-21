@@ -34,7 +34,7 @@ const anthropic = new Anthropic();
 // ────────────────────────────────────────────────────────────
 // V3: 메시지 중심 스토리보드 자동 생성
 // 입력: { baseAssetId, baseAssetUrl, baseDescription, topic, aspectRatio, language, platforms, notes, identityId }
-// 출력: { success, draft: { id, scenes: [{ scene_index, scene_type, scene_mode, message:{text,role,why_works}, visual, skin_state, duration_sec }], ... } }
+// 출력: { success, draft: { id, scenes: [{ scene_index, scene_type, scene_mode, message:{caption,voiceover,role,why_works}, visual, skin_state, duration_sec }], ... } }
 // ────────────────────────────────────────────────────────────
 async function handleV3BeforeAfter(req, res) {
   const {
@@ -127,7 +127,19 @@ MINE의 후킹은 반말 구어체 + 도발 + 극단 비유 + 숫자다.
 - [후킹 → 정보(스텝별) → CTA] 가 명확
 - 첫 장면은 반드시 hook_3sec
 - 마지막 장면은 cta 역할 (talking_head 권장)
-- 자막 카피는 ${langLabel}로. hook은 임팩트가 더 중요 — 길어도 OK (이모지 포함 가능). info/cta는 한 화면에 잘 읽히게 짧게.`;
+
+== caption vs voiceover (반드시 둘 다 작성) ==
+caption: 화면에 박히는 자막. 짧고 임팩트(보통 10~20자, hook은 좀 길어도 OK). 이모지 가능. 한 줄에 꽂혀야 함.
+voiceover: MINE이 실제로 말하는 나레이션. 1~3문장. 풍부한 설명, 디테일, 구체 수치, 도발 가능. caption보다 길고 정보 밀도 높음.
+둘 다 ${langLabel}로. 둘 다 MINE 톤(반말·구어체·도발). 짝꿍이지만 같은 말 반복 X.
+
+예시:
+- caption: "동전크기? 그건 1/3이에요"
+  voiceover: "다들 동전 크기만큼 바르라고 하는데, 그거 권장량의 3분의 1밖에 안 돼요. 손가락 두 마디는 써야 SPF가 표시된 만큼 나옵니다."
+- caption: "여름 땀쟁이들 필독🚨"
+  voiceover: "한여름에 비닐하우스 같은 옷 입고 다니는 분들, 진짜 이거 하나로 끝나요. 입었는데 안 입은 줄 알 정도로 가벼워요."
+- caption: "딱 3가지만 기억하세요"
+  voiceover: "성분표 볼 때 진짜 봐야 할 건 딱 세 가지예요. 첫째, 순서. 둘째, 농도. 셋째, 조합. 이것만 알면 절반은 갑니다."`;
 
   const userPrompt = `주제: ${topic}
 베이스 얼굴 설명: ${baseDescription || '(따로 지정 없음)'}
@@ -145,7 +157,8 @@ MINE의 후킹은 반말 구어체 + 도발 + 극단 비유 + 숫자다.
     "scene_type": "hook_3sec | before | product | after | talking_head | broll",
     "scene_mode": "static | cinematic",
     "message": {
-      "text": "실제 화면에 나갈 자막/멘트 (${langLabel}) — MINE 톤(반말·도발·이모지). hook은 임팩트 우선이라 길어도 OK, info/cta는 짧게",
+      "caption": "화면 자막 (${langLabel}) — 짧고 임팩트, MINE 톤(반말·도발·이모지). hook은 임팩트 우선이라 길어도 OK, info/cta는 한 줄에 꽂히게 짧게",
+      "voiceover": "MINE이 말하는 나레이션 (${langLabel}) — 1~3문장. caption보다 길고 풍부, 구체 수치/도발 적극. caption과 같은 말 반복 X",
       "role": "hook | info | cta | transition",
       "why_works": "이 카피가 왜 저장/공유/댓글/팔로우를 유발하는지 한 줄 (한국어)"
     },
@@ -158,7 +171,7 @@ MINE의 후킹은 반말 구어체 + 도발 + 극단 비유 + 숫자다.
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 3500,
+      max_tokens: 4000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     });
@@ -181,7 +194,8 @@ MINE의 후킹은 반말 구어체 + 도발 + 극단 비유 + 숫자다.
         scene_type: s.scene_type || 'broll',
         scene_mode: s.scene_mode || 'static',
         message: {
-          text: msg.text || s.suggested_caption || '',
+          caption: msg.caption || msg.text || s.suggested_caption || '',
+          voiceover: msg.voiceover || '',
           role: msg.role || (s.scene_type === 'hook_3sec' ? 'hook' : s.scene_type === 'talking_head' ? 'cta' : 'info'),
           why_works: msg.why_works || '',
         },

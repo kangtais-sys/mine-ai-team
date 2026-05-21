@@ -724,14 +724,25 @@ function Step3Storyboard({ scenes, generating, topic, aspectRatio, baseAssetUrl,
                     <span style={{ fontSize: 11, color: '#AEAEB2' }}>⏱ {s.duration_sec}초</span>
                   </div>
 
-                  {msg.text && (
+                  {(msg.caption || msg.text) && (
                     <div style={{
                       fontSize: 18, fontWeight: 700, color: '#1D1D1F',
                       lineHeight: 1.4, letterSpacing: '-0.01em',
                       padding: '10px 12px', borderRadius: 10,
                       background: '#F5F5F7',
                     }}>
-                      “{msg.text}”
+                      “{msg.caption || msg.text}”
+                    </div>
+                  )}
+
+                  {msg.voiceover && (
+                    <div style={{
+                      marginTop: 8, padding: '8px 10px', borderRadius: 8,
+                      background: '#FAFAFA', border: '1px solid #F0F0F2',
+                      fontSize: 12.5, color: '#6E6E73', lineHeight: 1.6,
+                    }}>
+                      <span style={{ fontWeight: 600, color: '#AEAEB2', marginRight: 6 }}>🎙 음성</span>
+                      {msg.voiceover}
                     </div>
                   )}
 
