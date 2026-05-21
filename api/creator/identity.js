@@ -26,6 +26,9 @@ function pickDataFields(body, prev = {}) {
   if (has('languages')) out.languages = body.languages;
   if (has('brandTone') || has('brand_tone'))
     out.brandTone = body.brandTone ?? body.brand_tone;
+  // 베이스 얼굴 프리셋 — [{ id, name, assetId, url, description, created_at }]
+  if (has('savedBases') || has('saved_bases'))
+    out.saved_bases = body.savedBases ?? body.saved_bases;
   return out;
 }
 

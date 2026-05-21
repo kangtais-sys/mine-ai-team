@@ -6,7 +6,7 @@
 //   reloadKey?: number                // (선택) 외부 갱신 트리거
 
 import { useEffect, useMemo, useState } from 'react';
-import { Star, Filter, Loader2, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import { Star, Filter, Loader2, RefreshCw, Sparkles, Trash2, ImageOff } from 'lucide-react';
 import AssetUploader from './AssetUploader';
 import AssetDetail from './AssetDetail';
 import StyleProfileCard from './StyleProfileCard';
@@ -437,6 +437,8 @@ function ChipRow({ title, subtitle, items, selected, onToggle, accent = 'emerald
 function AssetCard({ asset, onClick, onDelete }) {
   const isVideo = asset.asset_type?.includes('video');
   const hasTags = asset.tagged_at;
+  const [broken, setBroken] = useState(false);
+  const filename = asset.storage_path?.split('/').pop() || '';
   return (
     <div className="mb-3 w-full break-inside-avoid relative group rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition">
       <button onClick={onClick} className="block w-full">
@@ -448,11 +450,20 @@ function AssetCard({ asset, onClick, onDelete }) {
             playsInline
             className="w-full h-auto block"
           />
+        ) : broken ? (
+          <div
+            className="w-full aspect-square bg-zinc-800 flex flex-col items-center justify-center gap-1 text-zinc-500 p-3 text-center"
+            title={filename || 'broken image'}
+          >
+            <ImageOff className="w-5 h-5" />
+            <span className="text-[10px] truncate w-full">{filename || 'broken'}</span>
+          </div>
         ) : (
           <img
             src={asset.thumbnail_url || asset.url}
             alt=""
             loading="lazy"
+            onError={() => setBroken(true)}
             className="w-full h-auto block"
           />
         )}

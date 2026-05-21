@@ -10,6 +10,23 @@ import { useRef, useState } from 'react';
 import { Upload, Loader2, Check, AlertCircle, X, Tag } from 'lucide-react';
 import { supabaseBrowser } from '../../../lib/supabaseClient';
 
+// iPhone HEIC/HEIF는 브라우저가 못 그려서 업로드 전에 JPEG로 변환
+const isHeic = (file) => {
+  const name = (file.name || '').toLowerCase();
+  const type = (file.type || '').toLowerCase();
+  return name.endsWith('.heic') || name.endsWith('.heif')
+    || type === 'image/heic' || type === 'image/heif';
+};
+
+async function convertHeicToJpeg(file) {
+  const mod = await import('heic2any');
+  const heic2any = mod.default || mod;
+  const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+  const out = Array.isArray(blob) ? blob[0] : blob;
+  const baseName = file.name.replace(/\.(heic|heif)$/i, '');
+  return new File([out], `${baseName}.jpg`, { type: 'image/jpeg' });
+}
+
 const ASSET_TYPES = [
   { value: 'photo', label: '내 사진' },
   { value: 'video', label: '내 영상' },
@@ -113,13 +130,23 @@ export default function AssetUploader({
     const updateItem = (i, patch) =>
       setQueue((prev) => prev.map((q, idx) => (idx === i ? { ...q, ...patch } : q)));
 
-    // 1단계: Supabase Storage 직접 업로드
+    // 1단계: Supabase Storage 직접 업로드 (HEIC면 변환 후)
     const uploaded = []; // { _i, url, path, mimeType, filename, assetType, source }
     for (let i = 0; i < queue.length; i++) {
       if (queue[i].status === 'done') continue;
       updateItem(i, { status: 'uploading' });
 
-      const file = queue[i].file;
+      let file = queue[i].file;
+
+      if (isHeic(file)) {
+        try {
+          file = await convertHeicToJpeg(file);
+        } catch (e) {
+          updateItem(i, { status: 'error', error: `HEIC 변환 실패: ${e.message || e}` });
+          continue;
+        }
+      }
+
       const path = buildPath(identityId, assetType, file);
       const contentType = file.type || 'application/octet-stream';
 
@@ -263,7 +290,7 @@ export default function AssetUploader({
           ref={inputRef}
           type="file"
           multiple
-          accept="image/*,video/*,audio/*"
+          accept="image/*,video/*,audio/*,.heic,.heif"
           onChange={handlePick}
           className="hidden"
         />
