@@ -1,14 +1,15 @@
-// AssetDetail — 자산 상세 모달 (⭐ 즐겨찾기 토글 + manual_tags 편집 + notes)
+// AssetDetail — 자산 상세 모달 (⭐ 즐겨찾기 토글 + manual_tags 편집 + notes + 삭제)
 // ⭐ 는 라이브러리 정리용 (자동화 트리거 아님 — Reference Tone 자동화는 별도)
 // Props:
 //   asset: creator_assets row
 //   onClose: () => void
 //   onChanged?: (updated) => void   // 부모가 그리드 갱신할 수 있게
+//   onDeleted?: (assetId) => void   // 삭제 완료 시 부모 알림
 
 import { useEffect, useState } from 'react';
-import { Star, X, Tag, Loader2, Check, Sparkles } from 'lucide-react';
+import { Star, X, Tag, Loader2, Check, Sparkles, Trash2 } from 'lucide-react';
 
-export default function AssetDetail({ asset, onClose, onChanged }) {
+export default function AssetDetail({ asset, onClose, onChanged, onDeleted }) {
   const [favorite, setFavorite] = useState(!!asset.is_favorite);
   const [notes, setNotes] = useState(asset.notes || '');
   const [tagInput, setTagInput] = useState('');
@@ -17,6 +18,7 @@ export default function AssetDetail({ asset, onClose, onChanged }) {
   const [savedAt, setSavedAt] = useState(null);
   const [retagging, setRetagging] = useState(false);
   const [autoTags, setAutoTags] = useState(asset.auto_tags || {});
+  const [deleting, setDeleting] = useState(false);
 
   // ESC 닫기
   useEffect(() => {
@@ -71,6 +73,26 @@ export default function AssetDetail({ asset, onClose, onChanged }) {
   };
 
   const saveNotes = () => patch({ notes });
+
+  const handleDelete = async () => {
+    if (deleting) return;
+    if (!window.confirm('정말 삭제? 되돌릴 수 없어 (Storage 파일까지 같이 지워짐).')) return;
+    setDeleting(true);
+    try {
+      const r = await fetch(`/api/creator/identity-search?id=${asset.id}`, { method: 'DELETE' });
+      const d = await r.json();
+      if (!r.ok || !d?.success) {
+        alert(`삭제 실패: ${d?.error || r.status}`);
+        return;
+      }
+      onDeleted?.(asset.id);
+      onClose?.();
+    } catch (e) {
+      alert(`삭제 실패: ${e.message}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const retag = async () => {
     if (retagging || isVideo || asset.asset_type === 'bgm') return;
@@ -226,6 +248,18 @@ export default function AssetDetail({ asset, onClose, onChanged }) {
               ⭐ 즐겨찾기는 라이브러리 정리용이야 — 자동화 트리거 아님.
               비슷한 영상 양산은 별도의 <em>Reference Tone</em> 자동화가 담당해.
             </p>
+          </div>
+
+          {/* 위험 영역 */}
+          <div className="border-t border-zinc-800 p-4">
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 disabled:opacity-50 text-sm font-medium"
+            >
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              자산 삭제 (DB + Storage)
+            </button>
           </div>
         </div>
       </div>
