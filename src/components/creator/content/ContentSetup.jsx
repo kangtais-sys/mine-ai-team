@@ -5,7 +5,7 @@
 //   3단계: placeholder
 // 하위 호환: generate API / StoryboardEditor 에 personaId 자리로 baseAssetId 전달
 import { useState, useEffect } from 'react';
-import { Loader2, Globe, UserSquare2, ChevronRight, ChevronLeft, Save, Trash2, ImageOff, Sparkles, Film, Pencil, Check, AlertCircle, RotateCcw, ArrowUp, ArrowDown, Plus } from 'lucide-react';
+import { Loader2, Globe, UserSquare2, ChevronRight, ChevronLeft, Save, Trash2, ImageOff, Sparkles, Film, Pencil, Check, AlertCircle, RotateCcw, ArrowUp, ArrowDown, Plus, Clock, PlayCircle } from 'lucide-react';
 
 // scene_type 별 스타일 (씬 종류 — 비주얼 분류)
 const SCENE_TYPES = {
@@ -68,6 +68,10 @@ export default function ContentSetup({ onDraftCreated, identityId = 'mine-primar
   const [scenes, setScenes] = useState([]);
   const [draftId, setDraftId] = useState(null);
 
+  // 이어서 작업 — 저장된 draft 목록
+  const [drafts, setDrafts] = useState([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+
   const [error, setError] = useState('');
 
   const generateStoryboard = async () => {
@@ -103,6 +107,8 @@ export default function ContentSetup({ onDraftCreated, identityId = 'mine-primar
       }
       setScenes(d.draft?.scenes || []);
       setDraftId(d.draft?.id || null);
+      // 새 draft 목록에 반영
+      reloadDrafts();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -127,6 +133,55 @@ export default function ContentSetup({ onDraftCreated, identityId = 'mine-primar
       .then((d) => setSavedBases(d?.identity?.data?.saved_bases || []))
       .catch((e) => console.error('[ContentSetup identity]', e));
   }, [identityId]);
+
+  // 저장된 draft 목록 fetch (이어서 작업)
+  const reloadDrafts = () => {
+    setDraftsLoading(true);
+    fetch(`/api/creator/draft?identityId=${identityId}`)
+      .then((r) => r.json())
+      .then((d) => setDrafts(d.drafts || []))
+      .catch((e) => console.error('[ContentSetup drafts]', e))
+      .finally(() => setDraftsLoading(false));
+  };
+  useEffect(() => { reloadDrafts(); }, [identityId]);
+
+  // draft 클릭 → state 복원 후 3단계로 점프
+  const loadDraft = (d) => {
+    setBaseAssetId(d.baseAssetId || null);
+    setBaseAssetUrl(d.baseAssetUrl || null);
+    setBaseDescription(d.baseDescription || '');
+    setTopic(d.topic || '');
+    setSize(d.aspectRatio || '9:16');
+    setLanguage(d.language || 'ko');
+    setPlatforms(d.platforms || ['instagram', 'tiktok']);
+    setNotes(d.notes || '');
+    setScenes(d.scenes || []);
+    setDraftId(d.id);
+    setError('');
+    setStep(3);
+  };
+
+  // draft 삭제
+  const deleteDraft = async (id) => {
+    if (!window.confirm('이 스토리보드를 삭제할까? 되돌릴 수 없어.')) return;
+    try {
+      const r = await fetch(`/api/creator/draft?id=${id}`, { method: 'DELETE' });
+      const d = await r.json();
+      if (!r.ok || !d?.success) {
+        alert(`삭제 실패: ${d?.error || r.status}`);
+        return;
+      }
+      setDrafts((prev) => prev.filter((x) => x.id !== id));
+      // 지금 편집 중인 draft 였으면 초기화
+      if (draftId === id) {
+        setDraftId(null);
+        setScenes([]);
+        setStep(1);
+      }
+    } catch (e) {
+      alert(`삭제 실패: ${e.message}`);
+    }
+  };
 
   const togglePlatform = (key) => {
     setPlatforms(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]);
@@ -217,6 +272,11 @@ export default function ContentSetup({ onDraftCreated, identityId = 'mine-primar
             saveCurrentAsBase={saveCurrentAsBase}
             removeSavedBase={removeSavedBase}
             saving={saving}
+            drafts={drafts}
+            draftsLoading={draftsLoading}
+            currentDraftId={draftId}
+            loadDraft={loadDraft}
+            deleteDraft={deleteDraft}
           />
         )}
 
@@ -357,9 +417,19 @@ function Step1Face({
   baseAssetId, baseAssetUrl, baseDescription, setBaseDescription,
   selectBase,
   savedBases, selectSaved, saveCurrentAsBase, removeSavedBase, saving,
+  drafts, draftsLoading, currentDraftId, loadDraft, deleteDraft,
 }) {
   return (
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 760 }}>
+      {/* 이어서 작업 — 저장된 스토리보드 */}
+      <DraftsPanel
+        drafts={drafts}
+        loading={draftsLoading}
+        currentDraftId={currentDraftId}
+        loadDraft={loadDraft}
+        deleteDraft={deleteDraft}
+      />
+
       {/* 저장된 베이스 */}
       <section>
         <div style={{ fontSize: 11.5, fontWeight: 600, color: '#6E6E73', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
@@ -1155,6 +1225,120 @@ function SaveStatus({ state }) {
     );
   }
   return null;
+}
+
+// ---------------- 이어서 작업 — 저장된 draft 목록 ----------------
+function DraftsPanel({ drafts, loading, currentDraftId, loadDraft, deleteDraft }) {
+  if (loading) {
+    return (
+      <section>
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: '#6E6E73', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+          이어서 작업
+        </div>
+        <div style={{ padding: 20, textAlign: 'center', color: '#AEAEB2' }}>
+          <Loader2 size={16} style={{ animation: 'spin 0.8s linear infinite' }} />
+        </div>
+      </section>
+    );
+  }
+  if (!drafts || drafts.length === 0) return null;
+
+  return (
+    <section>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: '#6E6E73', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Clock size={12} /> 이어서 작업 ({drafts.length})
+        </div>
+        <div style={{ fontSize: 10.5, color: '#AEAEB2' }}>
+          클릭 → 스토리보드 편집으로 점프
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {drafts.map((d) => {
+          const isCurrent = currentDraftId === d.id;
+          const totalSec = (d.scenes || []).reduce((s, x) => s + (x.duration_sec || 0), 0);
+          const updated = d.updatedAt || d.createdAt;
+          return (
+            <div
+              key={d.id}
+              onClick={() => loadDraft(d)}
+              style={{
+                display: 'flex', gap: 12, alignItems: 'center',
+                padding: '10px 12px', borderRadius: 10,
+                border: `1.5px solid ${isCurrent ? '#5E6AD2' : '#E5E5EA'}`,
+                background: isCurrent ? '#5E6AD208' : '#FFF',
+                cursor: 'pointer', position: 'relative',
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+            >
+              <SafeImage
+                src={d.baseAssetUrl}
+                alt=""
+                style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, flexShrink: 0, background: '#F5F5F7' }}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: 13, fontWeight: 700, color: '#1D1D1F',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {d.topic || '(주제 없음)'}
+                </div>
+                <div style={{ fontSize: 11, color: '#AEAEB2', marginTop: 2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span><Film size={10} style={{ verticalAlign: 'middle', marginRight: 3 }} />{(d.scenes || []).length}장면</span>
+                  <span>· {totalSec}초</span>
+                  <span>· {d.aspectRatio || '9:16'}</span>
+                  {updated && <span>· {formatRelativeTime(updated)}</span>}
+                </div>
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); loadDraft(d); }}
+                title="이어서 편집"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '6px 10px', borderRadius: 6,
+                  border: '1px solid #5E6AD230', background: '#5E6AD212',
+                  color: '#5E6AD2', fontSize: 11.5, fontWeight: 600,
+                  cursor: 'pointer', whiteSpace: 'nowrap',
+                }}
+              >
+                <PlayCircle size={12} /> 이어서
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); deleteDraft(d.id); }}
+                title="삭제"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: 26, height: 26, borderRadius: 6,
+                  border: '1px solid #E5E5EA', background: '#FFF',
+                  color: '#FF3B30', cursor: 'pointer',
+                }}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, background: '#F5F5F7', fontSize: 11, color: '#6E6E73', textAlign: 'center' }}>
+        ⬇ 아래에서 새 스토리보드를 시작할 수도 있어
+      </div>
+    </section>
+  );
+}
+
+// 시간 포맷 — 상대시간 (방금/N분 전/N시간 전/N일 전/날짜)
+function formatRelativeTime(iso) {
+  try {
+    const t = new Date(iso).getTime();
+    const diff = Date.now() - t;
+    if (diff < 60_000) return '방금';
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}분 전`;
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}시간 전`;
+    if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}일 전`;
+    return new Date(iso).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+  } catch {
+    return '';
+  }
 }
 
 // ---------------- 장면 카드 액션 버튼 ----------------

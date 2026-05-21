@@ -3,6 +3,35 @@ import { checkHiggsfieldStatus } from './media.js';
 
 export default async function handler(req, res) {
   const { id } = req.query;
+
+  // id 없는 GET = 목록 조회 (이어서 작업할 V3 draft 목록)
+  if (!id && req.method === 'GET') {
+    const sb = getSupabase();
+    const identityId = req.query.identityId;
+    const { data, error } = await sb
+      .from('creator_drafts')
+      .select('id, persona_id, data, created_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) return res.status(500).json({ error: error.message });
+    const drafts = (data || [])
+      .map((r) => r.data)
+      .filter((d) =>
+        d &&
+        d.version === 'v3' &&
+        d.baseAssetId &&
+        Array.isArray(d.scenes) &&
+        d.scenes.length > 0 &&
+        (!identityId || d.identityId === identityId)
+      )
+      .sort((a, b) => {
+        const ta = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        const tb = new Date(b.updatedAt || b.createdAt || 0).getTime();
+        return tb - ta;
+      });
+    return res.status(200).json({ drafts });
+  }
+
   if (!id) return res.status(400).json({ error: 'id 필수' });
 
   const sb = getSupabase();
