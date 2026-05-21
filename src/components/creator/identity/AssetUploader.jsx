@@ -7,7 +7,7 @@
 //   onUploaded?: (assets) => void
 
 import { useRef, useState } from 'react';
-import { Upload, Loader2, Check, AlertCircle, X } from 'lucide-react';
+import { Upload, Loader2, Check, AlertCircle, X, Tag } from 'lucide-react';
 import { supabaseBrowser } from '../../../lib/supabaseClient';
 
 const ASSET_TYPES = [
@@ -52,6 +52,23 @@ export default function AssetUploader({
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
+  // 이번 배치에 공통 적용할 manual_tags
+  const [commonTags, setCommonTags] = useState([]);
+  const [tagDraft, setTagDraft] = useState('');
+
+  const addTagsFromDraft = () => {
+    const parts = tagDraft.split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length === 0) { setTagDraft(''); return; }
+    setCommonTags((prev) => {
+      const set = new Set(prev);
+      parts.forEach((p) => set.add(p));
+      return [...set];
+    });
+    setTagDraft('');
+  };
+
+  const removeTag = (t) => setCommonTags((prev) => prev.filter((x) => x !== t));
+
   const addFiles = (files) => {
     const list = Array.from(files || []);
     if (!list.length) return;
@@ -82,6 +99,15 @@ export default function AssetUploader({
 
   const upload = async () => {
     if (busy || queue.length === 0) return;
+
+    // 입력칸에 남아있는 미확정 태그 흡수
+    const draftLeft = tagDraft.split(',').map((s) => s.trim()).filter(Boolean);
+    const tagsForBatch = [...new Set([...commonTags, ...draftLeft])];
+    if (draftLeft.length) {
+      setCommonTags(tagsForBatch);
+      setTagDraft('');
+    }
+
     setBusy(true);
 
     const updateItem = (i, patch) =>
@@ -115,6 +141,7 @@ export default function AssetUploader({
         filename: file.name,
         assetType,
         source,
+        manualTags: tagsForBatch,
       });
     }
 
@@ -178,7 +205,42 @@ export default function AssetUploader({
             ))}
           </select>
         </label>
+
+        <label className="flex items-center gap-2 flex-1 min-w-[220px]">
+          <span className="text-zinc-400 inline-flex items-center gap-1">
+            <Tag className="w-3.5 h-3.5" /> 태그 <span className="text-zinc-600 text-xs">(선택)</span>
+          </span>
+          <input
+            value={tagDraft}
+            onChange={(e) => setTagDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTagsFromDraft(); }
+            }}
+            onBlur={addTagsFromDraft}
+            placeholder="500달톤세럼, 신제품"
+            className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 min-w-[140px]"
+          />
+        </label>
       </div>
+
+      {/* 공통 태그 칩 */}
+      {commonTags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {commonTags.map((t) => (
+            <button
+              key={t}
+              onClick={() => removeTag(t)}
+              className="text-xs bg-emerald-500/15 text-emerald-200 border border-emerald-500/40 px-2 py-0.5 rounded inline-flex items-center gap-1 hover:bg-red-500/20 hover:text-red-200 hover:border-red-500/40"
+              title="클릭해서 제거"
+            >
+              {t} <X className="w-3 h-3" />
+            </button>
+          ))}
+          <span className="text-[10px] text-zinc-500 ml-1 self-center">
+            이번 배치 {queue.filter((q) => q.status !== 'done').length}개 파일에 공통 적용
+          </span>
+        </div>
+      )}
 
       {/* 드롭 존 */}
       <div

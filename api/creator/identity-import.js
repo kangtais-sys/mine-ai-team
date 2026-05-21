@@ -1,8 +1,9 @@
 // 자산 등록 — Storage는 클라이언트가 직접 업로드, 서버는 creator_assets row insert만
-// POST { identityId, files: [{ url, path, mimeType, filename, assetType, source }] }
+// POST { identityId, files: [{ url, path, mimeType, filename, assetType, source, manualTags? }] }
 //   → { success, assets: [...], errors: [...] }
 // assetType: 'photo' | 'video' | 'reference_photo' | 'reference_video' | 'product' | 'bgm'
 // source:    'manual_upload' | 'reference'
+// manualTags: string[] (선택) — 업로드 시 공통 적용할 manual_tags
 
 import { getSupabase } from '../../lib/supabase.js';
 
@@ -28,11 +29,15 @@ export default async function handler(req, res) {
 
   for (let i = 0; i < files.length; i++) {
     const f = files[i] || {};
-    const { url, path, assetType, source = 'manual_upload' } = f;
+    const { url, path, assetType, source = 'manual_upload', manualTags } = f;
     if (!url || !assetType) {
       errors.push({ index: i, error: 'url / assetType 필수' });
       continue;
     }
+
+    const cleanTags = Array.isArray(manualTags)
+      ? [...new Set(manualTags.map((t) => String(t).trim()).filter(Boolean))]
+      : [];
 
     const { data: row, error: insErr } = await sb
       .from('creator_assets')
@@ -44,7 +49,7 @@ export default async function handler(req, res) {
         storage_path: path || null,
         thumbnail_url: null,
         auto_tags: {},
-        manual_tags: [],
+        manual_tags: cleanTags,
         is_favorite: false,
       })
       .select()
