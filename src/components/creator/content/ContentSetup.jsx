@@ -44,15 +44,80 @@ const STEPS = [
 ];
 
 // 슬롯 정의 — 전역/장면별 공용. assetTypes 는 라이브러리 필터 프리셋.
+// multi=true: 배열(여러 항목). 그 외: 단일 객체.
 const SLOT_DEFS = [
   { key: 'outfit',     label: '의상',     emoji: '👕', assetTypes: 'photo',                  placeholder: '예: 흰티 + 청바지',                        autoTagKey: null },
   { key: 'hair',       label: '헤어',     emoji: '💇', assetTypes: 'photo',                  placeholder: '예: 자연스러운 웨이브',                     autoTagKey: null },
   { key: 'background', label: '배경',     emoji: '🪟', assetTypes: 'photo,reference_photo',  placeholder: '예: 화장대 / 카페 창가',                    autoTagKey: 'space' },
   { key: 'makeup',     label: '메이크업', emoji: '💄', assetTypes: 'photo',                  placeholder: '예: 누드 톤 데일리',                        autoTagKey: null },
   { key: 'lighting',   label: '톤·조명', emoji: '💡', assetTypes: 'photo,reference_photo',  placeholder: '예: 따뜻한 자연광',                          autoTagKey: 'lighting' },
-  { key: 'product',    label: '제품',     emoji: '🧴', assetTypes: 'product',                placeholder: '예: 밀리밀리 토너',                          autoTagKey: null },
+  {
+    key: 'products', label: '제품/소품', emoji: '🧴',
+    assetTypes: 'product,photo',
+    placeholder: '예: 밀리밀리 토너 / 퍼프',
+    autoTagKey: null,
+    multi: true,
+    kinds: [
+      { value: 'product', label: '제품', emoji: '🧴' },
+      { value: 'tool',    label: '도구', emoji: '🧽' },
+    ],
+  },
 ];
-const EMPTY_SLOTS = Object.fromEntries(SLOT_DEFS.map(d => [d.key, {}]));
+const EMPTY_SLOTS = Object.fromEntries(
+  SLOT_DEFS.map(d => [d.key, d.multi ? [] : {}])
+);
+
+// 하위호환 — 전역 슬롯의 legacy `product` (단일) → `products` (배열)
+function migrateGlobalSlots(slots) {
+  if (!slots || typeof slots !== 'object') return slots;
+  const out = { ...slots };
+  if ('product' in out && !('products' in out)) {
+    const p = out.product;
+    if (p && typeof p === 'object' && (p.assetId || p.description)) {
+      out.products = [{
+        assetId: p.assetId,
+        assetUrl: p.assetUrl,
+        assetThumb: p.assetThumb || p.assetUrl,
+        description: p.description || '',
+        kind: 'product',
+      }];
+    } else {
+      out.products = [];
+    }
+    delete out.product;
+  }
+  return out;
+}
+
+// 하위호환 — 장면별 슬롯의 legacy `product` → `products`
+// scene.slots[key] 형식: undefined=inherit / { cleared:true } / 단일슬롯={assetId,...}
+// multi 인 경우 custom 형식: { items: [...] }
+function migrateSceneSlots(slots) {
+  if (!slots || typeof slots !== 'object') return slots;
+  const out = { ...slots };
+  if ('product' in out) {
+    const p = out.product;
+    if (p && p.cleared) {
+      out.products = { cleared: true };
+    } else if (p && typeof p === 'object' && (p.assetId || p.description)) {
+      out.products = {
+        items: [{
+          assetId: p.assetId,
+          assetUrl: p.assetUrl,
+          assetThumb: p.assetThumb || p.assetUrl,
+          description: p.description || '',
+          kind: 'product',
+        }],
+      };
+    }
+    delete out.product;
+  }
+  return out;
+}
+
+function migrateScenes(scenes) {
+  return (scenes || []).map(s => ({ ...s, slots: migrateSceneSlots(s.slots) }));
+}
 
 export default function ContentSetup({ onDraftCreated, identityId = 'mine-primary' }) {
   // 스텝
@@ -117,9 +182,9 @@ export default function ContentSetup({ onDraftCreated, identityId = 'mine-primar
         setScenes([]);
         return;
       }
-      setScenes(d.draft?.scenes || []);
+      setScenes(migrateScenes(d.draft?.scenes || []));
       setDraftId(d.draft?.id || null);
-      setGlobalSlots({ ...EMPTY_SLOTS, ...(d.draft?.global_slots || {}) });
+      setGlobalSlots({ ...EMPTY_SLOTS, ...migrateGlobalSlots(d.draft?.global_slots || {}) });
       // 새 draft 목록에 반영
       reloadDrafts();
     } catch (e) {
@@ -168,8 +233,8 @@ export default function ContentSetup({ onDraftCreated, identityId = 'mine-primar
     setLanguage(d.language || 'ko');
     setPlatforms(d.platforms || ['instagram', 'tiktok']);
     setNotes(d.notes || '');
-    setScenes(d.scenes || []);
-    setGlobalSlots({ ...EMPTY_SLOTS, ...(d.global_slots || {}) });
+    setScenes(migrateScenes(d.scenes || []));
+    setGlobalSlots({ ...EMPTY_SLOTS, ...migrateGlobalSlots(d.global_slots || {}) });
     setDraftId(d.id);
     setError('');
     setStep(3);
@@ -772,6 +837,12 @@ function Step3Storyboard({
   };
 
   const updateGlobalSlot = (slotKey, patch) => {
+    const def = SLOT_DEFS.find(d => d.key === slotKey);
+    if (def?.multi) {
+      // 단일 객체 patch 는 사용하지 않음 (multi 는 배열 전체로 갱신)
+      console.warn('[updateGlobalSlot] multi slot 은 setGlobalSlotArray 사용');
+      return;
+    }
     const cur = globalSlots?.[slotKey] || {};
     const merged = { ...cur, ...patch };
     // 빈 값이면 키 정리
@@ -781,8 +852,17 @@ function Step3Storyboard({
     persistGlobalSlots(next);
   };
 
+  // multi 슬롯 전용 — 배열 전체 갱신
+  const setGlobalSlotArray = (slotKey, arr) => {
+    const next = { ...(globalSlots || {}), [slotKey]: Array.isArray(arr) ? arr : [] };
+    onGlobalSlotsUpdate(next);
+    persistGlobalSlots(next);
+  };
+
   const clearGlobalSlot = (slotKey) => {
-    const next = { ...(globalSlots || {}), [slotKey]: {} };
+    const def = SLOT_DEFS.find(d => d.key === slotKey);
+    const empty = def?.multi ? [] : {};
+    const next = { ...(globalSlots || {}), [slotKey]: empty };
     onGlobalSlotsUpdate(next);
     persistGlobalSlots(next);
   };
@@ -809,20 +889,43 @@ function Step3Storyboard({
   };
 
   // AssetPicker 결과 처리
+  // pickerCtx: { slotKey, target: 'global'|sceneIndex, kind?: 'product'|'tool' }
+  //   - kind 있으면 multi 슬롯에 push, 없으면 단일 슬롯 set
   const handlePickAsset = (asset) => {
     if (!pickerCtx) return;
-    const slotValue = {
+    const def = SLOT_DEFS.find(d => d.key === pickerCtx.slotKey);
+    const item = {
       assetId: asset.id,
       assetUrl: asset.url,
       assetThumb: asset.thumbnail_url || asset.url,
+      description: '',
     };
-    if (pickerCtx.target === 'global') {
-      updateGlobalSlot(pickerCtx.slotKey, slotValue);
+    if (def?.multi) {
+      item.kind = pickerCtx.kind || 'product';
+      if (pickerCtx.target === 'global') {
+        const cur = Array.isArray(globalSlots?.[pickerCtx.slotKey])
+          ? globalSlots[pickerCtx.slotKey]
+          : [];
+        setGlobalSlotArray(pickerCtx.slotKey, [...cur, item]);
+      } else {
+        const sceneIdx = pickerCtx.target;
+        const curScene = scenes.find(s => s.scene_index === sceneIdx)?.slots?.[pickerCtx.slotKey];
+        const curItems = curScene?.items && Array.isArray(curScene.items) ? curScene.items : [];
+        updateSceneSlot(sceneIdx, pickerCtx.slotKey, { items: [...curItems, item] });
+      }
     } else {
-      // scene
-      const sceneIdx = pickerCtx.target;
-      const cur = scenes.find(s => s.scene_index === sceneIdx)?.slots?.[pickerCtx.slotKey] || {};
-      updateSceneSlot(sceneIdx, pickerCtx.slotKey, { ...cur, ...slotValue, cleared: undefined });
+      const slotValue = {
+        assetId: asset.id,
+        assetUrl: asset.url,
+        assetThumb: asset.thumbnail_url || asset.url,
+      };
+      if (pickerCtx.target === 'global') {
+        updateGlobalSlot(pickerCtx.slotKey, slotValue);
+      } else {
+        const sceneIdx = pickerCtx.target;
+        const cur = scenes.find(s => s.scene_index === sceneIdx)?.slots?.[pickerCtx.slotKey] || {};
+        updateSceneSlot(sceneIdx, pickerCtx.slotKey, { ...cur, ...slotValue, cleared: undefined });
+      }
     }
     setPickerCtx(null);
   };
@@ -996,6 +1099,8 @@ function Step3Storyboard({
         onSlotText={(key, text) => updateGlobalSlot(key, { description: text })}
         onSlotPick={(key) => setPickerCtx({ slotKey: key, target: 'global' })}
         onSlotClear={(key) => clearGlobalSlot(key)}
+        onMultiPick={(key, kind) => setPickerCtx({ slotKey: key, target: 'global', kind })}
+        onMultiSetArray={(key, arr) => setGlobalSlotArray(key, arr)}
       />
 
       <div style={{ fontSize: 11.5, color: '#AEAEB2', textAlign: 'center' }}>
@@ -1196,9 +1301,18 @@ function Step3Storyboard({
                   sceneSlots={s.slots || {}}
                   globalSlots={globalSlots}
                   onPick={(key) => setPickerCtx({ slotKey: key, target: s.scene_index })}
+                  onMultiPick={(key, kind) => setPickerCtx({ slotKey: key, target: s.scene_index, kind })}
+                  onMultiSetItems={(key, items) => {
+                    updateSceneSlot(s.scene_index, key, { items: items || [] });
+                  }}
                   onModeChange={(key, mode) => {
+                    const def = SLOT_DEFS.find(d => d.key === key);
                     if (mode === 'inherit') updateSceneSlot(s.scene_index, key, null);
                     else if (mode === 'cleared') updateSceneSlot(s.scene_index, key, { cleared: true });
+                    else if (mode === 'custom' && def?.multi) {
+                      // multi 는 custom 시작 시 빈 items 배열로
+                      updateSceneSlot(s.scene_index, key, { items: [] });
+                    }
                   }}
                   onText={(key, text) => {
                     const cur = (s.slots || {})[key] || {};
@@ -1243,11 +1357,12 @@ function Step3Storyboard({
 }
 
 // ---------------- 전역 슬롯 패널 (스토리보드 상단) ----------------
-function GlobalSlotsPanel({ globalSlots, onSlotText, onSlotPick, onSlotClear }) {
+function GlobalSlotsPanel({ globalSlots, onSlotText, onSlotPick, onSlotClear, onMultiPick, onMultiSetArray }) {
   const [open, setOpen] = useState(true);
   const filledCount = SLOT_DEFS.filter(d => {
-    const s = globalSlots?.[d.key] || {};
-    return s.assetId || s.description;
+    const s = globalSlots?.[d.key];
+    if (d.multi) return Array.isArray(s) && s.length > 0;
+    return !!(s?.assetId || s?.description);
   }).length;
 
   return (
@@ -1271,9 +1386,17 @@ function GlobalSlotsPanel({ globalSlots, onSlotText, onSlotPick, onSlotClear }) 
       {open && (
         <div style={{
           padding: '4px 12px 14px',
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8,
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8,
         }}>
-          {SLOT_DEFS.map(def => (
+          {SLOT_DEFS.map(def => def.multi ? (
+            <ProductsSlotCard
+              key={def.key}
+              def={def}
+              items={Array.isArray(globalSlots?.[def.key]) ? globalSlots[def.key] : []}
+              onPickFromLib={(kind) => onMultiPick(def.key, kind)}
+              onSetArray={(arr) => onMultiSetArray(def.key, arr)}
+            />
+          ) : (
             <SlotCard
               key={def.key}
               def={def}
@@ -1287,6 +1410,124 @@ function GlobalSlotsPanel({ globalSlots, onSlotText, onSlotPick, onSlotClear }) 
         </div>
       )}
     </section>
+  );
+}
+
+// ---------------- 멀티 슬롯(제품/소품) 카드 ----------------
+// items: [{ assetId?, assetUrl?, assetThumb?, description, kind }]
+// onSetArray(arr), onPickFromLib(kind)
+function ProductsSlotCard({ def, items, onPickFromLib, onSetArray }) {
+  const filled = items.length > 0;
+  const updateItem = (idx, patch) => {
+    const next = items.map((it, i) => i === idx ? { ...it, ...patch } : it);
+    onSetArray(next);
+  };
+  const removeItem = (idx) => onSetArray(items.filter((_, i) => i !== idx));
+  const addText = (kind) => onSetArray([...items, { description: '', kind }]);
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 6,
+      padding: 8, borderRadius: 8,
+      border: `1px solid ${filled ? '#5E6AD230' : '#E5E5EA'}`,
+      background: filled ? '#5E6AD208' : '#FAFAFA',
+      minWidth: 0,
+      gridColumn: 'span 2',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: '#1D1D1F' }}>
+          {def.emoji} {def.label} {filled && <span style={{ color: '#AEAEB2', fontWeight: 500 }}>· {items.length}개</span>}
+        </span>
+      </div>
+
+      {items.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {items.map((it, idx) => {
+            const kindDef = def.kinds.find(k => k.value === it.kind) || def.kinds[0];
+            return (
+              <div key={idx} style={{
+                display: 'flex', gap: 6, alignItems: 'center',
+                padding: 4, borderRadius: 6, background: '#FFF', border: '1px solid #F0F0F2',
+              }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 4, overflow: 'hidden',
+                  background: '#F5F5F7', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: it.assetId ? '1.5px solid #5E6AD2' : '1.5px dashed #C7C7CC',
+                }}>
+                  {it.assetId
+                    ? <SafeImage src={it.assetThumb || it.assetUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <span style={{ fontSize: 14 }}>{kindDef.emoji}</span>}
+                </div>
+                <select
+                  value={it.kind || 'product'}
+                  onChange={(e) => updateItem(idx, { kind: e.target.value })}
+                  style={{
+                    fontSize: 10.5, padding: '2px 4px', borderRadius: 4,
+                    border: '1px solid #E5E5EA', background: '#FFF',
+                    cursor: 'pointer', fontFamily: 'inherit', color: '#1D1D1F',
+                  }}
+                >
+                  {def.kinds.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+                </select>
+                <input
+                  type="text"
+                  value={it.description || ''}
+                  onChange={(e) => updateItem(idx, { description: e.target.value })}
+                  placeholder={def.placeholder}
+                  style={{
+                    flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.4,
+                    padding: '4px 6px', borderRadius: 4,
+                    border: '1px solid #E5E5EA', background: '#FFF',
+                    fontFamily: 'inherit', outline: 'none',
+                  }}
+                />
+                <button
+                  onClick={() => removeItem(idx)}
+                  title="삭제"
+                  style={{
+                    width: 22, height: 22, borderRadius: 4, border: 'none',
+                    background: 'transparent', color: '#AEAEB2', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}
+                ><X size={12} /></button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {def.kinds.map(k => (
+          <button
+            key={`pick-${k.value}`}
+            onClick={() => onPickFromLib(k.value)}
+            title={`라이브러리에서 ${k.label} 고르기`}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+              padding: '4px 8px', borderRadius: 6, fontSize: 10.5, fontWeight: 600,
+              border: '1px solid #E5E5EA', background: '#FFF', cursor: 'pointer', color: '#1D1D1F',
+            }}
+          >
+            <ImagePlus size={11} /> {k.label}
+          </button>
+        ))}
+        {def.kinds.map(k => (
+          <button
+            key={`text-${k.value}`}
+            onClick={() => addText(k.value)}
+            title={`텍스트로 ${k.label} 추가`}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+              padding: '4px 8px', borderRadius: 6, fontSize: 10.5, fontWeight: 500,
+              border: '1px dashed #C7C7CC', background: 'transparent', cursor: 'pointer', color: '#6E6E73',
+            }}
+          >
+            <Plus size={11} /> {k.label} 텍스트
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1353,12 +1594,13 @@ function SlotCard({ def, slot, onText, onPick, onClear, compact }) {
 }
 
 // ---------------- 장면별 슬롯 (카드 하단) ----------------
-function SceneSlotsPanel({ sceneSlots, globalSlots, onPick, onModeChange, onText }) {
+function SceneSlotsPanel({ sceneSlots, globalSlots, onPick, onMultiPick, onMultiSetItems, onModeChange, onText }) {
   const [open, setOpen] = useState(false);
-  // 모드 카운트 — 'inherit'(undefined) / 'cleared' / 'custom'(assetId|description)
+  // 모드 카운트 — 'inherit'(undefined) / 'cleared' / 'custom'(assetId|description|items)
   const overrideCount = SLOT_DEFS.filter(d => {
     const s = sceneSlots?.[d.key];
     if (!s) return false;
+    if (d.multi) return s.cleared || (Array.isArray(s.items) && s.items.length >= 0 && (s.items !== undefined));
     return s.cleared || s.assetId || s.description;
   }).length;
 
@@ -1382,64 +1624,94 @@ function SceneSlotsPanel({ sceneSlots, globalSlots, onPick, onModeChange, onText
         <div style={{ padding: '0 10px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
           {SLOT_DEFS.map(def => {
             const sceneSlot = sceneSlots?.[def.key];
-            const globalSlot = globalSlots?.[def.key] || {};
+            const globalSlot = globalSlots?.[def.key];
             // 현재 모드
             let mode = 'inherit';
             if (sceneSlot?.cleared) mode = 'cleared';
-            else if (sceneSlot?.assetId || sceneSlot?.description) mode = 'custom';
-            // 표시할 effective value
-            const effective = mode === 'cleared'
-              ? null
-              : mode === 'custom' ? sceneSlot : globalSlot;
-            const effHasAsset = mode !== 'cleared' && !!effective?.assetId;
-            const effDesc = mode === 'cleared' ? '(이 장면에서 비움)' : (effective?.description || '(없음)');
+            else if (def.multi) {
+              if (sceneSlot && Array.isArray(sceneSlot.items)) mode = 'custom';
+            } else if (sceneSlot?.assetId || sceneSlot?.description) {
+              mode = 'custom';
+            }
+
+            // 표시 텍스트
+            let effDesc;
+            if (mode === 'cleared') {
+              effDesc = '(이 장면에서 비움)';
+            } else if (def.multi) {
+              const items = mode === 'custom'
+                ? (sceneSlot?.items || [])
+                : (Array.isArray(globalSlot) ? globalSlot : []);
+              effDesc = items.length > 0
+                ? `${items.length}개${mode === 'inherit' ? ' (전역 상속)' : ''}`
+                : '(없음)';
+            } else {
+              const effective = mode === 'custom' ? sceneSlot : (globalSlot || {});
+              effDesc = effective?.description || '(없음)';
+            }
+            const effHasAsset = !def.multi && mode !== 'cleared' && !!(mode === 'custom' ? sceneSlot?.assetId : globalSlot?.assetId);
+            const effThumb = !def.multi && mode !== 'cleared'
+              ? (mode === 'custom' ? (sceneSlot?.assetThumb || sceneSlot?.assetUrl) : (globalSlot?.assetThumb || globalSlot?.assetUrl))
+              : null;
 
             return (
               <div key={def.key} style={{
-                display: 'flex', gap: 8, alignItems: 'center',
+                display: 'flex', flexDirection: 'column', gap: 4,
                 padding: '6px 8px', borderRadius: 6,
                 background: '#FFF', border: '1px solid #F0F0F2',
               }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: '#1D1D1F', minWidth: 70 }}>
-                  {def.emoji} {def.label}
-                </span>
-                {effHasAsset && (
-                  <SafeImage src={effective.assetThumb || effective.assetUrl} alt="" style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
-                )}
-                <span style={{
-                  flex: 1, fontSize: 10.5, color: mode === 'cleared' ? '#FF9500' : '#6E6E73',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {effDesc}
-                </span>
-                <select
-                  value={mode}
-                  onChange={(e) => {
-                    const newMode = e.target.value;
-                    if (newMode === 'custom') onPick(def.key);
-                    else onModeChange(def.key, newMode);
-                  }}
-                  style={{
-                    fontSize: 10.5, padding: '3px 4px', borderRadius: 4,
-                    border: '1px solid #E5E5EA', background: '#FFF',
-                    cursor: 'pointer', fontFamily: 'inherit', color: '#1D1D1F',
-                  }}
-                >
-                  <option value="inherit">⤴ 전역 사용</option>
-                  <option value="cleared">✕ 비움</option>
-                  <option value="custom">✎ 다르게</option>
-                </select>
-                {mode === 'custom' && (
-                  <input
-                    type="text"
-                    value={sceneSlot?.description || ''}
-                    onChange={(e) => onText(def.key, e.target.value)}
-                    placeholder={def.placeholder}
-                    style={{
-                      width: 120, fontSize: 10.5, padding: '3px 6px', borderRadius: 4,
-                      border: '1px solid #E5E5EA', background: '#FFF',
-                      fontFamily: 'inherit', outline: 'none',
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: '#1D1D1F', minWidth: 70 }}>
+                    {def.emoji} {def.label}
+                  </span>
+                  {effHasAsset && (
+                    <SafeImage src={effThumb} alt="" style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
+                  )}
+                  <span style={{
+                    flex: 1, fontSize: 10.5, color: mode === 'cleared' ? '#FF9500' : '#6E6E73',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {effDesc}
+                  </span>
+                  <select
+                    value={mode}
+                    onChange={(e) => {
+                      const newMode = e.target.value;
+                      if (newMode === 'custom' && !def.multi) onPick(def.key);
+                      else onModeChange(def.key, newMode);
                     }}
+                    style={{
+                      fontSize: 10.5, padding: '3px 4px', borderRadius: 4,
+                      border: '1px solid #E5E5EA', background: '#FFF',
+                      cursor: 'pointer', fontFamily: 'inherit', color: '#1D1D1F',
+                    }}
+                  >
+                    <option value="inherit">⤴ 전역 사용</option>
+                    <option value="cleared">✕ 비움</option>
+                    <option value="custom">✎ 다르게</option>
+                  </select>
+                  {mode === 'custom' && !def.multi && (
+                    <input
+                      type="text"
+                      value={sceneSlot?.description || ''}
+                      onChange={(e) => onText(def.key, e.target.value)}
+                      placeholder={def.placeholder}
+                      style={{
+                        width: 120, fontSize: 10.5, padding: '3px 6px', borderRadius: 4,
+                        border: '1px solid #E5E5EA', background: '#FFF',
+                        fontFamily: 'inherit', outline: 'none',
+                      }}
+                    />
+                  )}
+                </div>
+
+                {/* multi 슬롯 custom 모드 — 항목 리스트 + 추가 버튼 */}
+                {mode === 'custom' && def.multi && (
+                  <SceneMultiItemsEditor
+                    def={def}
+                    items={sceneSlot?.items || []}
+                    onSetItems={(arr) => onMultiSetItems(def.key, arr)}
+                    onPickKind={(kind) => onMultiPick(def.key, kind)}
                   />
                 )}
               </div>
@@ -1447,6 +1719,93 @@ function SceneSlotsPanel({ sceneSlots, globalSlots, onPick, onModeChange, onText
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// 장면 멀티 슬롯 항목 인라인 편집기
+function SceneMultiItemsEditor({ def, items, onSetItems, onPickKind }) {
+  const updateItem = (idx, patch) => onSetItems(items.map((it, i) => i === idx ? { ...it, ...patch } : it));
+  const removeItem = (idx) => onSetItems(items.filter((_, i) => i !== idx));
+  const addText = (kind) => onSetItems([...items, { description: '', kind }]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 78 }}>
+      {items.map((it, idx) => {
+        const kindDef = def.kinds.find(k => k.value === it.kind) || def.kinds[0];
+        return (
+          <div key={idx} style={{
+            display: 'flex', gap: 4, alignItems: 'center',
+            padding: 3, borderRadius: 4, background: '#FAFAFA',
+          }}>
+            <div style={{
+              width: 22, height: 22, borderRadius: 3, overflow: 'hidden',
+              background: '#FFF', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: it.assetId ? '1px solid #5E6AD2' : '1px dashed #C7C7CC',
+            }}>
+              {it.assetId
+                ? <SafeImage src={it.assetThumb || it.assetUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : <span style={{ fontSize: 10 }}>{kindDef.emoji}</span>}
+            </div>
+            <select
+              value={it.kind || 'product'}
+              onChange={(e) => updateItem(idx, { kind: e.target.value })}
+              style={{
+                fontSize: 10, padding: '1px 3px', borderRadius: 3,
+                border: '1px solid #E5E5EA', background: '#FFF',
+                cursor: 'pointer', fontFamily: 'inherit', color: '#1D1D1F',
+              }}
+            >
+              {def.kinds.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+            </select>
+            <input
+              type="text"
+              value={it.description || ''}
+              onChange={(e) => updateItem(idx, { description: e.target.value })}
+              placeholder={def.placeholder}
+              style={{
+                flex: 1, minWidth: 0, fontSize: 10.5, padding: '2px 4px', borderRadius: 3,
+                border: '1px solid #E5E5EA', background: '#FFF',
+                fontFamily: 'inherit', outline: 'none',
+              }}
+            />
+            <button
+              onClick={() => removeItem(idx)}
+              title="삭제"
+              style={{
+                width: 18, height: 18, borderRadius: 3, border: 'none',
+                background: 'transparent', color: '#AEAEB2', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}
+            ><X size={10} /></button>
+          </div>
+        );
+      })}
+      <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+        {def.kinds.map(k => (
+          <button
+            key={`pick-${k.value}`}
+            onClick={() => onPickKind(k.value)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 2,
+              padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+              border: '1px solid #E5E5EA', background: '#FFF', cursor: 'pointer', color: '#1D1D1F',
+            }}
+          ><ImagePlus size={9} /> {k.label}</button>
+        ))}
+        {def.kinds.map(k => (
+          <button
+            key={`text-${k.value}`}
+            onClick={() => addText(k.value)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 2,
+              padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 500,
+              border: '1px dashed #C7C7CC', background: 'transparent', cursor: 'pointer', color: '#6E6E73',
+            }}
+          ><Plus size={9} /> {k.label} 텍스트</button>
+        ))}
+      </div>
     </div>
   );
 }
