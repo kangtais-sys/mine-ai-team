@@ -5,7 +5,7 @@
 //   3단계: placeholder
 // 하위 호환: generate API / StoryboardEditor 에 personaId 자리로 baseAssetId 전달
 import { useState, useEffect } from 'react';
-import { Loader2, Globe, UserSquare2, ChevronRight, ChevronLeft, Save, Trash2, ImageOff, Sparkles, Film, Pencil, Check, AlertCircle, RotateCcw, ArrowUp, ArrowDown, Plus, Clock, PlayCircle } from 'lucide-react';
+import { Loader2, Globe, UserSquare2, ChevronRight, ChevronLeft, Save, Trash2, ImageOff, Sparkles, Film, Pencil, Check, AlertCircle, RotateCcw, ArrowUp, ArrowDown, Plus, Clock, PlayCircle, ChevronDown, X, ImagePlus } from 'lucide-react';
 
 // scene_type 별 스타일 (씬 종류 — 비주얼 분류)
 const SCENE_TYPES = {
@@ -43,6 +43,17 @@ const STEPS = [
   { n: 3, label: '스토리보드' },
 ];
 
+// 슬롯 정의 — 전역/장면별 공용. assetTypes 는 라이브러리 필터 프리셋.
+const SLOT_DEFS = [
+  { key: 'outfit',     label: '의상',     emoji: '👕', assetTypes: 'photo',                  placeholder: '예: 흰티 + 청바지',                        autoTagKey: null },
+  { key: 'hair',       label: '헤어',     emoji: '💇', assetTypes: 'photo',                  placeholder: '예: 자연스러운 웨이브',                     autoTagKey: null },
+  { key: 'background', label: '배경',     emoji: '🪟', assetTypes: 'photo,reference_photo',  placeholder: '예: 화장대 / 카페 창가',                    autoTagKey: 'space' },
+  { key: 'makeup',     label: '메이크업', emoji: '💄', assetTypes: 'photo',                  placeholder: '예: 누드 톤 데일리',                        autoTagKey: null },
+  { key: 'lighting',   label: '톤·조명', emoji: '💡', assetTypes: 'photo,reference_photo',  placeholder: '예: 따뜻한 자연광',                          autoTagKey: 'lighting' },
+  { key: 'product',    label: '제품',     emoji: '🧴', assetTypes: 'product',                placeholder: '예: 밀리밀리 토너',                          autoTagKey: null },
+];
+const EMPTY_SLOTS = Object.fromEntries(SLOT_DEFS.map(d => [d.key, {}]));
+
 export default function ContentSetup({ onDraftCreated, identityId = 'mine-primary' }) {
   // 스텝
   const [step, setStep] = useState(1);
@@ -67,6 +78,7 @@ export default function ContentSetup({ onDraftCreated, identityId = 'mine-primar
   const [generating, setGenerating] = useState(false);
   const [scenes, setScenes] = useState([]);
   const [draftId, setDraftId] = useState(null);
+  const [globalSlots, setGlobalSlots] = useState(EMPTY_SLOTS);
 
   // 이어서 작업 — 저장된 draft 목록
   const [drafts, setDrafts] = useState([]);
@@ -107,6 +119,7 @@ export default function ContentSetup({ onDraftCreated, identityId = 'mine-primar
       }
       setScenes(d.draft?.scenes || []);
       setDraftId(d.draft?.id || null);
+      setGlobalSlots({ ...EMPTY_SLOTS, ...(d.draft?.global_slots || {}) });
       // 새 draft 목록에 반영
       reloadDrafts();
     } catch (e) {
@@ -156,6 +169,7 @@ export default function ContentSetup({ onDraftCreated, identityId = 'mine-primar
     setPlatforms(d.platforms || ['instagram', 'tiktok']);
     setNotes(d.notes || '');
     setScenes(d.scenes || []);
+    setGlobalSlots({ ...EMPTY_SLOTS, ...(d.global_slots || {}) });
     setDraftId(d.id);
     setError('');
     setStep(3);
@@ -308,6 +322,9 @@ export default function ContentSetup({ onDraftCreated, identityId = 'mine-primar
             baseDescription={baseDescription}
             onRegenerate={generateStoryboard}
             draftId={draftId}
+            identityId={identityId}
+            globalSlots={globalSlots}
+            onGlobalSlotsUpdate={setGlobalSlots}
           />
         )}
 
@@ -703,11 +720,14 @@ function Step3Storyboard({
   scenes, onScenesUpdate, generating,
   topic, aspectRatio, language, platforms, notes,
   baseAssetUrl, baseDescription,
-  onRegenerate, draftId,
+  onRegenerate, draftId, identityId,
+  globalSlots, onGlobalSlotsUpdate,
 }) {
   const [saveState, setSaveState] = useState({ status: 'idle', error: '', at: null });
   // busyKey: `regen:${sceneIndex}` | `add:${afterSceneIndex}` | null
   const [busyKey, setBusyKey] = useState(null);
+  // 슬롯 라이브러리 모달 — { open, slotKey, target: 'global'|sceneIndex }
+  const [pickerCtx, setPickerCtx] = useState(null);
 
   const reindex = (arr) => arr.map((s, i) => ({ ...s, scene_index: i + 1 }));
 
@@ -729,6 +749,82 @@ function Step3Storyboard({
     } catch (e) {
       setSaveState({ status: 'error', error: e.message, at: null });
     }
+  };
+
+  const persistGlobalSlots = async (next) => {
+    if (!draftId) return;
+    setSaveState({ status: 'saving', error: '', at: null });
+    try {
+      const r = await fetch(`/api/creator/draft?id=${draftId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ global_slots: next }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d?.success) {
+        setSaveState({ status: 'error', error: d?.error || `저장 실패 (${r.status})`, at: null });
+        return;
+      }
+      setSaveState({ status: 'saved', error: '', at: new Date() });
+    } catch (e) {
+      setSaveState({ status: 'error', error: e.message, at: null });
+    }
+  };
+
+  const updateGlobalSlot = (slotKey, patch) => {
+    const cur = globalSlots?.[slotKey] || {};
+    const merged = { ...cur, ...patch };
+    // 빈 값이면 키 정리
+    Object.keys(merged).forEach(k => { if (merged[k] === '' || merged[k] === null) delete merged[k]; });
+    const next = { ...(globalSlots || {}), [slotKey]: merged };
+    onGlobalSlotsUpdate(next);
+    persistGlobalSlots(next);
+  };
+
+  const clearGlobalSlot = (slotKey) => {
+    const next = { ...(globalSlots || {}), [slotKey]: {} };
+    onGlobalSlotsUpdate(next);
+    persistGlobalSlots(next);
+  };
+
+  // 장면별 슬롯 — slot 상태 enum: 'inherit' | 'cleared' | 'custom'
+  // scene.slots[key] === undefined        → inherit
+  // scene.slots[key] === { cleared: true } → cleared (전역 무시, 비움)
+  // scene.slots[key] === { assetId, ... }  → custom
+  const updateSceneSlot = (sceneIndex, slotKey, value) => {
+    const next = scenes.map((s) => {
+      if (s.scene_index !== sceneIndex) return s;
+      const curSlots = s.slots || {};
+      const newSlots = { ...curSlots };
+      if (value === null) {
+        // inherit (전역 사용) — 키 제거
+        delete newSlots[slotKey];
+      } else {
+        newSlots[slotKey] = value;
+      }
+      return { ...s, slots: newSlots };
+    });
+    onScenesUpdate(next);
+    persistScenes(next);
+  };
+
+  // AssetPicker 결과 처리
+  const handlePickAsset = (asset) => {
+    if (!pickerCtx) return;
+    const slotValue = {
+      assetId: asset.id,
+      assetUrl: asset.url,
+      assetThumb: asset.thumbnail_url || asset.url,
+    };
+    if (pickerCtx.target === 'global') {
+      updateGlobalSlot(pickerCtx.slotKey, slotValue);
+    } else {
+      // scene
+      const sceneIdx = pickerCtx.target;
+      const cur = scenes.find(s => s.scene_index === sceneIdx)?.slots?.[pickerCtx.slotKey] || {};
+      updateSceneSlot(sceneIdx, pickerCtx.slotKey, { ...cur, ...slotValue, cleared: undefined });
+    }
+    setPickerCtx(null);
   };
 
   const updateSceneField = (sceneIndex, patch) => {
@@ -893,6 +989,14 @@ function Step3Storyboard({
           <Sparkles size={12} /> 다시 생성
         </button>
       </div>
+
+      {/* 전역 슬롯 패널 — 의상/헤어/배경/메이크업/조명/제품 */}
+      <GlobalSlotsPanel
+        globalSlots={globalSlots}
+        onSlotText={(key, text) => updateGlobalSlot(key, { description: text })}
+        onSlotPick={(key) => setPickerCtx({ slotKey: key, target: 'global' })}
+        onSlotClear={(key) => clearGlobalSlot(key)}
+      />
 
       <div style={{ fontSize: 11.5, color: '#AEAEB2', textAlign: 'center' }}>
         💡 자막·음성·비주얼·피부 상태 텍스트를 <b>클릭</b>하면 직접 수정할 수 있어. Enter 또는 포커스 아웃으로 저장, Esc로 취소.
@@ -1086,6 +1190,21 @@ function Step3Storyboard({
                   }}
                   textareaStyle={{ fontSize: 12, lineHeight: 1.4 }}
                 />
+
+                {/* 장면별 슬롯 (접기/펼치기) */}
+                <SceneSlotsPanel
+                  sceneSlots={s.slots || {}}
+                  globalSlots={globalSlots}
+                  onPick={(key) => setPickerCtx({ slotKey: key, target: s.scene_index })}
+                  onModeChange={(key, mode) => {
+                    if (mode === 'inherit') updateSceneSlot(s.scene_index, key, null);
+                    else if (mode === 'cleared') updateSceneSlot(s.scene_index, key, { cleared: true });
+                  }}
+                  onText={(key, text) => {
+                    const cur = (s.slots || {})[key] || {};
+                    updateSceneSlot(s.scene_index, key, { ...cur, description: text, cleared: undefined });
+                  }}
+                />
                 </div>
               </div>
               <AddSceneRow
@@ -1107,7 +1226,309 @@ function Step3Storyboard({
       )}
 
       <div style={{ padding: '10px 12px', borderRadius: 8, background: '#F5F5F7', fontSize: 11.5, color: '#6E6E73', lineHeight: 1.55, textAlign: 'center' }}>
-        다음 조각: 각 장면에 라이브러리 자산 끼우기 + 영상 생성
+        다음 조각: 슬롯 기반 이미지·영상 생성
+      </div>
+
+      {/* 라이브러리 자산 선택 모달 */}
+      {pickerCtx && (
+        <AssetPickerModal
+          identityId={identityId || 'mine-primary'}
+          slotKey={pickerCtx.slotKey}
+          onClose={() => setPickerCtx(null)}
+          onPick={handlePickAsset}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------- 전역 슬롯 패널 (스토리보드 상단) ----------------
+function GlobalSlotsPanel({ globalSlots, onSlotText, onSlotPick, onSlotClear }) {
+  const [open, setOpen] = useState(true);
+  const filledCount = SLOT_DEFS.filter(d => {
+    const s = globalSlots?.[d.key] || {};
+    return s.assetId || s.description;
+  }).length;
+
+  return (
+    <section style={{ border: '1px solid #E5E5EA', borderRadius: 12, background: '#FFF' }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '12px 14px', background: 'transparent', border: 'none',
+          cursor: 'pointer', borderRadius: 12,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#1D1D1F' }}>🎨 전역 기본값</span>
+          <span style={{ fontSize: 11, color: '#AEAEB2' }}>
+            모든 장면이 상속 · {filledCount}/{SLOT_DEFS.length}개 채움
+          </span>
+        </div>
+        <ChevronDown size={16} style={{ color: '#AEAEB2', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+      </button>
+      {open && (
+        <div style={{
+          padding: '4px 12px 14px',
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8,
+        }}>
+          {SLOT_DEFS.map(def => (
+            <SlotCard
+              key={def.key}
+              def={def}
+              slot={globalSlots?.[def.key] || {}}
+              onText={(t) => onSlotText(def.key, t)}
+              onPick={() => onSlotPick(def.key)}
+              onClear={() => onSlotClear(def.key)}
+              compact
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// 슬롯 카드 — 썸네일 + 텍스트 + 라이브러리 버튼 + 비우기
+function SlotCard({ def, slot, onText, onPick, onClear, compact }) {
+  const hasAsset = !!slot?.assetId;
+  const hasText = !!slot?.description;
+  const filled = hasAsset || hasText;
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 6,
+      padding: 8, borderRadius: 8,
+      border: `1px solid ${filled ? '#5E6AD230' : '#E5E5EA'}`,
+      background: filled ? '#5E6AD208' : '#FAFAFA',
+      minWidth: 0,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: '#1D1D1F' }}>
+          {def.emoji} {def.label}
+        </span>
+        {filled && (
+          <button
+            onClick={onClear}
+            title="비우기"
+            style={{
+              width: 18, height: 18, borderRadius: 4, border: 'none',
+              background: 'transparent', color: '#AEAEB2',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          ><X size={11} /></button>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+        <button
+          onClick={onPick}
+          title="라이브러리에서 고르기"
+          style={{
+            width: compact ? 44 : 56, height: compact ? 44 : 56,
+            borderRadius: 6, padding: 0, overflow: 'hidden',
+            border: `1.5px ${hasAsset ? 'solid #5E6AD2' : 'dashed #C7C7CC'}`,
+            background: '#FFF', cursor: 'pointer', flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          {hasAsset
+            ? <SafeImage src={slot.assetThumb || slot.assetUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <ImagePlus size={16} style={{ color: '#AEAEB2' }} />}
+        </button>
+        <input
+          type="text"
+          value={slot.description || ''}
+          onChange={(e) => onText(e.target.value)}
+          placeholder={def.placeholder}
+          style={{
+            flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.4,
+            padding: '6px 8px', borderRadius: 6,
+            border: '1px solid #E5E5EA', background: '#FFF',
+            fontFamily: 'inherit', outline: 'none',
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ---------------- 장면별 슬롯 (카드 하단) ----------------
+function SceneSlotsPanel({ sceneSlots, globalSlots, onPick, onModeChange, onText }) {
+  const [open, setOpen] = useState(false);
+  // 모드 카운트 — 'inherit'(undefined) / 'cleared' / 'custom'(assetId|description)
+  const overrideCount = SLOT_DEFS.filter(d => {
+    const s = sceneSlots?.[d.key];
+    if (!s) return false;
+    return s.cleared || s.assetId || s.description;
+  }).length;
+
+  return (
+    <div style={{
+      marginTop: 4, border: '1px solid #F0F0F2', borderRadius: 8,
+      background: open ? '#FAFAFA' : 'transparent',
+    }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '6px 10px', background: 'transparent', border: 'none',
+          cursor: 'pointer', fontSize: 11, color: '#6E6E73',
+        }}
+      >
+        <span>🎯 이 장면 슬롯 {overrideCount > 0 ? <b style={{ color: '#5E6AD2' }}>({overrideCount}개 덮어쓰기)</b> : <span style={{ color: '#AEAEB2' }}>(전역 상속 중)</span>}</span>
+        <ChevronDown size={11} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+      </button>
+      {open && (
+        <div style={{ padding: '0 10px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {SLOT_DEFS.map(def => {
+            const sceneSlot = sceneSlots?.[def.key];
+            const globalSlot = globalSlots?.[def.key] || {};
+            // 현재 모드
+            let mode = 'inherit';
+            if (sceneSlot?.cleared) mode = 'cleared';
+            else if (sceneSlot?.assetId || sceneSlot?.description) mode = 'custom';
+            // 표시할 effective value
+            const effective = mode === 'cleared'
+              ? null
+              : mode === 'custom' ? sceneSlot : globalSlot;
+            const effHasAsset = mode !== 'cleared' && !!effective?.assetId;
+            const effDesc = mode === 'cleared' ? '(이 장면에서 비움)' : (effective?.description || '(없음)');
+
+            return (
+              <div key={def.key} style={{
+                display: 'flex', gap: 8, alignItems: 'center',
+                padding: '6px 8px', borderRadius: 6,
+                background: '#FFF', border: '1px solid #F0F0F2',
+              }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#1D1D1F', minWidth: 70 }}>
+                  {def.emoji} {def.label}
+                </span>
+                {effHasAsset && (
+                  <SafeImage src={effective.assetThumb || effective.assetUrl} alt="" style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
+                )}
+                <span style={{
+                  flex: 1, fontSize: 10.5, color: mode === 'cleared' ? '#FF9500' : '#6E6E73',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {effDesc}
+                </span>
+                <select
+                  value={mode}
+                  onChange={(e) => {
+                    const newMode = e.target.value;
+                    if (newMode === 'custom') onPick(def.key);
+                    else onModeChange(def.key, newMode);
+                  }}
+                  style={{
+                    fontSize: 10.5, padding: '3px 4px', borderRadius: 4,
+                    border: '1px solid #E5E5EA', background: '#FFF',
+                    cursor: 'pointer', fontFamily: 'inherit', color: '#1D1D1F',
+                  }}
+                >
+                  <option value="inherit">⤴ 전역 사용</option>
+                  <option value="cleared">✕ 비움</option>
+                  <option value="custom">✎ 다르게</option>
+                </select>
+                {mode === 'custom' && (
+                  <input
+                    type="text"
+                    value={sceneSlot?.description || ''}
+                    onChange={(e) => onText(def.key, e.target.value)}
+                    placeholder={def.placeholder}
+                    style={{
+                      width: 120, fontSize: 10.5, padding: '3px 6px', borderRadius: 4,
+                      border: '1px solid #E5E5EA', background: '#FFF',
+                      fontFamily: 'inherit', outline: 'none',
+                    }}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------- 라이브러리 자산 선택 모달 ----------------
+function AssetPickerModal({ identityId, slotKey, onClose, onPick }) {
+  const def = SLOT_DEFS.find(d => d.key === slotKey) || SLOT_DEFS[0];
+  const [assets, setAssets] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/creator/identity-search?identityId=${identityId}&assetType=${def.assetTypes}&limit=100&sort=newest`)
+      .then(r => r.json())
+      .then(d => setAssets(d.assets || []))
+      .catch(e => console.error('[AssetPicker]', e))
+      .finally(() => setLoading(false));
+  }, [identityId, def.assetTypes]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#FFF', borderRadius: 14, maxWidth: 720, width: '100%', maxHeight: '85vh',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        }}
+      >
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #E5E5EA', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1D1D1F' }}>{def.emoji} {def.label} 슬롯 선택</div>
+            <div style={{ fontSize: 11, color: '#AEAEB2', marginTop: 2 }}>
+              라이브러리({def.assetTypes})에서 자산을 골라.
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 28, height: 28, borderRadius: '50%', border: 'none',
+              background: '#F5F5F7', color: '#1D1D1F', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          ><X size={14} /></button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 14 }}>
+          {loading ? (
+            <div style={{ padding: 40, textAlign: 'center', color: '#AEAEB2' }}>
+              <Loader2 size={20} style={{ animation: 'spin 0.8s linear infinite' }} />
+            </div>
+          ) : assets.length === 0 ? (
+            <div style={{ padding: 30, textAlign: 'center', fontSize: 12.5, color: '#AEAEB2' }}>
+              {def.assetTypes} 유형 자산이 없어. Identity 탭에서 먼저 업로드해.
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
+              {assets.map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => onPick(a)}
+                  title={(a.manual_tags || []).join(', ') || a.filename || ''}
+                  style={{
+                    aspectRatio: '1 / 1', padding: 0, borderRadius: 8, overflow: 'hidden',
+                    border: '2px solid #E5E5EA', background: '#FFF', cursor: 'pointer',
+                  }}
+                >
+                  <SafeImage
+                    src={a.thumbnail_url || a.url}
+                    filename={a.filename || ''}
+                    alt=""
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
