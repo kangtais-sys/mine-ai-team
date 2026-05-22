@@ -1,22 +1,24 @@
-// 장면별 이미지 생성 — FLUX Kontext (이미지+텍스트 입력)
+// 장면별 이미지 생성 — nano-banana-2/edit (멀티 이미지 참조, Gemini 3.1 Flash Image)
 // POST { draftId, sceneIndex }  → draft.scenes[sceneIndex].generated_image_url 갱신
 //   또는 POST { baseAssetUrl, prompt, aspectRatio } → 임시 호출 (저장 X)
 //
 // 흐름:
 //   1) draft + scene 로딩
-//   2) baseAssetUrl + visual + skin_state + 슬롯(전역+장면 effective) 합쳐 프롬프트 빌드
-//   3) fal-ai/flux-pro/kontext 호출
+//   2) image_urls 배열 구성 — [base, outfit, hair, background, makeup, lighting, ...products]
+//      (assetUrl 없는 슬롯은 image_urls에서 제외, 인덱스 재계산해서 라벨드 영문 프롬프트에 매핑)
+//      assetUrl 없고 description만 있는 슬롯 → 텍스트 fallback
+//   3) fal-ai/nano-banana-2/edit 호출
 //   4) 결과 이미지를 Supabase Storage(creator-library) 에 영구 저장 (fal URL 만료 대비)
 //   5) draft.scenes 갱신 + 응답
 //
-// 비용: FLUX Kontext ≈ $0.04~0.05/이미지
+// 비용: nano-banana-2 ≈ $0.04/이미지
 import { getSupabase } from '../../lib/supabase.js';
 import { randomUUID } from 'crypto';
 
 export const config = { maxDuration: 60 };
 
 const BUCKET = 'creator-library';
-const FAL_ENDPOINT = 'https://fal.run/fal-ai/flux-pro/kontext';
+const FAL_ENDPOINT = 'https://fal.run/fal-ai/nano-banana-2/edit';
 
 function falHeaders() {
   const key = process.env.FAL_API_KEY;
@@ -27,11 +29,11 @@ function falHeaders() {
 // scene.slots[key] 형식:
 //   undefined           → inherit (global 사용)
 //   { cleared: true }   → cleared (이 장면 비움)
-//   { assetId, description, ... } → custom 단일
+//   { assetId, assetUrl, description, ... } → custom 단일
 //   { items: [...] }    → custom multi (제품/소품)
 // global_slots[key]:
-//   단일: { assetId?, description? }
-//   multi: [{ assetId?, description?, kind }]
+//   단일: { assetId?, assetUrl?, description? }
+//   multi: [{ assetId?, assetUrl?, description?, kind }]
 function effectiveSlot(sceneSlots, globalSlots, key, isMulti) {
   const s = sceneSlots?.[key];
   if (s?.cleared) return null;
@@ -40,58 +42,77 @@ function effectiveSlot(sceneSlots, globalSlots, key, isMulti) {
     const g = globalSlots?.[key];
     return Array.isArray(g) ? g : [];
   } else {
-    if (s && (s.assetId || s.description)) return s;
+    if (s && (s.assetId || s.assetUrl || s.description)) return s;
     return globalSlots?.[key] || null;
   }
 }
 
-function buildKontextPrompt({ scene, globalSlots, baseDescription }) {
-  const sceneSlots = scene.slots || {};
-  const parts = [];
+// 멀티 이미지 + 라벨드 영문 프롬프트 동시 빌드.
+// 반환: { image_urls, prompt }
+function buildNanoSpec({ baseAssetUrl, scene, globalSlots, baseDescription }) {
+  const sceneSlots = scene?.slots || {};
+  const image_urls = [baseAssetUrl];
+  const lines = [];
 
-  // 1. 얼굴 정체성 — 베이스 이미지의 인물 유지
-  parts.push(baseDescription
-    ? `Same person as reference image, ${baseDescription}`
-    : 'Same person as the reference image, identical facial features');
+  // 1. 얼굴 정체성 — 항상 첫 번째 이미지
+  lines.push(baseDescription
+    ? `Identity: Use the FIRST image as the person's face reference. Preserve identical facial features, bone structure, eye shape, and skin tone. ${baseDescription}.`
+    : `Identity: Use the FIRST image as the person's face reference. Preserve identical facial features, bone structure, eye shape, and skin tone.`);
 
-  // 2. 피부 상태 (비포/애프터 핵심)
-  if (scene.skin_state) parts.push(`Skin state: ${scene.skin_state}`);
+  // 2. 피부 상태 (비포/애프터 핵심) — 텍스트
+  if (scene?.skin_state) lines.push(`Skin state: ${scene.skin_state}.`);
 
-  // 3. 슬롯 — outfit / hair / background / makeup / lighting
+  // 3. 단일 슬롯 — outfit / hair / background / makeup / lighting
   const slotMap = [
-    ['outfit',     'Outfit'],
-    ['hair',       'Hairstyle'],
-    ['background', 'Background'],
-    ['makeup',     'Makeup'],
-    ['lighting',   'Lighting/tone'],
+    ['outfit',     'Outfit',          'same garment style, color, fabric and silhouette'],
+    ['hair',       'Hairstyle',       'same hairstyle, length, and color'],
+    ['background', 'Background',      'compose the scene in this environment with matching props and depth'],
+    ['makeup',     'Makeup',          'apply this exact makeup look (lip color, eye, brows, base)'],
+    ['lighting',   'Lighting/tone',   'match the lighting direction, color temperature, and overall color tone'],
   ];
-  for (const [key, label] of slotMap) {
+  for (const [key, label, hint] of slotMap) {
     const eff = effectiveSlot(sceneSlots, globalSlots, key, false);
-    if (eff && eff.description) parts.push(`${label}: ${eff.description}`);
+    if (!eff) continue;
+    if (eff.assetUrl) {
+      const idx = image_urls.length + 1; // 1-based image index
+      image_urls.push(eff.assetUrl);
+      const desc = eff.description ? ` Note: ${eff.description}.` : '';
+      lines.push(`${label}: Use image [${idx}] as the reference — ${hint}.${desc}`);
+    } else if (eff.description) {
+      lines.push(`${label}: ${eff.description}.`);
+    }
   }
 
   // 4. 제품/소품 (multi)
   const prodItems = effectiveSlot(sceneSlots, globalSlots, 'products', true);
-  if (Array.isArray(prodItems) && prodItems.length > 0) {
-    const desc = prodItems
-      .map(it => it?.description ? `${it.kind === 'tool' ? 'Tool' : 'Product'}: ${it.description}` : null)
-      .filter(Boolean)
-      .join('. ');
-    if (desc) parts.push(desc);
+  if (Array.isArray(prodItems)) {
+    for (const it of prodItems) {
+      if (!it) continue;
+      const role = it.kind === 'tool' ? 'Tool' : 'Product';
+      if (it.assetUrl) {
+        const idx = image_urls.length + 1;
+        image_urls.push(it.assetUrl);
+        const desc = it.description ? ` Note: ${it.description}.` : '';
+        lines.push(`${role}: Use image [${idx}] for the exact texture, packaging, and color. Render it naturally in the scene held or placed in context.${desc}`);
+      } else if (it.description) {
+        lines.push(`${role}: ${it.description}.`);
+      }
+    }
   }
 
   // 5. 카메라/연출 (visual)
-  if (scene.visual) parts.push(scene.visual);
+  if (scene?.visual) lines.push(`Scene action and camera: ${scene.visual}.`);
 
   // 6. 품질 고정
-  parts.push('ultra photorealistic, hyperrealistic skin texture, professional photography, natural lighting, 8K');
+  lines.push('Style: ultra photorealistic, hyperrealistic skin texture, professional photography, natural soft lighting, sharp focus, 8K, no text overlay, no watermark.');
 
-  return parts.filter(Boolean).join('. ');
+  return { image_urls, prompt: lines.filter(Boolean).join(' ') };
 }
 
-function aspectRatioForKontext(ar) {
-  // FLUX Kontext aspect_ratio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '21:9' | '9:21'
-  if (['1:1', '16:9', '9:16', '4:3', '3:4'].includes(ar)) return ar;
+function aspectRatioForNano(ar) {
+  // nano-banana-2 aspect_ratio: auto, 21:9, 16:9, 3:2, 4:3, 5:4, 1:1, 4:5, 3:4, 2:3, 9:16, 4:1, 1:4, 8:1, 1:8
+  const supported = ['auto', '21:9', '16:9', '3:2', '4:3', '5:4', '1:1', '4:5', '3:4', '2:3', '9:16', '4:1', '1:4', '8:1', '1:8'];
+  if (supported.includes(ar)) return ar;
   return '9:16';
 }
 
@@ -107,7 +128,7 @@ export default async function handler(req, res) {
   } = req.body || {};
 
   const sb = getSupabase();
-  let baseAssetUrl, prompt, aspectRatio, draft = null, scene = null;
+  let baseAssetUrl, prompt, aspectRatio, image_urls, draft = null, scene = null;
 
   // ── 1. 입력 로딩 ────────────────────────────────────
   if (draftId && sceneIndex !== undefined && sceneIndex !== null) {
@@ -123,26 +144,29 @@ export default async function handler(req, res) {
     if (!scene) return res.status(404).json({ error: `scene_index ${sceneIndex} 없음` });
     baseAssetUrl = draft.baseAssetUrl;
     aspectRatio = draft.aspectRatio || '9:16';
-    prompt = buildKontextPrompt({
+    if (!baseAssetUrl) {
+      return res.status(400).json({ error: '베이스 얼굴 자산 URL 없음 (draft.baseAssetUrl)' });
+    }
+    const spec = buildNanoSpec({
+      baseAssetUrl,
       scene,
       globalSlots: draft.global_slots || {},
       baseDescription: draft.baseDescription || '',
     });
+    prompt = spec.prompt;
+    image_urls = spec.image_urls;
   } else if (directUrl && directPrompt) {
     baseAssetUrl = directUrl;
     prompt = directPrompt;
     aspectRatio = directAR || '9:16';
+    image_urls = [baseAssetUrl];
   } else {
     return res.status(400).json({
       error: 'draftId+sceneIndex 또는 baseAssetUrl+prompt 필수',
     });
   }
 
-  if (!baseAssetUrl) {
-    return res.status(400).json({ error: '베이스 얼굴 자산 URL 없음 (draft.baseAssetUrl)' });
-  }
-
-  // ── 2. FLUX Kontext 호출 ─────────────────────────────
+  // ── 2. nano-banana-2 호출 ────────────────────────────
   let falData;
   try {
     const falRes = await fetch(FAL_ENDPOINT, {
@@ -150,34 +174,35 @@ export default async function handler(req, res) {
       headers: falHeaders(),
       body: JSON.stringify({
         prompt,
-        image_url: baseAssetUrl,
-        aspect_ratio: aspectRatioForKontext(aspectRatio),
-        guidance_scale: 3.5,
-        num_inference_steps: 28,
+        image_urls,
+        aspect_ratio: aspectRatioForNano(aspectRatio),
         output_format: 'jpeg',
-        safety_tolerance: '2',
+        resolution: '1K',
+        safety_tolerance: 4,
+        num_images: 1,
       }),
       signal: AbortSignal.timeout(55000),
     });
 
     if (!falRes.ok) {
       const errTxt = await falRes.text();
-      console.error('[generate-image] FLUX 실패', falRes.status, errTxt.substring(0, 300));
+      console.error('[generate-image] nano-banana-2 실패', falRes.status, errTxt.substring(0, 300));
       return res.status(500).json({
-        error: `FLUX 생성 실패 ${falRes.status}: ${errTxt.substring(0, 300)}`,
+        error: `nano-banana-2 생성 실패 ${falRes.status}: ${errTxt.substring(0, 300)}`,
         prompt,
+        image_urls,
       });
     }
     falData = await falRes.json();
   } catch (e) {
-    console.error('[generate-image] FLUX 호출 에러', e.message);
-    return res.status(500).json({ error: `FLUX 호출 실패: ${e.message}`, prompt });
+    console.error('[generate-image] nano-banana-2 호출 에러', e.message);
+    return res.status(500).json({ error: `nano-banana-2 호출 실패: ${e.message}`, prompt, image_urls });
   }
 
   const falImageUrl = falData?.images?.[0]?.url;
   if (!falImageUrl) {
     return res.status(500).json({
-      error: 'FLUX 응답에 이미지 URL 없음',
+      error: 'nano-banana-2 응답에 이미지 URL 없음',
       raw: JSON.stringify(falData).substring(0, 300),
     });
   }
@@ -217,6 +242,7 @@ export default async function handler(req, res) {
             generated_image_path: storagePath,
             generated_at: new Date().toISOString(),
             generated_prompt: prompt,
+            generated_image_refs: image_urls,
           }
         : s
     );
@@ -236,6 +262,8 @@ export default async function handler(req, res) {
     falUrl: falImageUrl,
     storagePath,
     prompt,
+    imageRefsCount: image_urls.length,
+    imageRefs: image_urls,
     sceneIndex,
   });
 }
