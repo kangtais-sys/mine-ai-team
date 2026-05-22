@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { User, Folder, Sparkles, Video, Send } from 'lucide-react';
 import PersonaSection from './persona/PersonaSection';
 import IdentityLibrary from './identity/IdentityLibrary';
+import PersonaIdentity from './persona-identity/PersonaIdentity';
 import ContentSetup from './content/ContentSetup';
 import VideoGenerator from './video/VideoGenerator';
 import PublishPanel from './finish/PublishPanel';
@@ -104,13 +105,7 @@ export default function CreatorShell() {
           <IdentityLibrary identityId="mine-primary" />
         )}
         {tab === 'identity' && (
-          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#FAFAFA' }}>
-            <div style={{ textAlign: 'center', color: '#6E6E73' }}>
-              <User size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#1D1D1F', marginBottom: 6 }}>아이덴티티 (준비 중)</div>
-              <div style={{ fontSize: 13 }}>PuLID로 캐논 페르소나를 박는 흐름이 곧 들어옴.</div>
-            </div>
-          </div>
+          <PersonaIdentity identityId="mine-primary" />
         )}
         {tab === 'content' && (
           <ContentSetup
