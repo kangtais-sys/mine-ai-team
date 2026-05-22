@@ -1,9 +1,9 @@
 // CreatorShell.jsx — V3 AI 크리에이터 메인 셸
-// 탭: Identity | 콘텐츠 | 영상생성 | 발행
+// 탭: 라이브러리 | 아이덴티티 | 콘텐츠 | 영상생성 | 발행
 // (PersonaSection import 유지 — Phase 2 정리 전까지 보존)
 
 import { useState, useEffect } from 'react';
-import { User, Sparkles, Video, Send } from 'lucide-react';
+import { User, Folder, Sparkles, Video, Send } from 'lucide-react';
 import PersonaSection from './persona/PersonaSection';
 import IdentityLibrary from './identity/IdentityLibrary';
 import ContentSetup from './content/ContentSetup';
@@ -11,14 +11,15 @@ import VideoGenerator from './video/VideoGenerator';
 import PublishPanel from './finish/PublishPanel';
 
 const TABS = [
-  { key: 'identity', label: 'Identity',  icon: User },
-  { key: 'content',  label: '콘텐츠',   icon: Sparkles },
-  { key: 'video',    label: '영상생성',  icon: Video },
-  { key: 'publish',  label: '발행',      icon: Send },
+  { key: 'library',  label: '라이브러리', icon: Folder },
+  { key: 'identity', label: '아이덴티티', icon: User },
+  { key: 'content',  label: '콘텐츠',     icon: Sparkles },
+  { key: 'video',    label: '영상생성',   icon: Video },
+  { key: 'publish',  label: '발행',       icon: Send },
 ];
 
 export default function CreatorShell() {
-  const [tab, setTab] = useState('identity');
+  const [tab, setTab] = useState('library');
 
   // 선택된 페르소나 ID (PersonaSection에서 설정)
   const [activePersonaId, setActivePersonaId] = useState(null);
@@ -99,8 +100,17 @@ export default function CreatorShell() {
 
       {/* 탭 컨텐츠 */}
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        {tab === 'identity' && (
+        {tab === 'library' && (
           <IdentityLibrary identityId="mine-primary" />
+        )}
+        {tab === 'identity' && (
+          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#FAFAFA' }}>
+            <div style={{ textAlign: 'center', color: '#6E6E73' }}>
+              <User size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+              <div style={{ fontSize: 15, fontWeight: 600, color: '#1D1D1F', marginBottom: 6 }}>아이덴티티 (준비 중)</div>
+              <div style={{ fontSize: 13 }}>PuLID로 캐논 페르소나를 박는 흐름이 곧 들어옴.</div>
+            </div>
+          </div>
         )}
         {tab === 'content' && (
           <ContentSetup
