@@ -789,10 +789,12 @@ function Step3Storyboard({
   globalSlots, onGlobalSlotsUpdate,
 }) {
   const [saveState, setSaveState] = useState({ status: 'idle', error: '', at: null });
-  // busyKey: `regen:${sceneIndex}` | `add:${afterSceneIndex}` | null
+  // busyKey: `regen:${sceneIndex}` | `add:${afterSceneIndex}` | `img:${sceneIndex}` | null
   const [busyKey, setBusyKey] = useState(null);
   // 슬롯 라이브러리 모달 — { open, slotKey, target: 'global'|sceneIndex }
   const [pickerCtx, setPickerCtx] = useState(null);
+  // 이미지 생성 에러 (장면별) — { [sceneIndex]: errMsg }
+  const [imgErrors, setImgErrors] = useState({});
 
   const reindex = (arr) => arr.map((s, i) => ({ ...s, scene_index: i + 1 }));
 
@@ -1010,6 +1012,45 @@ function Step3Storyboard({
     persistScenes(next);
   };
 
+  const generateSceneImage = async (sceneIndex) => {
+    if (busyKey) return;
+    if (!draftId) {
+      setImgErrors(prev => ({ ...prev, [sceneIndex]: 'draft 저장 전엔 생성 불가' }));
+      return;
+    }
+    setImgErrors(prev => ({ ...prev, [sceneIndex]: undefined }));
+    setBusyKey(`img:${sceneIndex}`);
+    try {
+      const r = await fetch('/api/creator/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draftId, sceneIndex }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d?.success || !d.imageUrl) {
+        setImgErrors(prev => ({ ...prev, [sceneIndex]: d?.error || `생성 실패 (${r.status})` }));
+        return;
+      }
+      // scenes 에 generated_image_url 반영 (서버가 이미 저장했지만 UI 즉시 갱신)
+      const next = scenes.map(s =>
+        s.scene_index === sceneIndex
+          ? {
+              ...s,
+              generated_image_url: d.imageUrl,
+              generated_image_path: d.storagePath,
+              generated_at: new Date().toISOString(),
+              generated_prompt: d.prompt,
+            }
+          : s
+      );
+      onScenesUpdate(next);
+    } catch (e) {
+      setImgErrors(prev => ({ ...prev, [sceneIndex]: e.message }));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const addAiScene = async (afterSceneIndex) => {
     if (busyKey) return;
     setBusyKey(`add:${afterSceneIndex}`);
@@ -1201,6 +1242,15 @@ function Step3Storyboard({
                       danger
                     />
                   </div>
+
+                  {/* 이미지 생성 — FLUX Kontext */}
+                  <SceneImageBlock
+                    scene={s}
+                    busy={busyKey === `img:${s.scene_index}`}
+                    disabled={!!busyKey}
+                    error={imgErrors[s.scene_index]}
+                    onGenerate={() => generateSceneImage(s.scene_index)}
+                  />
 
                   {/* 메시지 영역 (메인) */}
                   <div>
@@ -2119,6 +2169,70 @@ function formatRelativeTime(iso) {
   } catch {
     return '';
   }
+}
+
+// ---------------- 장면 이미지 (FLUX Kontext 생성) ----------------
+function SceneImageBlock({ scene, busy, disabled, error, onGenerate }) {
+  const hasImage = !!scene.generated_image_url;
+  return (
+    <div style={{
+      display: 'flex', gap: 10, alignItems: 'center',
+      padding: 8, borderRadius: 8,
+      border: '1px solid #E5E5EA', background: hasImage ? '#FFF' : '#FAFAFA',
+    }}>
+      <div style={{
+        width: 72, height: 72, borderRadius: 6, overflow: 'hidden',
+        background: '#F5F5F7', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        border: hasImage ? '1px solid #5E6AD230' : '1px dashed #C7C7CC',
+        position: 'relative',
+      }}>
+        {busy ? (
+          <Loader2 size={18} style={{ animation: 'spin 0.8s linear infinite', color: '#5E6AD2' }} />
+        ) : hasImage ? (
+          <SafeImage src={scene.generated_image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          <ImagePlus size={18} style={{ color: '#AEAEB2' }} />
+        )}
+      </div>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: '#1D1D1F' }}>
+          🎨 FLUX 이미지 {hasImage && <span style={{ color: '#34C759', fontWeight: 500 }}>생성됨</span>}
+        </div>
+        {hasImage ? (
+          <div style={{ fontSize: 10.5, color: '#AEAEB2', lineHeight: 1.4 }}>
+            {scene.generated_at ? new Date(scene.generated_at).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : ''}
+          </div>
+        ) : (
+          <div style={{ fontSize: 10.5, color: '#AEAEB2', lineHeight: 1.4 }}>
+            베이스 얼굴 + 슬롯 + visual 합쳐 생성 · 약 $0.05
+          </div>
+        )}
+        {error && (
+          <div style={{ fontSize: 10.5, color: '#FF3B30', lineHeight: 1.4 }}>
+            {error}
+          </div>
+        )}
+      </div>
+      <button
+        onClick={onGenerate}
+        disabled={disabled}
+        title={hasImage ? '다시 생성' : '이미지 생성'}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          padding: '6px 10px', borderRadius: 6,
+          border: '1px solid #5E6AD2', background: hasImage ? '#FFF' : '#5E6AD2',
+          color: hasImage ? '#5E6AD2' : '#FFF',
+          fontSize: 11.5, fontWeight: 700, lineHeight: 1,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.5 : 1, flexShrink: 0,
+        }}
+      >
+        {busy ? <Loader2 size={11} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Sparkles size={11} />}
+        {hasImage ? '재생성' : '생성'}
+      </button>
+    </div>
+  );
 }
 
 // ---------------- 장면 카드 액션 버튼 ----------------
