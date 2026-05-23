@@ -123,9 +123,26 @@ async function refreshAccessToken() {
   return newToken;
 }
 
+// Cloudflare 우회용 브라우저 위장 헤더
+// /jobs/v2/* 경로는 /agents/jobs와 달리 Cloudflare 보호가 강해 브라우저 헤더 필수
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Accept': 'application/json, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9,ko;q=0.8',
+  'Origin': 'https://cloud.higgsfield.ai',
+  'Referer': 'https://cloud.higgsfield.ai/',
+  'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+  'sec-ch-ua-mobile': '?0',
+  'sec-ch-ua-platform': '"macOS"',
+  'sec-fetch-dest': 'empty',
+  'sec-fetch-mode': 'cors',
+  'sec-fetch-site': 'same-site',
+};
+
 async function fnfFetch(url, options = {}, token = null) {
   const tok = token || (await getValidToken());
   const headers = {
+    ...BROWSER_HEADERS,
     Authorization: `Bearer ${tok}`,
     'Content-Type': 'application/json',
     ...(options.headers || {}),
@@ -135,6 +152,7 @@ async function fnfFetch(url, options = {}, token = null) {
     console.log('[persona-soul] 401 — 토큰 갱신 후 재시도');
     const newTok = await refreshAccessToken();
     const headers2 = {
+      ...BROWSER_HEADERS,
       Authorization: `Bearer ${newTok}`,
       'Content-Type': 'application/json',
       ...(options.headers || {}),
