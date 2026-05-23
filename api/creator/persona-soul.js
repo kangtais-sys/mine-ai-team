@@ -211,8 +211,9 @@ async function fnfFetch(url, options = {}, token = null, timeoutMs = 25000) {
 
 // ── Soul 잡 생성 ──
 
-function buildSoulParams(soulId, prompt) {
-  const seed = Math.floor(Math.random() * 2 ** 32);
+// seed: 외부에서 명시(4각도 일관성용). 미지정 시 랜덤.
+function buildSoulParams(soulId, prompt, seed) {
+  const finalSeed = seed != null ? seed : Math.floor(Math.random() * 2 ** 32);
   return {
     is_custom: false,
     model: 'soul_v2',
@@ -232,7 +233,7 @@ function buildSoulParams(soulId, prompt) {
     chain_enhancer: null,
     model_version: 'fast',
     medias: [],
-    seed,
+    seed: finalSeed,
   };
 }
 
@@ -250,8 +251,8 @@ function extractJobId(data, text) {
   );
 }
 
-async function startSoulJob(soulId, prompt) {
-  const params = buildSoulParams(soulId, prompt);
+async function startSoulJob(soulId, prompt, seed) {
+  const params = buildSoulParams(soulId, prompt, seed);
   // 캐시된 job_set_type 우선
   const order = CACHED_JOB_SET_TYPE
     ? [CACHED_JOB_SET_TYPE, ...JOB_SET_TYPE_CANDIDATES.filter((t) => t !== CACHED_JOB_SET_TYPE)]
@@ -385,8 +386,8 @@ async function pollSoulJob(jobId, { maxWaitMs = 110000, intervalMs = 2500 } = {}
   throw new Error(`Soul 폴링 타임아웃 (${Math.floor(maxWaitMs / 1000)}s)`);
 }
 
-async function callSoul(soulId, prompt) {
-  const result = await startSoulJob(soulId, prompt);
+async function callSoul(soulId, prompt, seed) {
+  const result = await startSoulJob(soulId, prompt, seed);
   const jobId = result.jobId;
   try {
     return await pollSoulJob(jobId);
@@ -484,9 +485,13 @@ export default async function handler(req, res) {
 
     const personaId = randomUUID();
 
+    // ⚠️ 4각도 같은 seed로 lock — 얼굴 일관성 확보 (서로 다른 seed면 같은 Soul ID 라도 모델이 다른 인스턴스로 해석)
+    const sharedSeed = Math.floor(Math.random() * 2 ** 32);
+    console.log(`[persona-soul] shared seed for ${useAngles.length} angles: ${sharedSeed}`);
+
     const settled = await Promise.allSettled(
       useAngles.map(async (a) => {
-        const hfUrl = await callSoul(soulId, a.prompt);
+        const hfUrl = await callSoul(soulId, a.prompt, sharedSeed);
         const { url, path } = await persistImage(sb, identityId, personaId, a.key, hfUrl);
         return {
           angle: a.key,
@@ -495,6 +500,7 @@ export default async function handler(req, res) {
           path,
           hfUrl,
           prompt: a.prompt,
+          seed: sharedSeed,
           generatedAt: new Date().toISOString(),
         };
       })
