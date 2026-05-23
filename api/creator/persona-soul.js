@@ -60,32 +60,68 @@ const JOB_SET_TYPE_CANDIDATES = ['text2image_soul_v2', 'text2image_soul', 'soul_
 let CACHED_JOB_SET_TYPE = null; // 첫 성공 후 캐시
 
 // 4 각도 — K뷰티 콘텐츠용
-// 설계: cinematic editorial portrait 스타일 (매거진 cover 분포 X).
-// 글자/타이포 차단은 negative_prompt 에서 담당.
+// 설계 (유료 인물 실사화 가이드북 인사이트 적용):
+//   1) Canon EF 85mm f/2.0 — 사진 분포 (매거진 cover 분포 X) → 가짜 글자 강력 차단
+//   2) 카테고리 라벨(Person/Camera/Pose/Lighting/Background/Outfit/Style/Quality) 분리
+//   3) "natural dewy glow" K뷰티 유지 + "no glossy forehead, no oily shine" 분리 차단
+//   4) "soft neutral gradient pale gray (not pure white)" 배경 명확화
+//   5) "hyperrealistic editorial beauty photography" + "cinematic detail and tonal depth"
 const ANGLES = [
   {
     key: 'front',
     label: '정면 무표정',
     prompt:
-      'Korean woman in her late twenties, front view portrait, eye-level, perfectly centered, looking directly at camera, calm neutral expression, lips gently closed, symmetrical composition. Style: cinematic editorial portrait. Lighting: soft diffused studio light, even fill, no harsh shadow. Background: clean minimal pale neutral wall. Skin: natural matte finish, soft visible fine pores, realistic skin tone, no oily shine, no sweat. Makeup: natural minimal K-beauty look. Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.',
+      'Person: Korean woman in her late twenties, natural minimal K-beauty makeup with subtle rosy blush and soft glossy lips. ' +
+      'Hair: shoulder-length dark hair, soft natural fall. ' +
+      'Camera: front view, eye-level, perfectly centered, symmetrical composition, Canon EF 85mm lens, f/2.0 aperture for shallow depth of field. ' +
+      'Pose/Expression: minimal calm neutral expression, lips gently closed, direct calm gaze. ' +
+      'Lighting: soft even front studio lighting emphasizing real skin texture, balanced tone, avoid harsh highlights. ' +
+      'Background: soft neutral gradient pale gray (not pure white) to avoid overexposure, clean minimal studio. ' +
+      'Outfit: clean minimal neutral top. ' +
+      'Style: hyperrealistic editorial beauty photography, cinematic detail and tonal depth, real and natural beauty cosmetic model portrait. ' +
+      'Quality: ultra-high detail, natural skin texture with visible fine pores and natural dewy glow (no oily shine, no glossy forehead, no sweat), realistic skin tone, sharp focus, clean edges, controlled contrast.',
   },
   {
     key: 'three-quarter',
     label: '반측면 살짝미소',
     prompt:
-      'Korean woman in her late twenties, three-quarter view portrait, head turned slightly to one side showing both eyes with one cheek more visible, soft gentle closed-mouth smile, calm warm expression, subtle cinematic depth. Style: cinematic editorial portrait. Lighting: warm soft natural light, gentle key + fill. Background: clean minimal pale neutral wall. Skin: natural matte finish, soft visible fine pores, realistic skin tone, no oily shine, no sweat. Makeup: natural minimal K-beauty look. Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.',
+      'Person: Korean woman in her late twenties, natural minimal K-beauty makeup with subtle rosy blush and soft glossy lips. ' +
+      'Hair: shoulder-length dark hair, soft natural fall. ' +
+      'Camera: three-quarter view from slightly to one side showing both eyes with one cheek more visible, eye-level, Canon EF 85mm lens, f/2.0 aperture for shallow depth of field. ' +
+      'Pose/Expression: soft gentle closed-mouth smile, calm warm expression. ' +
+      'Lighting: warm soft natural light, gentle key plus fill, even balanced tone, avoid harsh highlights. ' +
+      'Background: soft neutral gradient pale gray (not pure white) to avoid overexposure, clean minimal studio. ' +
+      'Outfit: clean minimal neutral top. ' +
+      'Style: hyperrealistic editorial beauty photography, cinematic detail and tonal depth. ' +
+      'Quality: ultra-high detail, natural skin texture with visible fine pores and natural dewy glow (no oily shine, no glossy forehead), realistic skin tone, sharp focus, balanced contrast.',
   },
   {
     key: 'smile',
     label: '정면 환한미소',
     prompt:
-      'Korean woman in her late twenties, front view portrait, eye-level, looking at camera, bright warm genuine open smile with teeth softly showing, joyful relaxed expression, symmetrical composition. Style: cinematic editorial portrait. Lighting: natural daylight, soft diffused, even and flattering. Background: clean minimal pale neutral wall. Skin: natural matte finish, soft visible fine pores, realistic skin tone, no oily shine, no sweat. Makeup: natural minimal K-beauty look. Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.',
+      'Person: Korean woman in her late twenties, natural minimal K-beauty makeup with subtle rosy blush and soft glossy lips. ' +
+      'Hair: shoulder-length dark hair, soft natural fall. ' +
+      'Camera: front view, eye-level, centered composition, Canon EF 85mm lens, f/2.0 aperture for shallow depth of field. ' +
+      'Pose/Expression: bright warm genuine open smile with teeth softly showing, joyful relaxed expression. ' +
+      'Lighting: natural daylight studio, soft diffused, even and flattering, avoid harsh highlights. ' +
+      'Background: soft neutral gradient pale gray (not pure white) to avoid overexposure, clean minimal studio. ' +
+      'Outfit: clean minimal neutral top. ' +
+      'Style: hyperrealistic editorial beauty photography, cinematic detail and tonal depth. ' +
+      'Quality: ultra-high detail, natural skin texture with visible fine pores and natural dewy glow (no oily shine, no glossy forehead), realistic skin tone, sharp focus, balanced contrast.',
   },
   {
     key: 'closeup',
     label: '정면 클로즈업',
     prompt:
-      'Korean woman in her late twenties, tight close-up portrait from forehead to chin, looking directly at camera, calm composed expression, lips gently closed, focused entirely on facial detail and eye expression. Style: cinematic editorial portrait. Lighting: soft diffused beauty light, even and gentle. Background: clean minimal pale neutral wall, soft shallow depth blur. Skin: natural matte finish, soft visible fine pores and realistic skin texture, no oily shine, no sweat, no airbrush. Makeup: natural minimal K-beauty look. Quality: ultra-high detail, sharp facial texture, realistic color, soft focus falloff, balanced contrast.',
+      'Person: Korean woman in her late twenties, natural minimal K-beauty makeup with subtle rosy blush and soft glossy lips. ' +
+      'Hair: shoulder-length dark hair. ' +
+      'Camera: tight close-up portrait from forehead to chin, eye-level, Canon EF 85mm lens, f/2.0 aperture for shallow depth of field, soft background blur. ' +
+      'Pose/Expression: calm composed minimal expression, lips gently closed, focused gaze. ' +
+      'Lighting: soft diffused beauty light, even gentle, emphasizing real skin texture, avoid harsh highlights. ' +
+      'Background: soft neutral gradient pale gray (not pure white), shallow depth blur. ' +
+      'Outfit: clean minimal neutral top, barely visible. ' +
+      'Style: hyperrealistic editorial beauty photography, cinematic detail and tonal depth, real and natural beauty cosmetic model portrait. ' +
+      'Quality: ultra-high detail, sharp facial texture with visible fine pores and natural dewy glow (no oily shine, no glossy forehead, no airbrush), realistic skin tone, soft focus falloff, controlled contrast.',
   },
 ];
 
