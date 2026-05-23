@@ -49,7 +49,7 @@ const redis = new Redis({
 });
 
 const BUCKET = 'creator-library';
-const MAX_PERSONAS = 3;
+const MAX_PERSONAS = 5; // ⚠️ identity_lock 테스트 동안 임시 5 (원복: 3)
 const FNF_BASE = 'https://fnf.higgsfield.ai';
 const SOUL_ENDPOINT = `${FNF_BASE}/agents/jobs`;
 const REDIS_TOKEN_KEY = 'higgsfield:access_token';
