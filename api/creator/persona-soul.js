@@ -642,6 +642,56 @@ export default async function handler(req, res) {
       .json({ success: true, persona: { id: personaId, data: updated } });
   }
 
+  // ─────────── POST ?action=save_external ───────────
+  // 외부 URL (CloudFront 등 임시) → Supabase storage 영구 저장 + 페르소나 record 생성
+  // body: { identityId, name, sourceUrl, lineage?, angle?, soulId? }
+  if (req.method === 'POST' && action === 'save_external') {
+    const {
+      identityId = 'mine-primary',
+      name,
+      sourceUrl,
+      lineage = null,
+      angle = 'front',
+      soulId = null,
+    } = req.body || {};
+
+    if (!sourceUrl) return res.status(400).json({ error: 'sourceUrl 필수' });
+
+    const personaId = randomUUID();
+    const angleLabel = ANGLES.find((a) => a.key === angle)?.label || '정면 무표정';
+
+    // 1. 외부 URL → Supabase storage
+    const persisted = await persistImage(sb, identityId, personaId, angle, sourceUrl);
+    if (!persisted.path) {
+      return res.status(500).json({ error: 'storage 저장 실패 — sourceUrl 또는 RLS 확인' });
+    }
+
+    // 2. record 생성 — canonical 미리 지정
+    const data = {
+      id: personaId,
+      version: 'v3',
+      engine: 'soul',
+      identityId,
+      name: name || 'MINE 페르소나',
+      soulId,
+      candidates: [{ angle, label: angleLabel, url: persisted.url, path: persisted.path }],
+      canonical: { angle, url: persisted.url, path: persisted.path },
+      lineage,
+      createdAt: new Date().toISOString(),
+    };
+
+    const { error: insErr } = await sb
+      .from('creator_personas')
+      .insert({ id: personaId, data });
+    if (insErr) return res.status(500).json({ error: insErr.message });
+
+    return res.status(200).json({
+      success: true,
+      personaId,
+      canonical: data.canonical,
+    });
+  }
+
   // ─────────── DELETE ?id=xxx ───────────
   if (req.method === 'DELETE') {
     const { id } = req.query;
