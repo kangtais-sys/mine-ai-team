@@ -59,35 +59,75 @@ const REDIS_REFRESH_KEY = 'higgsfield:refresh_token'; // rotation 대응
 const JOB_SET_TYPE_CANDIDATES = ['text2image_soul_v2', 'text2image_soul', 'soul_v2', 'soul'];
 let CACHED_JOB_SET_TYPE = null; // 첫 성공 후 캐시
 
-// 4 각도 — K뷰티 콘텐츠용
-// 설계: cinematic editorial portrait 스타일 (매거진 cover 분포 X).
-// 글자/타이포 차단은 negative_prompt 에서 담당.
-const ANGLES = [
+// ─────────── Identity Lock (불변 외형) ───────────
+// 미래 콘텐츠 생성마다 매번 prepend 됨. 머리/스킨/체형/옷톤 만 lock.
+// 메이크업/표정/포즈/배경은 미포함 — scene prompt 가 자유 결정.
+// ⚠️ 22장 다양 스타일 학습 → 자유도 차단 위해 외형 attribute 매우 구체적으로 명시.
+const IDENTITY_LOCK_PROMPT =
+  'Korean woman in her late twenties, ' +
+  'shoulder-length dark brown hair, loose down, soft natural waves, parted slightly off-center, ' +
+  'fair Korean skin with neutral undertone, natural matte finish, soft visible fine pores, ' +
+  'slim natural body proportions, ' +
+  'clean minimal off-white top.';
+
+// ─────────── Canonical Makeup (캐논 생성 시만) ───────────
+// 미래 콘텐츠는 scene prompt 에서 메이크업 자유 (글램 / 데일리 / 노메이크업)
+const CANONICAL_MAKEUP_PROMPT =
+  'Light K-beauty natural makeup: soft natural brows, light mascara, ' +
+  'subtle pink-rose blush, glossy nude-pink lips, fresh complexion (no oily shine, no glossy forehead).';
+
+// ─────────── 4 각도 — 변형 부분만 (Camera/Pose/Lighting/Background) ───────────
+// 설계: cinematic editorial portrait 스타일. 외형 lock + 메이크업은 위 두 상수에서 prepend.
+const ANGLE_VARIATIONS = [
   {
     key: 'front',
     label: '정면 무표정',
-    prompt:
-      'Korean woman in her late twenties, front view portrait, eye-level, perfectly centered, looking directly at camera, calm neutral expression, lips gently closed, symmetrical composition. Style: cinematic editorial portrait. Lighting: soft diffused studio light, even fill, no harsh shadow. Background: clean minimal pale neutral wall. Skin: natural matte finish, soft visible fine pores, realistic skin tone, no oily shine, no sweat. Makeup: natural minimal K-beauty look. Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.',
+    variation:
+      'Camera: front view, eye-level, perfectly centered, symmetrical composition. ' +
+      'Pose/Expression: calm neutral expression, lips gently closed, direct calm gaze. ' +
+      'Lighting: soft diffused studio light, even fill, no harsh shadow. ' +
+      'Background: clean minimal pale neutral wall.',
   },
   {
     key: 'three-quarter',
     label: '반측면 살짝미소',
-    prompt:
-      'Korean woman in her late twenties, three-quarter view portrait, head turned slightly to one side showing both eyes with one cheek more visible, soft gentle closed-mouth smile, calm warm expression, subtle cinematic depth. Style: cinematic editorial portrait. Lighting: warm soft natural light, gentle key + fill. Background: clean minimal pale neutral wall. Skin: natural matte finish, soft visible fine pores, realistic skin tone, no oily shine, no sweat. Makeup: natural minimal K-beauty look. Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.',
+    variation:
+      'Camera: three-quarter view, head turned slightly to one side showing both eyes with one cheek more visible, eye-level. ' +
+      'Pose/Expression: soft gentle closed-mouth smile, calm warm expression, subtle cinematic depth. ' +
+      'Lighting: warm soft natural light, gentle key plus fill, even balanced. ' +
+      'Background: clean minimal pale neutral wall.',
   },
   {
     key: 'smile',
     label: '정면 환한미소',
-    prompt:
-      'Korean woman in her late twenties, front view portrait, eye-level, looking at camera, bright warm genuine open smile with teeth softly showing, joyful relaxed expression, symmetrical composition. Style: cinematic editorial portrait. Lighting: natural daylight, soft diffused, even and flattering. Background: clean minimal pale neutral wall. Skin: natural matte finish, soft visible fine pores, realistic skin tone, no oily shine, no sweat. Makeup: natural minimal K-beauty look. Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.',
+    variation:
+      'Camera: front view, eye-level, centered, symmetrical composition. ' +
+      'Pose/Expression: bright warm genuine open smile with teeth softly showing, joyful relaxed expression. ' +
+      'Lighting: natural daylight studio, soft diffused, even and flattering. ' +
+      'Background: clean minimal pale neutral wall.',
   },
   {
     key: 'closeup',
     label: '정면 클로즈업',
-    prompt:
-      'Korean woman in her late twenties, tight close-up portrait from forehead to chin, looking directly at camera, calm composed expression, lips gently closed, focused entirely on facial detail and eye expression. Style: cinematic editorial portrait. Lighting: soft diffused beauty light, even and gentle. Background: clean minimal pale neutral wall, soft shallow depth blur. Skin: natural matte finish, soft visible fine pores and realistic skin texture, no oily shine, no sweat, no airbrush. Makeup: natural minimal K-beauty look. Quality: ultra-high detail, sharp facial texture, realistic color, soft focus falloff, balanced contrast.',
+    variation:
+      'Camera: tight close-up portrait from forehead to chin, eye-level, focused entirely on facial detail and eye expression. ' +
+      'Pose/Expression: calm composed minimal expression, lips gently closed, focused gaze. ' +
+      'Lighting: soft diffused beauty light, even gentle. ' +
+      'Background: clean minimal pale neutral wall, soft shallow depth blur.',
   },
 ];
+
+// 공통 Style + Quality (모든 각도에 append) — 분포 안정용
+const STYLE_QUALITY_TAIL =
+  'Style: cinematic editorial portrait, hyperrealistic photography, real and natural beauty cosmetic model portrait. ' +
+  'Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.';
+
+// ANGLES = IDENTITY_LOCK + CANONICAL_MAKEUP + variation + STYLE_QUALITY_TAIL
+const ANGLES = ANGLE_VARIATIONS.map((a) => ({
+  key: a.key,
+  label: a.label,
+  prompt: `${IDENTITY_LOCK_PROMPT} ${CANONICAL_MAKEUP_PROMPT} ${a.variation} ${STYLE_QUALITY_TAIL}`,
+}));
 
 // 글자/매거진 표지 분포 차단 + 보정 과잉 차단 + 변형 차단
 const NEGATIVE_PROMPT = [
