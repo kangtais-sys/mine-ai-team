@@ -68,7 +68,8 @@ const IDENTITY_LOCK_PROMPT =
   'shoulder-length dark brown hair, loose down, soft natural waves, parted slightly off-center, ' +
   'fair Korean skin with neutral undertone, natural matte finish, soft visible fine pores, ' +
   'slim natural body proportions, ' +
-  'clean minimal off-white top.';
+  'clean minimal off-white top, ' +
+  'small natural beauty mark on her right brow area, just below the right eyebrow arch (viewer left side of the face), between the brow and the upper eyelid, single subtle K-beauty charm point.';
 
 // ─────────── Canonical Makeup (캐논 생성 시만) ───────────
 // 미래 콘텐츠는 scene prompt 에서 메이크업 자유 (글램 / 데일리 / 노메이크업)
@@ -493,7 +494,7 @@ export default async function handler(req, res) {
 
   // ─────────── POST ?action=create ───────────
   if (req.method === 'POST' && action === 'create') {
-    const { identityId = 'mine-primary', name, soulId, onlyAngle } = req.body || {};
+    const { identityId = 'mine-primary', name, soulId, onlyAngle, seed: explicitSeed } = req.body || {};
     if (!soulId) return res.status(400).json({ error: 'soulId 필수' });
     if (!isValidSoulId(soulId)) {
       return res
@@ -525,9 +526,9 @@ export default async function handler(req, res) {
 
     const personaId = randomUUID();
 
-    // ⚠️ 4각도 같은 seed로 lock — 얼굴 일관성 확보 (서로 다른 seed면 같은 Soul ID 라도 모델이 다른 인스턴스로 해석)
-    const sharedSeed = Math.floor(Math.random() * 2 ** 32);
-    console.log(`[persona-soul] shared seed for ${useAngles.length} angles: ${sharedSeed}`);
+    // ⚠️ 4각도 같은 seed로 lock — 얼굴 일관성 확보. explicitSeed 있으면 재사용(특정 face 재현용).
+    const sharedSeed = explicitSeed != null ? Number(explicitSeed) : Math.floor(Math.random() * 2 ** 32);
+    console.log(`[persona-soul] shared seed for ${useAngles.length} angles: ${sharedSeed} (${explicitSeed != null ? 'explicit' : 'random'})`);
 
     const settled = await Promise.allSettled(
       useAngles.map(async (a) => {
