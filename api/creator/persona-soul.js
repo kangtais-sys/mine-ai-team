@@ -149,25 +149,43 @@ async function refreshAccessToken() {
 
 // persona-image.js 와 동일한 단순 헤더 구성 (nano_banana_2 가 잘 동작했던 패턴)
 // 브라우저 위장 헤더(Origin/Referer/sec-*)는 오히려 Cloudflare 의심 트리거
-async function fnfFetch(url, options = {}, token = null) {
+// timeoutMs: 외부 호출 hang 방지 (default 25초)
+async function fnfFetch(url, options = {}, token = null, timeoutMs = 25000) {
   const tok = token || (await getValidToken());
   const headers = {
     Authorization: `Bearer ${tok}`,
     'Content-Type': 'application/json',
     ...(options.headers || {}),
   };
-  const res = await fetch(url, { ...options, headers });
-  if (res.status === 401) {
-    console.log('[persona-soul] 401 — 토큰 갱신 후 재시도');
-    const newTok = await refreshAccessToken();
-    const headers2 = {
-      Authorization: `Bearer ${newTok}`,
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    };
-    return fetch(url, { ...options, headers: headers2 });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, headers, signal: ctrl.signal });
+    if (res.status === 401) {
+      console.log('[persona-soul] 401 — 토큰 갱신 후 재시도');
+      const newTok = await refreshAccessToken();
+      const headers2 = {
+        Authorization: `Bearer ${newTok}`,
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      };
+      const ctrl2 = new AbortController();
+      const timer2 = setTimeout(() => ctrl2.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, headers: headers2, signal: ctrl2.signal });
+      } finally {
+        clearTimeout(timer2);
+      }
+    }
+    return res;
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      throw new Error(`fnfFetch timeout ${timeoutMs}ms: ${url}`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-  return res;
 }
 
 // ── Soul 잡 생성 ──
