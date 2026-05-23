@@ -7,7 +7,7 @@
 import { Redis } from '@upstash/redis';
 import { randomUUID } from 'crypto';
 
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 120 };
 
 const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
@@ -215,8 +215,8 @@ async function generateWithNanaBanana(primaryImageUrl, prompt, label) {
 
   console.log(`[Persona Image] Nano Banana 잡 생성: ${jobId}`);
 
-  // 3. 완료 폴링 (최대 55초, 3초 간격)
-  const deadline = Date.now() + 55_000;
+  // 3. 완료 폴링 (최대 110초, 3초 간격) — maxDuration 120s 와 동기화
+  const deadline = Date.now() + 110_000;
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 3000));
 
