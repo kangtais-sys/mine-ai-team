@@ -17,9 +17,10 @@
 // GET    → V3 페르소나 목록 (data.version='v3' 필터 — PuLID/Soul 동시 노출)
 // DELETE ?id=xxx → 삭제
 //
-// 엔드포인트 (실제 캡처):
-//   POST https://fnf.higgsfield.ai/jobs/v2/text2image_soul_v2
-//   body: { params: { is_custom:false, model:'soul_v2', prompt,
+// 엔드포인트 (Cloudflare 우회 — /agents/jobs 채널, nano_banana_2 동일 패턴):
+//   POST https://fnf.higgsfield.ai/agents/jobs
+//   body: { job_set_type: 'text2image_soul_v2',   ← fallback 후보 자동 시도
+//           params: { is_custom:false, model:'soul_v2', prompt,
 //                     custom_reference_id: soulId,
 //                     custom_reference_strength: 1,
 //                     aspect_ratio: '3:4', quality: '1080p',
@@ -27,12 +28,12 @@
 //                     enhance_prompt: false, use_green: true,
 //                     use_refiner: false, negative_prompt: '',
 //                     lora: null, chain_enhancer: null,
-//                     model_version: 'fast', medias: [], seed },
-//           use_unlim: false }
+//                     model_version: 'fast', medias: [], seed } }
 //   인증: Bearer JWT (CLI_TOKEN) — persona-image.js의 fnfFetch 자동 갱신 패턴
 //   ※ style_id 의도적으로 미포함 — 무드보드 빼고 캐릭터 얼굴 순수 보존
+//   ※ /jobs/v2/* 경로는 Cloudflare bot 차단되어 /agents/jobs 로 우회
 //
-// 폴링: POST 응답 job id로 GET 폴링. 경로 후보 3개 자동 탐색 후 학습.
+// 폴링: GET /agents/jobs/{id} (nano_banana 와 동일)
 //
 // 비용: Soul 단가 × 4. UI 표기 약 $0.10 (보수치).
 
@@ -50,8 +51,12 @@ const redis = new Redis({
 const BUCKET = 'creator-library';
 const MAX_PERSONAS = 3;
 const FNF_BASE = 'https://fnf.higgsfield.ai';
-const SOUL_ENDPOINT = `${FNF_BASE}/jobs/v2/text2image_soul_v2`;
+const SOUL_ENDPOINT = `${FNF_BASE}/agents/jobs`;
 const REDIS_TOKEN_KEY = 'higgsfield:access_token';
+
+// job_set_type 후보 — 1순위(경로명)부터 차례로 시도. 422 받으면 다음 후보.
+const JOB_SET_TYPE_CANDIDATES = ['text2image_soul_v2', 'text2image_soul', 'soul_v2', 'soul'];
+let CACHED_JOB_SET_TYPE = null; // 첫 성공 후 캐시
 
 // 4 각도 — K뷰티 콘텐츠용
 const ANGLES = [
@@ -164,57 +169,94 @@ async function fnfFetch(url, options = {}, token = null) {
 
 // ── Soul 잡 생성 ──
 
-async function startSoulJob(soulId, prompt) {
+function buildSoulParams(soulId, prompt) {
   const seed = Math.floor(Math.random() * 2 ** 32);
-  const body = {
-    params: {
-      is_custom: false,
-      model: 'soul_v2',
-      prompt,
-      custom_reference_id: soulId,
-      custom_reference_strength: 1,
-      aspect_ratio: '3:4',
-      quality: '1080p',
-      width: 1536,
-      height: 2048,
-      batch_size: 1,
-      enhance_prompt: false,
-      use_green: true,
-      use_refiner: false,
-      negative_prompt: '',
-      lora: null,
-      chain_enhancer: null,
-      model_version: 'fast',
-      medias: [],
-      seed,
-    },
-    use_unlim: false,
+  return {
+    is_custom: false,
+    model: 'soul_v2',
+    prompt,
+    custom_reference_id: soulId,
+    custom_reference_strength: 1,
+    aspect_ratio: '3:4',
+    quality: '1080p',
+    width: 1536,
+    height: 2048,
+    batch_size: 1,
+    enhance_prompt: false,
+    use_green: true,
+    use_refiner: false,
+    negative_prompt: '',
+    lora: null,
+    chain_enhancer: null,
+    model_version: 'fast',
+    medias: [],
+    seed,
   };
-  const res = await fnfFetch(SOUL_ENDPOINT, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  let data = null;
-  try {
-    data = JSON.parse(text);
-  } catch {}
-  if (!res.ok) {
-    throw new Error(`Soul POST ${res.status}: ${text.substring(0, 250)}`);
-  }
-  console.log(`[persona-soul] POST 응답: ${text.substring(0, 300)}`);
-  // 응답 형태 후보: [{...}], [uuid], {id}, {job_id}, {jobs:[{id}]}
-  const jobId =
+}
+
+function extractJobId(data, text) {
+  return (
     (Array.isArray(data) ? (typeof data[0] === 'string' ? data[0] : data[0]?.id || data[0]?.job_id) : null) ||
     data?.id ||
     data?.job_id ||
     data?.request_id ||
     data?.jobs?.[0]?.id ||
-    data?.jobs?.[0]?.job_id;
-  if (!jobId) {
-    throw new Error(`Soul job id 추출 실패: ${text.substring(0, 200)}`);
+    data?.jobs?.[0]?.job_id ||
+    data?.job_set?.id ||
+    data?.job_set?.jobs?.[0]?.id ||
+    null
+  );
+}
+
+async function startSoulJob(soulId, prompt) {
+  const params = buildSoulParams(soulId, prompt);
+  // 캐시된 job_set_type 우선
+  const order = CACHED_JOB_SET_TYPE
+    ? [CACHED_JOB_SET_TYPE, ...JOB_SET_TYPE_CANDIDATES.filter((t) => t !== CACHED_JOB_SET_TYPE)]
+    : JOB_SET_TYPE_CANDIDATES;
+  const attempts = [];
+
+  for (const jobSetType of order) {
+    const body = { job_set_type: jobSetType, params };
+    const res = await fnfFetch(SOUL_ENDPOINT, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch {}
+
+    if (res.ok) {
+      const jobId = extractJobId(data, text);
+      if (jobId) {
+        if (!CACHED_JOB_SET_TYPE) {
+          CACHED_JOB_SET_TYPE = jobSetType;
+          console.log(`[persona-soul] job_set_type 확정: ${jobSetType}`);
+        }
+        console.log(`[persona-soul] POST 200 (${jobSetType}): ${text.substring(0, 200)}`);
+        return jobId;
+      }
+      attempts.push(`${jobSetType} 200이지만 jobId 없음: ${text.substring(0, 150)}`);
+      continue;
+    }
+
+    // 캐시 무효화 — 다음 후보로 넘어감
+    if (CACHED_JOB_SET_TYPE === jobSetType) CACHED_JOB_SET_TYPE = null;
+    attempts.push(`${jobSetType} → ${res.status}: ${text.substring(0, 200)}`);
+    console.log(`[persona-soul] ${jobSetType} 실패 ${res.status}: ${text.substring(0, 200)}`);
+
+    // 5xx 면 후보 무관 서버 문제 — 바로 throw
+    if (res.status >= 500) {
+      throw new Error(`Soul POST ${res.status} (${jobSetType}): ${text.substring(0, 250)}`);
+    }
+    // 401/403 도 후보 문제가 아니라 인증/차단 — 바로 throw
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(`Soul POST ${res.status} (${jobSetType}): ${text.substring(0, 250)}`);
+    }
+    // 400/404/422 등은 job_set_type 문제일 수 있으므로 다음 후보 시도
   }
-  return jobId;
+
+  throw new Error(`Soul POST 전 후보 실패:\n${attempts.join('\n')}`);
 }
 
 // ── 폴링 경로 자동 탐색 (첫 호출만) ──
@@ -222,17 +264,14 @@ async function startSoulJob(soulId, prompt) {
 
 let CACHED_POLL_BASE = null; // 워밍업 후 캐시 (cold start마다 재발견)
 
-// 캡처로 확정된 정답: GET /jobs/{job_id}/status
-// 안전망: 정답 외 후보 2개 자동 폴백 (스키마 바뀌었을 때 빠진 채로 죽지 않도록)
-function pollUrlFor(jobId) {
-  return `${FNF_BASE}/jobs/${jobId}/status`;
-}
+// /agents/jobs 채널은 GET /agents/jobs/{id} 폴링 (nano_banana_2 동일)
+// 안전망: 후보 2개 자동 폴백 (스키마 바뀌었을 때 빠진 채로 죽지 않도록)
 async function discoverPollPath(jobId) {
   if (CACHED_POLL_BASE) return `${CACHED_POLL_BASE.replace('{id}', jobId)}`;
   const templates = [
-    `${FNF_BASE}/jobs/{id}/status`,    // ★ 캡처 정답
-    `${FNF_BASE}/jobs/v2/{id}`,        // 폴백 1
-    `${FNF_BASE}/agents/jobs/{id}`,    // 폴백 2 (nano_banana 패턴)
+    `${FNF_BASE}/agents/jobs/{id}`,    // ★ /agents/jobs 채널 정답
+    `${FNF_BASE}/jobs/{id}/status`,    // 폴백 1 (구 v2 경로)
+    `${FNF_BASE}/jobs/v2/{id}`,        // 폴백 2
   ];
   for (const tpl of templates) {
     const url = tpl.replace('{id}', jobId);
