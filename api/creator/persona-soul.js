@@ -1,12 +1,13 @@
 // Higgsfield Soul ID로 캐논 페르소나 생성 — Soul ID 1개 → 4 각도 병렬
 //
-// [전제] Soul ID 학습은 MINE이 Higgsfield 웹에서 1회 수동:
-//   Higgsfield Cloud → Create Soul ID → 셀카 10~20장 업로드 → 완료 시 UUID 형태 Soul ID 발급
-// 우리 코드는 그 Soul ID로 4 각도 캐논 베이스를 자동 생성한다.
+// [전제] Soul ID 학습은 MINE이 Higgsfield 웹(cloud.higgsfield.ai)에서 1회 수동:
+//   Create Soul ID → 셀카 10~20장 업로드 → 완료 시 UUID 형태 character_id 발급
+// 우리 코드는 그 character_id로 4 각도 캐논 베이스를 자동 생성한다.
 //
-// POST ?action=create   { identityId, name, soulId }
-//   → 4 Soul 병렬 호출 (front / three-quarter / smile / closeup)
-//   → 각 호출은 비동기 → GET /requests/{id}/status 폴링 (각 호출당 최대 110초)
+// POST ?action=create   { identityId, name, soulId, onlyAngle? }
+//   → onlyAngle 지정 시 그 각도 1개만 (디버그/테스트용)
+//   → 평소엔 4 각도 병렬 (front / three-quarter / smile / closeup)
+//   → 각 호출 = POST 잡 생성 → 폴링 → 이미지 URL
 //   → 결과 Storage 영구 저장 (creator-library/{identityId}/persona/{personaId}/candidate-{angle}-{ts}.jpeg)
 //   → creator_personas insert (data.version='v3', data.engine='soul', candidates[], canonical=null)
 //
@@ -16,59 +17,73 @@
 // GET    → V3 페르소나 목록 (data.version='v3' 필터 — PuLID/Soul 동시 노출)
 // DELETE ?id=xxx → 삭제
 //
-// 엔드포인트: POST https://platform.higgsfield.ai/v1/text2image/soul
-//   body: { params: { prompt, custom_reference_id: soulId,
+// 엔드포인트 (실제 캡처):
+//   POST https://fnf.higgsfield.ai/jobs/v2/text2image_soul_v2
+//   body: { params: { is_custom:false, model:'soul_v2', prompt,
+//                     custom_reference_id: soulId,
 //                     custom_reference_strength: 1,
-//                     width_and_height: 'PORTRAIT_1536x2048',
-//                     quality: 'HD' } }
-//   인증: hf-api-key 헤더 (media.js 패턴 동일)
+//                     aspect_ratio: '3:4', quality: '1080p',
+//                     width: 1536, height: 2048, batch_size: 1,
+//                     enhance_prompt: false, use_green: true,
+//                     use_refiner: false, negative_prompt: '',
+//                     lora: null, chain_enhancer: null,
+//                     model_version: 'fast', medias: [], seed },
+//           use_unlim: false }
+//   인증: Bearer JWT (CLI_TOKEN) — persona-image.js의 fnfFetch 자동 갱신 패턴
+//   ※ style_id 의도적으로 미포함 — 무드보드 빼고 캐릭터 얼굴 순수 보존
 //
-// 비용: Higgsfield Soul 단가 × 4. UI 표기 약 $0.10 (보수치).
+// 폴링: POST 응답 job id로 GET 폴링. 경로 후보 3개 자동 탐색 후 학습.
+//
+// 비용: Soul 단가 × 4. UI 표기 약 $0.10 (보수치).
 
+import { Redis } from '@upstash/redis';
 import { getSupabase } from '../../lib/supabase.js';
 import { randomUUID } from 'crypto';
 
-// Vercel Pro: 최대 300초. 4 Soul 병렬 + 폴링 + Storage 업로드.
-// 각 호출당 폴링 abort timeout(pollSoulStatus)을 110초로 둔다.
 export const config = { maxDuration: 300 };
+
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
 const BUCKET = 'creator-library';
 const MAX_PERSONAS = 3;
-const HIGGSFIELD_BASE = 'https://platform.higgsfield.ai';
-const SOUL_ENDPOINT = `${HIGGSFIELD_BASE}/v1/text2image/soul`;
+const FNF_BASE = 'https://fnf.higgsfield.ai';
+const SOUL_ENDPOINT = `${FNF_BASE}/jobs/v2/text2image_soul_v2`;
+const REDIS_TOKEN_KEY = 'higgsfield:access_token';
 
-// 4 각도 — K뷰티 콘텐츠용 (PuLID와 동일 프롬프트 재사용)
+// 4 각도 — K뷰티 콘텐츠용
 const ANGLES = [
   {
     key: 'front',
     label: '정면 무표정',
     prompt:
-      'Korean woman, front view portrait, looking directly at camera, calm neutral expression, lips closed, soft studio lighting, eye contact, ultra photorealistic, hyperrealistic skin texture with visible pores, 8K, professional beauty photography, clean simple background, natural minimal makeup',
+      'Korean woman, front view portrait, looking directly at camera, calm neutral expression, lips closed, soft studio lighting, eye contact, ultra photorealistic, hyperrealistic skin texture with visible pores, raw photo, natural skin, no plastic, no airbrush, 8K, professional beauty photography, clean simple background, natural minimal makeup',
   },
   {
     key: 'three-quarter',
     label: '반측면 살짝미소',
     prompt:
-      'Korean woman, three-quarter view portrait, head turned slightly to the left, soft gentle closed-mouth smile, warm natural lighting, ultra photorealistic, hyperrealistic skin texture with visible pores, 8K, professional beauty photography, clean simple background',
+      'Korean woman, three-quarter view portrait, head turned slightly to the left, soft gentle closed-mouth smile, warm natural lighting, ultra photorealistic, hyperrealistic skin texture with visible pores, raw photo, natural skin, no plastic, no airbrush, 8K, professional beauty photography, clean simple background',
   },
   {
     key: 'smile',
     label: '정면 환한미소',
     prompt:
-      'Korean woman, front view portrait, looking at camera, bright warm open smile showing teeth, joyful cheerful expression, natural daylight, ultra photorealistic, hyperrealistic skin texture with visible pores, 8K, professional beauty photography, clean simple background',
+      'Korean woman, front view portrait, looking at camera, bright warm open smile showing teeth, joyful cheerful expression, natural daylight, ultra photorealistic, hyperrealistic skin texture with visible pores, raw photo, natural skin, no plastic, no airbrush, 8K, professional beauty photography, clean simple background',
   },
   {
     key: 'closeup',
     label: '정면 클로즈업',
     prompt:
-      'Korean woman, extreme close-up face portrait, looking at camera, calm composed expression, every pore and fine skin texture visible, macro beauty photography, sharp focus on skin detail, soft diffused beauty lighting, ultra photorealistic, 8K resolution',
+      'Korean woman, extreme close-up face portrait, looking at camera, calm composed expression, every pore and fine skin texture visible, raw photo, natural skin, no plastic, no airbrush, macro beauty photography, sharp focus on skin detail, soft diffused beauty lighting, ultra photorealistic, 8K resolution',
   },
 ];
 
 const COST_USD_APPROX = 0.10;
 
-// Soul ID 형식 검증 — UUID 또는 영숫자/하이픈/언더스코어 16자 이상
-// (Higgsfield 학습 결과 ID 형태가 변할 수 있어서 느슨하게)
+// Soul ID 형식 검증
 function isValidSoulId(s) {
   if (!s || typeof s !== 'string') return false;
   return (
@@ -77,94 +92,199 @@ function isValidSoulId(s) {
   );
 }
 
-function higgsfieldHeaders() {
-  const key = (process.env.HIGGSFIELD_API_KEY || '').replace(/^["']|["']$/g, '').trim();
-  if (!key) throw new Error('HIGGSFIELD_API_KEY 없음');
-  // media.js 인증 패턴 동일 — Origin/Referer 필수
-  return {
-    'hf-api-key': key,
-    'Content-Type': 'application/json',
-    'Origin': 'https://cloud.higgsfield.ai',
-    'Referer': 'https://cloud.higgsfield.ai/',
-  };
+// ── 토큰 관리 (persona-image.js와 동일 패턴) ──
+
+async function getValidToken() {
+  const cached = await redis.get(REDIS_TOKEN_KEY).catch(() => null);
+  if (cached) return cached;
+  const envToken = (process.env.HIGGSFIELD_CLI_TOKEN || '').trim();
+  if (envToken) return envToken;
+  throw new Error('HIGGSFIELD_CLI_TOKEN 없음');
 }
 
-// Soul 요청 → request_id
-async function startSoulRequest(soulId, prompt) {
+async function refreshAccessToken() {
+  const refreshToken = (process.env.HIGGSFIELD_REFRESH_TOKEN || '').trim();
+  if (!refreshToken) throw new Error('HIGGSFIELD_REFRESH_TOKEN 없음');
+  console.log('[persona-soul] 토큰 갱신 시도...');
+  const res = await fetch('https://fnf-device-auth.higgsfield.ai/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(`토큰 갱신 실패 (${res.status}): ${err.substring(0, 100)}`);
+  }
+  const data = await res.json();
+  const newToken = data.access_token;
+  if (!newToken) throw new Error('갱신 응답에 access_token 없음');
+  await redis.set(REDIS_TOKEN_KEY, newToken, { ex: 3000 }).catch(() => {});
+  console.log('[persona-soul] 토큰 갱신 완료');
+  return newToken;
+}
+
+async function fnfFetch(url, options = {}, token = null) {
+  const tok = token || (await getValidToken());
+  const headers = {
+    Authorization: `Bearer ${tok}`,
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+  const res = await fetch(url, { ...options, headers });
+  if (res.status === 401) {
+    console.log('[persona-soul] 401 — 토큰 갱신 후 재시도');
+    const newTok = await refreshAccessToken();
+    const headers2 = {
+      Authorization: `Bearer ${newTok}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    };
+    return fetch(url, { ...options, headers: headers2 });
+  }
+  return res;
+}
+
+// ── Soul 잡 생성 ──
+
+async function startSoulJob(soulId, prompt) {
+  const seed = Math.floor(Math.random() * 2 ** 32);
   const body = {
     params: {
+      is_custom: false,
+      model: 'soul_v2',
       prompt,
       custom_reference_id: soulId,
       custom_reference_strength: 1,
-      width_and_height: '1536x2048',
+      aspect_ratio: '3:4',
       quality: '1080p',
+      width: 1536,
+      height: 2048,
+      batch_size: 1,
+      enhance_prompt: false,
+      use_green: true,
+      use_refiner: false,
+      negative_prompt: '',
+      lora: null,
+      chain_enhancer: null,
+      model_version: 'fast',
+      medias: [],
+      seed,
     },
+    use_unlim: false,
   };
-  const res = await fetch(SOUL_ENDPOINT, {
+  const res = await fnfFetch(SOUL_ENDPOINT, {
     method: 'POST',
-    headers: higgsfieldHeaders(),
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(20000),
   });
+  const text = await res.text();
+  let data = null;
+  try {
+    data = JSON.parse(text);
+  } catch {}
   if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Soul POST ${res.status}: ${t.substring(0, 200)}`);
+    throw new Error(`Soul POST ${res.status}: ${text.substring(0, 250)}`);
   }
-  const data = await res.json();
-  // 응답: { id }, { request_id }, 또는 { jobs: [{ id }] } 가능 — media.js 패턴 따라 다 시도
-  const requestId =
+  console.log(`[persona-soul] POST 응답: ${text.substring(0, 300)}`);
+  // 응답 형태 후보: [{...}], [uuid], {id}, {job_id}, {jobs:[{id}]}
+  const jobId =
+    (Array.isArray(data) ? (typeof data[0] === 'string' ? data[0] : data[0]?.id || data[0]?.job_id) : null) ||
     data?.id ||
+    data?.job_id ||
     data?.request_id ||
     data?.jobs?.[0]?.id ||
-    data?.jobs?.[0]?.request_id;
-  if (!requestId) {
-    throw new Error(`Soul request_id 없음: ${JSON.stringify(data).substring(0, 200)}`);
+    data?.jobs?.[0]?.job_id;
+  if (!jobId) {
+    throw new Error(`Soul job id 추출 실패: ${text.substring(0, 200)}`);
   }
-  return requestId;
+  return jobId;
 }
 
-// 상태 폴링 → 'completed' 시 이미지 URL 반환
-async function pollSoulStatus(requestId, { maxWaitMs = 110000, intervalMs = 2500 } = {}) {
-  const headers = higgsfieldHeaders();
+// ── 폴링 경로 자동 탐색 (첫 호출만) ──
+// fnf의 잡 종류별 경로가 다를 수 있어 후보 3개 시도, 200 OK 받는 첫 경로 채택.
+
+let CACHED_POLL_BASE = null; // 워밍업 후 캐시 (cold start마다 재발견)
+
+// 캡처로 확정된 정답: GET /jobs/{job_id}/status
+// 안전망: 정답 외 후보 2개 자동 폴백 (스키마 바뀌었을 때 빠진 채로 죽지 않도록)
+function pollUrlFor(jobId) {
+  return `${FNF_BASE}/jobs/${jobId}/status`;
+}
+async function discoverPollPath(jobId) {
+  if (CACHED_POLL_BASE) return `${CACHED_POLL_BASE.replace('{id}', jobId)}`;
+  const templates = [
+    `${FNF_BASE}/jobs/{id}/status`,    // ★ 캡처 정답
+    `${FNF_BASE}/jobs/v2/{id}`,        // 폴백 1
+    `${FNF_BASE}/agents/jobs/{id}`,    // 폴백 2 (nano_banana 패턴)
+  ];
+  for (const tpl of templates) {
+    const url = tpl.replace('{id}', jobId);
+    try {
+      const r = await fnfFetch(url, { method: 'GET' });
+      if (r.ok) {
+        CACHED_POLL_BASE = tpl;
+        const body = await r.text();
+        console.log(`[persona-soul] 폴링 경로 확정: ${tpl}`);
+        console.log(`[persona-soul] 첫 응답(${body.length}b): ${body.substring(0, 400)}`);
+        return url;
+      } else {
+        console.log(`[persona-soul] 폴링 후보 ${tpl} → ${r.status}`);
+      }
+    } catch (e) {
+      console.log(`[persona-soul] 폴링 후보 ${tpl} → 예외: ${e.message}`);
+    }
+  }
+  throw new Error('폴링 경로 못 찾음 — 후보 3개 모두 실패');
+}
+
+// ── Soul 잡 폴링 → 이미지 URL ──
+
+async function pollSoulJob(jobId, { maxWaitMs = 110000, intervalMs = 2500 } = {}) {
+  const pollUrl = await discoverPollPath(jobId);
   const started = Date.now();
+  let firstLogged = false;
   while (Date.now() - started < maxWaitMs) {
-    const res = await fetch(`${HIGGSFIELD_BASE}/requests/${requestId}/status`, {
-      headers,
-      signal: AbortSignal.timeout(15000),
-    });
+    const res = await fnfFetch(pollUrl, { method: 'GET' });
     if (!res.ok) {
-      const t = await res.text();
-      throw new Error(`Soul status ${res.status}: ${t.substring(0, 200)}`);
+      const t = await res.text().catch(() => '');
+      throw new Error(`Soul 폴링 ${res.status}: ${t.substring(0, 200)}`);
     }
     const data = await res.json();
+    if (!firstLogged) {
+      console.log(`[persona-soul] 폴링 응답 샘플: ${JSON.stringify(data).substring(0, 300)}`);
+      firstLogged = true;
+    }
     const status = data?.status;
     if (status === 'completed') {
-      // Higgsfield 응답 형태가 모델별로 다름 → 후보 위치 모두 시도
+      // 이미지 URL 후보 위치 다 시도
       const url =
-        data?.results?.raw?.url ||
+        data?.result_url ||
+        data?.result?.url ||
         data?.results?.[0]?.url ||
+        data?.results?.raw?.url ||
         data?.images?.[0]?.url ||
         data?.image?.url ||
-        data?.url;
+        data?.url ||
+        data?.output?.[0]?.url ||
+        data?.output?.url;
       if (!url) {
-        throw new Error(`Soul 완료지만 이미지 URL 없음: ${JSON.stringify(data).substring(0, 200)}`);
+        throw new Error(`Soul 완료지만 URL 없음: ${JSON.stringify(data).substring(0, 250)}`);
       }
       return url;
     }
-    if (status === 'failed' || status === 'nsfw') {
+    if (status === 'failed' || status === 'nsfw' || status === 'canceled') {
       throw new Error(`Soul ${status}: ${JSON.stringify(data).substring(0, 200)}`);
     }
-    // queued / in_progress → 대기
     await new Promise((r) => setTimeout(r, intervalMs));
   }
   throw new Error(`Soul 폴링 타임아웃 (${Math.floor(maxWaitMs / 1000)}s)`);
 }
 
 async function callSoul(soulId, prompt) {
-  const requestId = await startSoulRequest(soulId, prompt);
-  const url = await pollSoulStatus(requestId);
-  return url;
+  const jobId = await startSoulJob(soulId, prompt);
+  return await pollSoulJob(jobId);
 }
+
+// ── Storage 영구 저장 ──
 
 async function persistImage(sb, identityId, personaId, angle, hfUrl) {
   try {
@@ -192,7 +312,7 @@ export default async function handler(req, res) {
   const sb = getSupabase();
   const action = req.query?.action;
 
-  // ─────────── GET: V3 페르소나 목록 (PuLID + Soul 동시 노출) ───────────
+  // ─────────── GET: V3 페르소나 목록 ───────────
   if (req.method === 'GET') {
     try {
       const { data, error } = await sb
@@ -220,7 +340,7 @@ export default async function handler(req, res) {
 
   // ─────────── POST ?action=create ───────────
   if (req.method === 'POST' && action === 'create') {
-    const { identityId = 'mine-primary', name, soulId } = req.body || {};
+    const { identityId = 'mine-primary', name, soulId, onlyAngle } = req.body || {};
     if (!soulId) return res.status(400).json({ error: 'soulId 필수' });
     if (!isValidSoulId(soulId)) {
       return res
@@ -228,20 +348,32 @@ export default async function handler(req, res) {
         .json({ error: 'Soul ID 형식이 올바르지 않습니다 (Higgsfield 학습 완료 후 받은 ID)' });
     }
 
-    // MAX_PERSONAS (v3 전체 카운트 — PuLID + Soul 합산)
-    const { data: existing } = await sb.from('creator_personas').select('data');
-    const v3Count = (existing || []).filter((r) => r.data?.version === 'v3').length;
-    if (v3Count >= MAX_PERSONAS) {
-      return res
-        .status(400)
-        .json({ error: `V3 페르소나는 최대 ${MAX_PERSONAS}개까지 가능합니다` });
+    // 사용할 각도 결정 (디버그 모드: onlyAngle)
+    const useAngles = onlyAngle
+      ? ANGLES.filter((a) => a.key === onlyAngle)
+      : ANGLES;
+    if (useAngles.length === 0) {
+      return res.status(400).json({
+        error: `onlyAngle '${onlyAngle}' 유효하지 않음. 가능: ${ANGLES.map((a) => a.key).join(', ')}`,
+      });
+    }
+    const isDebug = !!onlyAngle;
+
+    // MAX_PERSONAS — 디버그 모드(1각도)는 카운트 미적용
+    if (!isDebug) {
+      const { data: existing } = await sb.from('creator_personas').select('data');
+      const v3Count = (existing || []).filter((r) => r.data?.version === 'v3').length;
+      if (v3Count >= MAX_PERSONAS) {
+        return res
+          .status(400)
+          .json({ error: `V3 페르소나는 최대 ${MAX_PERSONAS}개까지 가능합니다` });
+      }
     }
 
     const personaId = randomUUID();
 
-    // 부분 성공 허용 — Promise.allSettled로 1장 실패해도 나머지 진행
     const settled = await Promise.allSettled(
-      ANGLES.map(async (a) => {
+      useAngles.map(async (a) => {
         const hfUrl = await callSoul(soulId, a.prompt);
         const { url, path } = await persistImage(sb, identityId, personaId, a.key, hfUrl);
         return {
@@ -259,7 +391,7 @@ export default async function handler(req, res) {
     const candidates = [];
     const failures = [];
     settled.forEach((r, i) => {
-      const a = ANGLES[i];
+      const a = useAngles[i];
       if (r.status === 'fulfilled') {
         candidates.push(r.value);
       } else {
@@ -271,17 +403,29 @@ export default async function handler(req, res) {
 
     if (candidates.length === 0) {
       return res.status(500).json({
-        error: '4 각도 모두 생성 실패',
+        error: `${useAngles.length} 각도 모두 생성 실패`,
         failures,
+        debug: isDebug,
+      });
+    }
+
+    // 디버그 모드는 DB 저장 안 함 (테스트 결과만 반환)
+    if (isDebug) {
+      return res.status(200).json({
+        success: true,
+        debug: true,
+        onlyAngle,
+        candidates,
+        failures: failures.length ? failures : undefined,
       });
     }
 
     const data = {
       id: personaId,
       version: 'v3',
-      engine: 'soul', // PuLID 페르소나와 구분
+      engine: 'soul',
       identityId,
-      name: name || `내 페르소나 ${v3Count + 1}`,
+      name: name || `내 페르소나 ${candidates.length}`,
       soulId,
       candidates,
       failures: failures.length ? failures : undefined,
