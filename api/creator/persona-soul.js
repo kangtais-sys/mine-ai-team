@@ -60,32 +60,48 @@ const JOB_SET_TYPE_CANDIDATES = ['text2image_soul_v2', 'text2image_soul', 'soul_
 let CACHED_JOB_SET_TYPE = null; // 첫 성공 후 캐시
 
 // 4 각도 — K뷰티 콘텐츠용
+// 설계: cinematic editorial portrait 스타일 (매거진 cover 분포 X).
+// 글자/타이포 차단은 negative_prompt 에서 담당.
 const ANGLES = [
   {
     key: 'front',
     label: '정면 무표정',
     prompt:
-      'Korean woman, front view portrait, looking directly at camera, calm neutral expression, lips closed, soft studio lighting, eye contact, ultra photorealistic, hyperrealistic skin texture with visible pores, raw photo, natural skin, no plastic, no airbrush, 8K, professional beauty photography, clean simple background, natural minimal makeup',
+      'Korean woman in her late twenties, front view portrait, eye-level, perfectly centered, looking directly at camera, calm neutral expression, lips gently closed, symmetrical composition. Style: cinematic editorial portrait. Lighting: soft diffused studio light, even fill, no harsh shadow. Background: clean minimal pale neutral wall. Skin: natural matte finish, soft visible fine pores, realistic skin tone, no oily shine, no sweat. Makeup: natural minimal K-beauty look. Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.',
   },
   {
     key: 'three-quarter',
     label: '반측면 살짝미소',
     prompt:
-      'Korean woman, three-quarter view portrait, head turned slightly to the left, soft gentle closed-mouth smile, warm natural lighting, ultra photorealistic, hyperrealistic skin texture with visible pores, raw photo, natural skin, no plastic, no airbrush, 8K, professional beauty photography, clean simple background',
+      'Korean woman in her late twenties, three-quarter view portrait, head turned slightly to one side showing both eyes with one cheek more visible, soft gentle closed-mouth smile, calm warm expression, subtle cinematic depth. Style: cinematic editorial portrait. Lighting: warm soft natural light, gentle key + fill. Background: clean minimal pale neutral wall. Skin: natural matte finish, soft visible fine pores, realistic skin tone, no oily shine, no sweat. Makeup: natural minimal K-beauty look. Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.',
   },
   {
     key: 'smile',
     label: '정면 환한미소',
     prompt:
-      'Korean woman, front view portrait, looking at camera, bright warm open smile showing teeth, joyful cheerful expression, natural daylight, ultra photorealistic, hyperrealistic skin texture with visible pores, raw photo, natural skin, no plastic, no airbrush, 8K, professional beauty photography, clean simple background',
+      'Korean woman in her late twenties, front view portrait, eye-level, looking at camera, bright warm genuine open smile with teeth softly showing, joyful relaxed expression, symmetrical composition. Style: cinematic editorial portrait. Lighting: natural daylight, soft diffused, even and flattering. Background: clean minimal pale neutral wall. Skin: natural matte finish, soft visible fine pores, realistic skin tone, no oily shine, no sweat. Makeup: natural minimal K-beauty look. Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.',
   },
   {
     key: 'closeup',
     label: '정면 클로즈업',
     prompt:
-      'Korean woman, extreme close-up face portrait, looking at camera, calm composed expression, every pore and fine skin texture visible, raw photo, natural skin, no plastic, no airbrush, macro beauty photography, sharp focus on skin detail, soft diffused beauty lighting, ultra photorealistic, 8K resolution',
+      'Korean woman in her late twenties, tight close-up portrait from forehead to chin, looking directly at camera, calm composed expression, lips gently closed, focused entirely on facial detail and eye expression. Style: cinematic editorial portrait. Lighting: soft diffused beauty light, even and gentle. Background: clean minimal pale neutral wall, soft shallow depth blur. Skin: natural matte finish, soft visible fine pores and realistic skin texture, no oily shine, no sweat, no airbrush. Makeup: natural minimal K-beauty look. Quality: ultra-high detail, sharp facial texture, realistic color, soft focus falloff, balanced contrast.',
   },
 ];
+
+// 글자/매거진 표지 분포 차단 + 보정 과잉 차단 + 변형 차단
+const NEGATIVE_PROMPT = [
+  // 글자/타이포
+  'text', 'letters', 'words', 'typography', 'title', 'caption', 'watermark', 'logo', 'brand name', 'signature', 'magazine cover', 'frame', 'border',
+  // 보정 과잉
+  'plastic skin', 'doll skin', 'airbrushed', 'overly smooth skin', 'porcelain skin',
+  // wet/oily 차단
+  'oily skin', 'sweaty skin', 'wet skin', 'greasy shine', 'glossy forehead',
+  // 정체성 변형
+  'different face', 'distorted face', 'extra fingers', 'extra limbs', 'deformed', 'asymmetric features',
+  // 저품질
+  'blurry', 'low resolution', 'jpeg artifact', 'noise', 'grain',
+].join(', ');
 
 const COST_USD_APPROX = 0.10;
 
@@ -211,7 +227,7 @@ function buildSoulParams(soulId, prompt) {
     enhance_prompt: false,
     use_green: true,
     use_refiner: false,
-    negative_prompt: '',
+    negative_prompt: NEGATIVE_PROMPT,
     lora: null,
     chain_enhancer: null,
     model_version: 'fast',
