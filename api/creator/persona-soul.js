@@ -37,23 +37,19 @@
 //
 // 비용: Soul 단가 × 4. UI 표기 약 $0.10 (보수치).
 
-import { Redis } from '@upstash/redis';
 import { getSupabase } from '../../lib/supabase.js';
+import { fnfFetch as fnfFetchBase } from '../../lib/higgsfield-tokens.js';
 import { randomUUID } from 'crypto';
 
 export const config = { maxDuration: 300 };
 
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
-});
+// 토큰: lib/higgsfield-tokens.js (Supabase higgsfield_tokens 단일 행)
+// Redis 토큰 캐시는 제거됨 — silent fail 문제 근본 해결
 
 const BUCKET = 'creator-library';
 const MAX_PERSONAS = 5; // ⚠️ identity_lock 테스트 동안 임시 5 (원복: 3)
 const FNF_BASE = 'https://fnf.higgsfield.ai';
 const SOUL_ENDPOINT = `${FNF_BASE}/agents/jobs`;
-const REDIS_TOKEN_KEY = 'higgsfield:access_token';
-const REDIS_REFRESH_KEY = 'higgsfield:refresh_token'; // rotation 대응
 
 // job_set_type 후보 — 1순위(경로명)부터 차례로 시도. 422 받으면 다음 후보.
 const JOB_SET_TYPE_CANDIDATES = ['text2image_soul_v2', 'text2image_soul', 'soul_v2', 'soul'];
@@ -157,99 +153,12 @@ function isValidSoulId(s) {
   );
 }
 
-// ── 토큰 관리 (persona-image.js와 동일 패턴) ──
-
-async function getValidToken() {
-  const cached = await redis.get(REDIS_TOKEN_KEY).catch(() => null);
-  if (cached) return cached;
-  const envToken = (process.env.HIGGSFIELD_CLI_TOKEN || '').trim();
-  if (envToken) return envToken;
-  throw new Error('HIGGSFIELD_CLI_TOKEN 없음');
-}
-
-// refresh_token: Redis 우선 → env 폴백 (rotation 대응)
-async function getValidRefreshToken() {
-  const cached = await redis.get(REDIS_REFRESH_KEY).catch(() => null);
-  if (cached) return cached;
-  const envToken = (process.env.HIGGSFIELD_REFRESH_TOKEN || '').trim();
-  if (envToken) return envToken;
-  throw new Error('HIGGSFIELD_REFRESH_TOKEN 없음');
-}
-
-async function refreshAccessToken() {
-  const refreshToken = await getValidRefreshToken();
-  const source = (await redis.get(REDIS_REFRESH_KEY).catch(() => null)) ? 'redis' : 'env';
-  console.log(`[persona-soul] 토큰 갱신 시도 (refresh source=${source})...`);
-  const res = await fetch('https://fnf-device-auth.higgsfield.ai/refresh', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken }),
-  });
-  const rawText = await res.text();
-  if (!res.ok) {
-    // 401/400 invalid → Redis 캐시 무효화 (다음 시도는 env로 폴백)
-    if (res.status === 401 || res.status === 400) {
-      await redis.del(REDIS_REFRESH_KEY).catch(() => {});
-    }
-    throw new Error(`토큰 갱신 실패 (${res.status}) [source=${source}]: ${rawText.substring(0, 200)}`);
-  }
-  let data = null;
-  try { data = JSON.parse(rawText); } catch {}
-  const newToken = data?.access_token;
-  if (!newToken) {
-    throw new Error(`갱신 응답에 access_token 없음. raw: ${rawText.substring(0, 300)}`);
-  }
-  await redis.set(REDIS_TOKEN_KEY, newToken, { ex: 3000 }).catch(() => {});
-  // rotation: 새 refresh_token 응답에 있으면 Redis 저장 (필드명 후보 자동 탐색)
-  const newRefresh = data?.refresh_token || data?.refreshToken || data?.refresh || null;
-  if (newRefresh) {
-    await redis.set(REDIS_REFRESH_KEY, newRefresh, { ex: 60 * 60 * 24 * 30 }).catch(() => {});
-    console.log(`[persona-soul] refresh_token rotation 감지 → Redis 동기화 (응답 길이=${rawText.length})`);
-  } else {
-    console.log(`[persona-soul] refresh 응답에 새 refresh_token 없음. 응답 키들: ${Object.keys(data || {}).join(',')}`);
-  }
-  return newToken;
-}
-
-// persona-image.js 와 동일한 단순 헤더 구성 (nano_banana_2 가 잘 동작했던 패턴)
-// 브라우저 위장 헤더(Origin/Referer/sec-*)는 오히려 Cloudflare 의심 트리거
-// timeoutMs: 외부 호출 hang 방지 (default 25초)
-async function fnfFetch(url, options = {}, token = null, timeoutMs = 25000) {
-  const tok = token || (await getValidToken());
-  const headers = {
-    Authorization: `Bearer ${tok}`,
-    'Content-Type': 'application/json',
-    ...(options.headers || {}),
-  };
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { ...options, headers, signal: ctrl.signal });
-    if (res.status === 401) {
-      console.log('[persona-soul] 401 — 토큰 갱신 후 재시도');
-      const newTok = await refreshAccessToken();
-      const headers2 = {
-        Authorization: `Bearer ${newTok}`,
-        'Content-Type': 'application/json',
-        ...(options.headers || {}),
-      };
-      const ctrl2 = new AbortController();
-      const timer2 = setTimeout(() => ctrl2.abort(), timeoutMs);
-      try {
-        return await fetch(url, { ...options, headers: headers2, signal: ctrl2.signal });
-      } finally {
-        clearTimeout(timer2);
-      }
-    }
-    return res;
-  } catch (e) {
-    if (e.name === 'AbortError') {
-      throw new Error(`fnfFetch timeout ${timeoutMs}ms: ${url}`);
-    }
-    throw e;
-  } finally {
-    clearTimeout(timer);
-  }
+// ── 토큰 관리 ──
+// 모든 read/write/rotation 은 lib/higgsfield-tokens.js 가 단일 책임
+// (이전: Redis 캐시 + .catch(() => {}) silent fail → cascade 401 의 근본 원인)
+// timeoutMs default 25초: 외부 호출 hang 방지 (기존 동작 유지)
+function fnfFetch(url, options = {}, _token = null, timeoutMs = 25000) {
+  return fnfFetchBase(url, options, 'persona-soul', timeoutMs);
 }
 
 // ── Soul 잡 생성 ──

@@ -2,13 +2,16 @@
 // 모드 C (Nano Banana Pro): primaryImageUrl 있으면 → Higgsfield Nano Banana Pro로 얼굴 100% 일관성 유지
 // 모드 A (텍스트): Imagen3 → Gemini 폴백 (초기 캐릭터 생성)
 // 모드 B (레퍼런스): referenceImages(base64) + instruction → Gemini (수동 레퍼런스)
-// env: GOOGLE_API_KEY / GEMINI_API_KEY, HIGGSFIELD_CLI_TOKEN, HIGGSFIELD_REFRESH_TOKEN
+// env: GOOGLE_API_KEY / GEMINI_API_KEY, HIGGSFIELD_REFRESH_TOKEN(bootstrap), SUPABASE_SERVICE_ROLE_KEY
+// 토큰 저장소: Supabase higgsfield_tokens (Redis 토큰 캐시는 제거됨)
 
 import { Redis } from '@upstash/redis';
 import { randomUUID } from 'crypto';
+import { fnfFetch as fnfFetchBase } from '../../lib/higgsfield-tokens.js';
 
 export const config = { maxDuration: 120 };
 
+// Redis: 갤러리 저장(IMAGES_KEY) 용도로만 유지 — 토큰은 Supabase로 이관
 const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
@@ -17,10 +20,10 @@ const redis = new Redis({
 const IMAGES_KEY = 'creator:persona:millimilli:images';
 const MAX_IMAGES = 10;
 const FNF_BASE = 'https://fnf.higgsfield.ai';
-const REDIS_TOKEN_KEY = 'higgsfield:access_token';
-const REDIS_REFRESH_KEY = 'higgsfield:refresh_token'; // rotation 대응
 
-// ── Higgsfield 토큰 관리 (자동 갱신 지원) ──
+// ── Higgsfield 토큰 관리 ──
+// 모든 토큰 read/write/rotation 은 lib/higgsfield-tokens.js 가 단일 책임
+// (이전: Redis 캐시 + .catch(() => {}) silent fail → cascade 401 의 근본 원인)
 
 /** CloudFront URL에서 Higgsfield 잡 ID 추출
  *  예: https://d8j0ntlcm91z4.cloudfront.net/.../hf_20260514_223722_UUID.png → UUID */
@@ -29,76 +32,9 @@ function extractHiggsJobId(url) {
   return match ? match[1] : null;
 }
 
-/** 유효한 액세스 토큰 반환 (Redis 캐시 → env 순서) */
-async function getValidToken() {
-  // 1. Redis 캐시 우선
-  const cached = await redis.get(REDIS_TOKEN_KEY).catch(() => null);
-  if (cached) return cached;
-  // 2. env 폴백
-  const envToken = (process.env.HIGGSFIELD_CLI_TOKEN || '').trim();
-  if (envToken) return envToken;
-  throw new Error('HIGGSFIELD_CLI_TOKEN 없음');
-}
-
-/** refresh_token: Redis 우선 → env 폴백 (rotation 대응) */
-async function getValidRefreshToken() {
-  const cached = await redis.get(REDIS_REFRESH_KEY).catch(() => null);
-  if (cached) return cached;
-  const envToken = (process.env.HIGGSFIELD_REFRESH_TOKEN || '').trim();
-  if (envToken) return envToken;
-  throw new Error('HIGGSFIELD_REFRESH_TOKEN 없음 — Vercel 환경변수에 추가 필요');
-}
-
-/** 리프레시 토큰으로 액세스 토큰 갱신 후 Redis 저장 (rotation 동기화 포함) */
-async function refreshAccessToken() {
-  const refreshToken = await getValidRefreshToken();
-
-  console.log('[Persona Image] 토큰 갱신 시도...');
-  const res = await fetch('https://fnf-device-auth.higgsfield.ai/refresh', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text().catch(() => '');
-    // invalid → Redis 캐시 무효화 (env로 폴백 가능하도록)
-    if (res.status === 401 || res.status === 400) {
-      await redis.del(REDIS_REFRESH_KEY).catch(() => {});
-    }
-    throw new Error(`토큰 갱신 실패 (${res.status}): ${err.substring(0, 100)}`);
-  }
-
-  const data = await res.json();
-  const newToken = data.access_token;
-  if (!newToken) throw new Error('갱신 응답에 access_token 없음');
-
-  // 50분 캐시 (토큰 TTL 3600초보다 여유 있게)
-  await redis.set(REDIS_TOKEN_KEY, newToken, { ex: 3000 }).catch(() => {});
-  // rotation: 새 refresh_token 받으면 Redis 동기화 (env는 더 이상 truth 아님)
-  if (data.refresh_token) {
-    await redis.set(REDIS_REFRESH_KEY, data.refresh_token, { ex: 60 * 60 * 24 * 30 }).catch(() => {});
-    console.log('[Persona Image] refresh_token rotation → Redis 동기화');
-  }
-  console.log('[Persona Image] 토큰 갱신 완료');
-  return newToken;
-}
-
-/** fnf API 호출 — 401 시 자동 갱신 후 재시도 */
-async function fnfFetch(url, options = {}, token = null) {
-  const tok = token || await getValidToken();
-  const headers = { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json', ...(options.headers || {}) };
-
-  const res = await fetch(url, { ...options, headers });
-
-  if (res.status === 401) {
-    console.log('[Persona Image] 401 수신 — 토큰 갱신 후 재시도');
-    const newTok = await refreshAccessToken();
-    const headers2 = { Authorization: `Bearer ${newTok}`, 'Content-Type': 'application/json', ...(options.headers || {}) };
-    return fetch(url, { ...options, headers: headers2 });
-  }
-
-  return res;
+/** fnf API 호출 — 401 시 자동 갱신 후 재시도 (헬퍼 위임) */
+function fnfFetch(url, options = {}) {
+  return fnfFetchBase(url, options, 'persona-image');
 }
 
 async function saveImageToGallery(imageUrl, prompt, via, label) {
@@ -367,7 +303,9 @@ export default async function handler(req, res) {
   const errors = [];
 
   // ══ 모드 C: Nano Banana Pro (기존 대표 이미지 기반 — 얼굴 100% 일관성 컷 생성) ══
-  if (primaryImageUrl && (process.env.HIGGSFIELD_CLI_TOKEN || process.env.HIGGSFIELD_REFRESH_TOKEN)) {
+  // 토큰 소스는 lib/higgsfield-tokens.js 가 알아서 (Supabase → env bootstrap)
+  // 토큰 자체가 부재면 헬퍼가 throw → catch 에서 Gemini 폴백
+  if (primaryImageUrl) {
     try {
       const nbPrompt = anglePrompt
         || extraPrompt

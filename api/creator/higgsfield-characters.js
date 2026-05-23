@@ -4,8 +4,8 @@
 //   → fnf.higgsfield.ai/agents/custom-references GET
 //   → 응답 정규화 + raw 동봉 (첫 호출에서 스키마 확인 후 raw 제거 예정)
 //
-// 인증: Bearer HIGGSFIELD_CLI_TOKEN, 401시 HIGGSFIELD_REFRESH_TOKEN으로 자동 갱신
-//   → persona-image.js의 fnfFetch 패턴 동일 (Redis 50분 캐시)
+// 인증: lib/higgsfield-tokens.js 위임 (Supabase higgsfield_tokens 단일 행)
+//   → Redis 토큰 캐시는 제거됨 (silent fail 근본 차단)
 //
 // 과금: GET만. 학습/생성 POST 없음.
 //
@@ -13,71 +13,14 @@
 //   - PersonaCreator STEP 1에서 "내 학습된 캐릭터 드롭다운"
 //   - persona-soul.js의 soulId 손 붙여넣기 → 이 응답의 id 자동 선택으로 교체
 
-import { Redis } from '@upstash/redis';
+import { fnfFetch as fnfFetchBase } from '../../lib/higgsfield-tokens.js';
 
 export const config = { maxDuration: 30 };
 
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
-});
-
 const FNF_BASE = 'https://fnf.higgsfield.ai';
-const REDIS_TOKEN_KEY = 'higgsfield:access_token';
 
-// ── 토큰 관리 (persona-image.js와 동일 패턴) ──
-
-async function getValidToken() {
-  const cached = await redis.get(REDIS_TOKEN_KEY).catch(() => null);
-  if (cached) return cached;
-  const envToken = (process.env.HIGGSFIELD_CLI_TOKEN || '').trim();
-  if (envToken) return envToken;
-  throw new Error('HIGGSFIELD_CLI_TOKEN 없음');
-}
-
-async function refreshAccessToken() {
-  const refreshToken = (process.env.HIGGSFIELD_REFRESH_TOKEN || '').trim();
-  if (!refreshToken) {
-    throw new Error('HIGGSFIELD_REFRESH_TOKEN 없음 — Vercel 환경변수에 추가 필요');
-  }
-  console.log('[hf-characters] 토큰 갱신 시도...');
-  const res = await fetch('https://fnf-device-auth.higgsfield.ai/refresh', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken }),
-  });
-  if (!res.ok) {
-    const err = await res.text().catch(() => '');
-    throw new Error(`토큰 갱신 실패 (${res.status}): ${err.substring(0, 100)}`);
-  }
-  const data = await res.json();
-  const newToken = data.access_token;
-  if (!newToken) throw new Error('갱신 응답에 access_token 없음');
-  // 50분 캐시 (토큰 TTL 3600초보다 여유 있게)
-  await redis.set(REDIS_TOKEN_KEY, newToken, { ex: 3000 }).catch(() => {});
-  console.log('[hf-characters] 토큰 갱신 완료');
-  return newToken;
-}
-
-async function fnfFetch(url, options = {}, token = null) {
-  const tok = token || (await getValidToken());
-  const headers = {
-    Authorization: `Bearer ${tok}`,
-    'Content-Type': 'application/json',
-    ...(options.headers || {}),
-  };
-  const res = await fetch(url, { ...options, headers });
-  if (res.status === 401) {
-    console.log('[hf-characters] 401 수신 — 토큰 갱신 후 재시도');
-    const newTok = await refreshAccessToken();
-    const headers2 = {
-      Authorization: `Bearer ${newTok}`,
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    };
-    return fetch(url, { ...options, headers: headers2 });
-  }
-  return res;
+function fnfFetch(url, options = {}) {
+  return fnfFetchBase(url, options, 'hf-characters');
 }
 
 // ── 응답 파싱 헬퍼 (스키마 미확인 상태 — 광범위 대응) ──
