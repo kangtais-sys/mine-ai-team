@@ -96,7 +96,7 @@ async function startSoulRequest(soulId, prompt) {
       prompt,
       custom_reference_id: soulId,
       custom_reference_strength: 1,
-      width_and_height: 'PORTRAIT_1536x2048',
+      width_and_height: '1536x2048',
       quality: 'HD',
     },
   };
