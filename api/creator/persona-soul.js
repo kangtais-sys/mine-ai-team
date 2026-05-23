@@ -254,8 +254,9 @@ async function startSoulJob(soulId, prompt) {
           CACHED_JOB_SET_TYPE = jobSetType;
           console.log(`[persona-soul] job_set_type 확정: ${jobSetType}`);
         }
-        console.log(`[persona-soul] POST 200 (${jobSetType}): ${text.substring(0, 200)}`);
-        return jobId;
+        console.log(`[persona-soul] POST 200 (${jobSetType}): ${text.substring(0, 400)}`);
+        // 디버그용: POST raw 응답을 throw 메시지 위해 jobId 객체로 반환
+        return { jobId, postRaw: text.substring(0, 500) };
       }
       attempts.push(`${jobSetType} 200이지만 jobId 없음: ${text.substring(0, 150)}`);
       continue;
@@ -294,6 +295,7 @@ async function discoverPollPath(jobId) {
     `${FNF_BASE}/jobs/{id}/status`,    // 폴백 1 (구 v2 경로)
     `${FNF_BASE}/jobs/v2/{id}`,        // 폴백 2
   ];
+  const attemptLog = [];
   for (const tpl of templates) {
     const url = tpl.replace('{id}', jobId);
     try {
@@ -305,13 +307,18 @@ async function discoverPollPath(jobId) {
         console.log(`[persona-soul] 첫 응답(${body.length}b): ${body.substring(0, 400)}`);
         return url;
       } else {
-        console.log(`[persona-soul] 폴링 후보 ${tpl} → ${r.status}`);
+        const errBody = await r.text().catch(() => '');
+        const log = `${tpl} → ${r.status}: ${errBody.substring(0, 150)}`;
+        attemptLog.push(log);
+        console.log(`[persona-soul] 폴링 후보 ${log}`);
       }
     } catch (e) {
-      console.log(`[persona-soul] 폴링 후보 ${tpl} → 예외: ${e.message}`);
+      const log = `${tpl} → 예외: ${e.message}`;
+      attemptLog.push(log);
+      console.log(`[persona-soul] 폴링 후보 ${log}`);
     }
   }
-  throw new Error('폴링 경로 못 찾음 — 후보 3개 모두 실패');
+  throw new Error(`폴링 경로 못 찾음 (jobId=${jobId}):\n${attemptLog.join('\n')}`);
 }
 
 // ── Soul 잡 폴링 → 이미지 URL ──
@@ -358,8 +365,14 @@ async function pollSoulJob(jobId, { maxWaitMs = 110000, intervalMs = 2500 } = {}
 }
 
 async function callSoul(soulId, prompt) {
-  const jobId = await startSoulJob(soulId, prompt);
-  return await pollSoulJob(jobId);
+  const result = await startSoulJob(soulId, prompt);
+  const jobId = result.jobId;
+  try {
+    return await pollSoulJob(jobId);
+  } catch (e) {
+    // 폴링 실패 시 POST raw 응답을 에러에 첨부 (디버그용)
+    throw new Error(`${e.message}\n--- POST raw ---\n${result.postRaw || '(none)'}`);
+  }
 }
 
 // ── Storage 영구 저장 ──
