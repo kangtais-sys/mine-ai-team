@@ -181,7 +181,7 @@ function buildSoulParams(soulId, prompt) {
     custom_reference_id: soulId,
     custom_reference_strength: 1,
     aspect_ratio: '3:4',
-    quality: '1080p',
+    quality: '1.5k', // 서버 enum: '1.5k' | '2k' (구 '1080p' 거부됨)
     width: 1536,
     height: 2048,
     batch_size: 1,
