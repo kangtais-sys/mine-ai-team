@@ -18,6 +18,7 @@ const IMAGES_KEY = 'creator:persona:millimilli:images';
 const MAX_IMAGES = 10;
 const FNF_BASE = 'https://fnf.higgsfield.ai';
 const REDIS_TOKEN_KEY = 'higgsfield:access_token';
+const REDIS_REFRESH_KEY = 'higgsfield:refresh_token'; // rotation 대응
 
 // ── Higgsfield 토큰 관리 (자동 갱신 지원) ──
 
@@ -39,10 +40,18 @@ async function getValidToken() {
   throw new Error('HIGGSFIELD_CLI_TOKEN 없음');
 }
 
-/** 리프레시 토큰으로 액세스 토큰 갱신 후 Redis 저장 */
+/** refresh_token: Redis 우선 → env 폴백 (rotation 대응) */
+async function getValidRefreshToken() {
+  const cached = await redis.get(REDIS_REFRESH_KEY).catch(() => null);
+  if (cached) return cached;
+  const envToken = (process.env.HIGGSFIELD_REFRESH_TOKEN || '').trim();
+  if (envToken) return envToken;
+  throw new Error('HIGGSFIELD_REFRESH_TOKEN 없음 — Vercel 환경변수에 추가 필요');
+}
+
+/** 리프레시 토큰으로 액세스 토큰 갱신 후 Redis 저장 (rotation 동기화 포함) */
 async function refreshAccessToken() {
-  const refreshToken = (process.env.HIGGSFIELD_REFRESH_TOKEN || '').trim();
-  if (!refreshToken) throw new Error('HIGGSFIELD_REFRESH_TOKEN 없음 — Vercel 환경변수에 추가 필요');
+  const refreshToken = await getValidRefreshToken();
 
   console.log('[Persona Image] 토큰 갱신 시도...');
   const res = await fetch('https://fnf-device-auth.higgsfield.ai/refresh', {
@@ -53,6 +62,10 @@ async function refreshAccessToken() {
 
   if (!res.ok) {
     const err = await res.text().catch(() => '');
+    // invalid → Redis 캐시 무효화 (env로 폴백 가능하도록)
+    if (res.status === 401 || res.status === 400) {
+      await redis.del(REDIS_REFRESH_KEY).catch(() => {});
+    }
     throw new Error(`토큰 갱신 실패 (${res.status}): ${err.substring(0, 100)}`);
   }
 
@@ -62,6 +75,11 @@ async function refreshAccessToken() {
 
   // 50분 캐시 (토큰 TTL 3600초보다 여유 있게)
   await redis.set(REDIS_TOKEN_KEY, newToken, { ex: 3000 }).catch(() => {});
+  // rotation: 새 refresh_token 받으면 Redis 동기화 (env는 더 이상 truth 아님)
+  if (data.refresh_token) {
+    await redis.set(REDIS_REFRESH_KEY, data.refresh_token, { ex: 60 * 60 * 24 * 30 }).catch(() => {});
+    console.log('[Persona Image] refresh_token rotation → Redis 동기화');
+  }
   console.log('[Persona Image] 토큰 갱신 완료');
   return newToken;
 }

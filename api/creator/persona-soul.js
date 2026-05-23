@@ -53,6 +53,7 @@ const MAX_PERSONAS = 3;
 const FNF_BASE = 'https://fnf.higgsfield.ai';
 const SOUL_ENDPOINT = `${FNF_BASE}/agents/jobs`;
 const REDIS_TOKEN_KEY = 'higgsfield:access_token';
+const REDIS_REFRESH_KEY = 'higgsfield:refresh_token'; // rotation 대응
 
 // job_set_type 후보 — 1순위(경로명)부터 차례로 시도. 422 받으면 다음 후보.
 const JOB_SET_TYPE_CANDIDATES = ['text2image_soul_v2', 'text2image_soul', 'soul_v2', 'soul'];
@@ -107,9 +108,17 @@ async function getValidToken() {
   throw new Error('HIGGSFIELD_CLI_TOKEN 없음');
 }
 
+// refresh_token: Redis 우선 → env 폴백 (rotation 대응)
+async function getValidRefreshToken() {
+  const cached = await redis.get(REDIS_REFRESH_KEY).catch(() => null);
+  if (cached) return cached;
+  const envToken = (process.env.HIGGSFIELD_REFRESH_TOKEN || '').trim();
+  if (envToken) return envToken;
+  throw new Error('HIGGSFIELD_REFRESH_TOKEN 없음');
+}
+
 async function refreshAccessToken() {
-  const refreshToken = (process.env.HIGGSFIELD_REFRESH_TOKEN || '').trim();
-  if (!refreshToken) throw new Error('HIGGSFIELD_REFRESH_TOKEN 없음');
+  const refreshToken = await getValidRefreshToken();
   console.log('[persona-soul] 토큰 갱신 시도...');
   const res = await fetch('https://fnf-device-auth.higgsfield.ai/refresh', {
     method: 'POST',
@@ -118,12 +127,22 @@ async function refreshAccessToken() {
   });
   if (!res.ok) {
     const err = await res.text().catch(() => '');
+    // 401/400 invalid → Redis 캐시 무효화 (다음 시도는 env로 폴백)
+    if (res.status === 401 || res.status === 400) {
+      await redis.del(REDIS_REFRESH_KEY).catch(() => {});
+    }
     throw new Error(`토큰 갱신 실패 (${res.status}): ${err.substring(0, 100)}`);
   }
   const data = await res.json();
   const newToken = data.access_token;
   if (!newToken) throw new Error('갱신 응답에 access_token 없음');
   await redis.set(REDIS_TOKEN_KEY, newToken, { ex: 3000 }).catch(() => {});
+  // rotation: 새 refresh_token 응답에 있으면 Redis 저장 (env는 더 이상 truth 아님)
+  if (data.refresh_token) {
+    // refresh_token TTL은 보통 days. 안전하게 30일 캐시.
+    await redis.set(REDIS_REFRESH_KEY, data.refresh_token, { ex: 60 * 60 * 24 * 30 }).catch(() => {});
+    console.log('[persona-soul] refresh_token rotation → Redis 동기화');
+  }
   console.log('[persona-soul] 토큰 갱신 완료');
   return newToken;
 }
