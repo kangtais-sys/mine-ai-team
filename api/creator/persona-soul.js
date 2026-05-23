@@ -39,6 +39,7 @@
 
 import { getSupabase } from '../../lib/supabase.js';
 import { fnfFetch as fnfFetchBase } from '../../lib/higgsfield-tokens.js';
+import { IDENTITY_LOCK_PROMPT } from '../../lib/persona-identity.js';
 import { randomUUID } from 'crypto';
 
 export const config = { maxDuration: 300 };
@@ -56,11 +57,9 @@ const JOB_SET_TYPE_CANDIDATES = ['text2image_soul_v2', 'text2image_soul', 'soul_
 let CACHED_JOB_SET_TYPE = null; // 첫 성공 후 캐시
 
 // ─────────── Identity Lock (불변 외형) ───────────
-// 미래 콘텐츠 생성마다 매번 prepend 됨. Soul ID 가 머리/스킨/체형/얼굴 들고 있음.
-// → 외형 토큰 잔뜩 넣으면 face attractor 옆으로 끌림. 매력점 한 줄만 lock.
-// 메이크업/옷/표정/포즈/배경은 미포함 — scene prompt 가 자유 결정.
-const IDENTITY_LOCK_PROMPT =
-  'tiny natural beauty mark just under the left eyebrow arch, between the brow and the upper eyelid, single subtle K-beauty charm point (visible on the viewer left side of her face).';
+// IDENTITY_LOCK_PROMPT = lib/persona-identity.js (single source of truth)
+// persona-soul (캐논) + persona-image (nano_banana inpaint) 두 경로 공유.
+// 매력점 위치 바꾸려면 lib 파일 한 곳만 수정.
 
 // ─────────── Canonical Makeup (캐논 생성 시) ───────────
 // ⚠️ 빈 문자열 — 생얼로 캐논 잡고, 메이크업은 scene prompt 에서 자유

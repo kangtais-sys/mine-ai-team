@@ -8,6 +8,7 @@
 import { Redis } from '@upstash/redis';
 import { randomUUID } from 'crypto';
 import { fnfFetch as fnfFetchBase } from '../../lib/higgsfield-tokens.js';
+import { withIdentityLock } from '../../lib/persona-identity.js';
 
 export const config = { maxDuration: 120 };
 
@@ -110,7 +111,12 @@ async function uploadImageToS3(primaryImageUrl) {
 // ── 모드 C: Higgsfield Nano Banana Pro — 얼굴 100% 일관성 멀티컷 생성 ──
 // primaryImageUrl: Higgsfield CloudFront URL 또는 base64 data URL
 // prompt: English prompt for the angle/scene variation
+//   → 함수 진입 시 IDENTITY_LOCK(매력점) 자동 prepend 됨. 호출자는 매력점 묘사 신경 X.
+//   → 이미 매력점 들어있으면 withIdentityLock() 가 중복 감지해 그대로 통과.
 async function generateWithNanaBanana(primaryImageUrl, prompt, label) {
+  // IDENTITY_LOCK 자동 prepend — persona-soul 캐논 경로와 일관성
+  prompt = withIdentityLock(prompt);
+
   // 1. 레퍼런스 입력 이미지 결정
   //    • CloudFront URL → 잡 ID 추출 → flux_kontext_job 타입 (최고 품질)
   //    • 그 외 → S3 업로드 → media_input 타입
