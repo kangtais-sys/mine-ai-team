@@ -60,74 +60,76 @@ const JOB_SET_TYPE_CANDIDATES = ['text2image_soul_v2', 'text2image_soul', 'soul_
 let CACHED_JOB_SET_TYPE = null; // 첫 성공 후 캐시
 
 // ─────────── Identity Lock (불변 외형) ───────────
-// 미래 콘텐츠 생성마다 매번 prepend 됨. 머리/스킨/체형/옷톤 만 lock.
-// 메이크업/표정/포즈/배경은 미포함 — scene prompt 가 자유 결정.
-// ⚠️ 22장 다양 스타일 학습 → 자유도 차단 위해 외형 attribute 매우 구체적으로 명시.
+// 미래 콘텐츠 생성마다 매번 prepend 됨. Soul ID 가 머리/스킨/체형/얼굴 들고 있음.
+// → 외형 토큰 잔뜩 넣으면 face attractor 옆으로 끌림. 매력점 한 줄만 lock.
+// 메이크업/옷/표정/포즈/배경은 미포함 — scene prompt 가 자유 결정.
 const IDENTITY_LOCK_PROMPT =
-  'Korean woman in her late twenties, ' +
-  'shoulder-length dark brown hair, loose down, soft natural waves, parted slightly off-center, ' +
-  'fair Korean skin with neutral undertone, natural matte finish, soft visible fine pores, ' +
-  'slim natural body proportions, ' +
-  'clean minimal off-white top, ' +
-  'small natural beauty mark on her right brow area, just below the right eyebrow arch (viewer left side of the face), between the brow and the upper eyelid, single subtle K-beauty charm point.';
+  'tiny natural beauty mark just under the left eyebrow arch, between the brow and the upper eyelid, single subtle K-beauty charm point (visible on the viewer left side of her face).';
 
-// ─────────── Canonical Makeup (캐논 생성 시만) ───────────
-// 미래 콘텐츠는 scene prompt 에서 메이크업 자유 (글램 / 데일리 / 노메이크업)
-const CANONICAL_MAKEUP_PROMPT =
-  'Light K-beauty natural makeup: soft natural brows, light mascara, ' +
-  'subtle pink-rose blush, glossy nude-pink lips, fresh complexion (no oily shine, no glossy forehead).';
+// ─────────── Canonical Makeup (캐논 생성 시) ───────────
+// ⚠️ 빈 문자열 — 생얼로 캐논 잡고, 메이크업은 scene prompt 에서 자유
+const CANONICAL_MAKEUP_PROMPT = '';
 
-// ─────────── 4 각도 — 변형 부분만 (Camera/Pose/Lighting/Background) ───────────
-// 설계: cinematic editorial portrait 스타일. 외형 lock + 메이크업은 위 두 상수에서 prepend.
+// ─────────── 4 각도 — V2 prompt 1:1 복원 (b5ed03fd 가 이 prompt 로 생성됨) ───────────
+// 설계: cinematic editorial portrait 스타일. IDENTITY_LOCK(매력점) 만 앞에 prepend.
+// ⚠️ V2 prompt 토큰 한 글자도 변경 금지 — face attractor 위치 보존.
 const ANGLE_VARIATIONS = [
   {
     key: 'front',
     label: '정면 무표정',
     variation:
-      'Camera: front view, eye-level, perfectly centered, symmetrical composition. ' +
-      'Pose/Expression: calm neutral expression, lips gently closed, direct calm gaze. ' +
+      'Korean woman in her late twenties, front view portrait, eye-level, perfectly centered, looking directly at camera, calm neutral expression, lips gently closed, symmetrical composition. ' +
+      'Style: cinematic editorial portrait. ' +
       'Lighting: soft diffused studio light, even fill, no harsh shadow. ' +
-      'Background: clean minimal pale neutral wall.',
+      'Background: clean minimal pale neutral wall. ' +
+      'Skin: natural matte finish, soft visible fine pores, realistic skin tone, no oily shine, no sweat. ' +
+      'Makeup: natural minimal K-beauty look. ' +
+      'Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.',
   },
   {
     key: 'three-quarter',
     label: '반측면 살짝미소',
     variation:
-      'Camera: three-quarter view, head turned slightly to one side showing both eyes with one cheek more visible, eye-level. ' +
-      'Pose/Expression: soft gentle closed-mouth smile, calm warm expression, subtle cinematic depth. ' +
-      'Lighting: warm soft natural light, gentle key plus fill, even balanced. ' +
-      'Background: clean minimal pale neutral wall.',
+      'Korean woman in her late twenties, three-quarter view portrait, head turned slightly to one side showing both eyes with one cheek more visible, soft gentle closed-mouth smile, calm warm expression, subtle cinematic depth. ' +
+      'Style: cinematic editorial portrait. ' +
+      'Lighting: warm soft natural light, gentle key + fill. ' +
+      'Background: clean minimal pale neutral wall. ' +
+      'Skin: natural matte finish, soft visible fine pores, realistic skin tone, no oily shine, no sweat. ' +
+      'Makeup: natural minimal K-beauty look. ' +
+      'Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.',
   },
   {
     key: 'smile',
     label: '정면 환한미소',
     variation:
-      'Camera: front view, eye-level, centered, symmetrical composition. ' +
-      'Pose/Expression: bright warm genuine open smile with teeth softly showing, joyful relaxed expression. ' +
+      'Korean woman in her late twenties, front view portrait, eye-level, centered, looking at camera, bright warm genuine open smile with teeth softly showing, joyful relaxed expression. ' +
+      'Style: cinematic editorial portrait. ' +
       'Lighting: natural daylight studio, soft diffused, even and flattering. ' +
-      'Background: clean minimal pale neutral wall.',
+      'Background: clean minimal pale neutral wall. ' +
+      'Skin: natural matte finish, soft visible fine pores, realistic skin tone, no oily shine, no sweat. ' +
+      'Makeup: natural minimal K-beauty look. ' +
+      'Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.',
   },
   {
     key: 'closeup',
     label: '정면 클로즈업',
     variation:
-      'Camera: tight close-up portrait from forehead to chin, eye-level, focused entirely on facial detail and eye expression. ' +
-      'Pose/Expression: calm composed minimal expression, lips gently closed, focused gaze. ' +
+      'Korean woman in her late twenties, tight close-up portrait from forehead to chin, eye-level, focused on facial detail and eye expression, calm composed minimal expression, lips gently closed. ' +
+      'Style: cinematic editorial portrait. ' +
       'Lighting: soft diffused beauty light, even gentle. ' +
-      'Background: clean minimal pale neutral wall, soft shallow depth blur.',
+      'Background: clean minimal pale neutral wall, soft shallow depth blur. ' +
+      'Skin: natural matte finish, soft visible fine pores, realistic skin tone, no oily shine, no sweat. ' +
+      'Makeup: natural minimal K-beauty look. ' +
+      'Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.',
   },
 ];
 
-// 공통 Style + Quality (모든 각도에 append) — 분포 안정용
-const STYLE_QUALITY_TAIL =
-  'Style: cinematic editorial portrait, hyperrealistic photography, real and natural beauty cosmetic model portrait. ' +
-  'Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.';
-
-// ANGLES = IDENTITY_LOCK + CANONICAL_MAKEUP + variation + STYLE_QUALITY_TAIL
+// ANGLES = IDENTITY_LOCK(매력점) + V2 variation
+// CANONICAL_MAKEUP, STYLE_QUALITY_TAIL 제거 — variation 안에 V2 그대로 포함됨
 const ANGLES = ANGLE_VARIATIONS.map((a) => ({
   key: a.key,
   label: a.label,
-  prompt: `${IDENTITY_LOCK_PROMPT} ${CANONICAL_MAKEUP_PROMPT} ${a.variation} ${STYLE_QUALITY_TAIL}`,
+  prompt: `${IDENTITY_LOCK_PROMPT} ${a.variation}`,
 }));
 
 // 글자/매거진 표지 분포 차단 + 보정 과잉 차단 + 변형 차단
