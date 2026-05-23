@@ -82,6 +82,10 @@ POST /inbox/conversations/{conversationId}/messages → body: { accountId*, mess
 - 아이콘: M 레터마크 SVG
 - UI: Linear-style 다크 테마
 
+## 📘 참고 문서 (Reference)
+- **Persona Soul 프롬프트 가이드**: [docs/persona-soul-prompt-guide.md](./docs/persona-soul-prompt-guide.md)
+  → V3 페르소나 실사화 프롬프트 설계/분포 트리거/Higgsfield Soul payload 검증값. 프롬프트 수정 전 필독.
+
 ## 9개 에이전트 구조
 1. AI 크리에이터 (유민혜/밀리밀리/얼쎄라 채널)
 2. AI 커뮤니티 (댓글/DM 관리)
