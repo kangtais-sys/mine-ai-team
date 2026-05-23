@@ -97,7 +97,7 @@ async function startSoulRequest(soulId, prompt) {
       custom_reference_id: soulId,
       custom_reference_strength: 1,
       width_and_height: '1536x2048',
-      quality: 'HD',
+      quality: '1080p',
     },
   };
   const res = await fetch(SOUL_ENDPOINT, {
