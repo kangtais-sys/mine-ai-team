@@ -39,7 +39,7 @@
 
 import { getSupabase } from '../../lib/supabase.js';
 import { fnfFetch as fnfFetchBase } from '../../lib/higgsfield-tokens.js';
-import { IDENTITY_LOCK_PROMPT } from '../../lib/persona-identity.js';
+import { withIdentityLock } from '../../lib/persona-identity.js';
 import { randomUUID } from 'crypto';
 
 export const config = { maxDuration: 300 };
@@ -57,9 +57,9 @@ const JOB_SET_TYPE_CANDIDATES = ['text2image_soul_v2', 'text2image_soul', 'soul_
 let CACHED_JOB_SET_TYPE = null; // 첫 성공 후 캐시
 
 // ─────────── Identity Lock (불변 외형) ───────────
-// IDENTITY_LOCK_PROMPT = lib/persona-identity.js (single source of truth)
-// persona-soul (캐논) + persona-image (nano_banana inpaint) 두 경로 공유.
-// 매력점 위치 바꾸려면 lib 파일 한 곳만 수정.
+// lib/persona-identity.js 가 single source of truth (현재 빈 문자열 — 점 빼기 정책).
+// withIdentityLock() 가 두 경로 공유 (persona-soul 캐논 + persona-image inpaint).
+// 매력점 정책 바꾸려면 lib 파일 한 곳만 수정.
 
 // ─────────── Canonical Makeup (캐논 생성 시) ───────────
 // ⚠️ 빈 문자열 — 생얼로 캐논 잡고, 메이크업은 scene prompt 에서 자유
@@ -119,12 +119,12 @@ const ANGLE_VARIATIONS = [
   },
 ];
 
-// ANGLES = IDENTITY_LOCK(매력점) + V2 variation
-// CANONICAL_MAKEUP, STYLE_QUALITY_TAIL 제거 — variation 안에 V2 그대로 포함됨
+// ANGLES = withIdentityLock(variation)
+// 현 정책: lock 비어있음 → variation 그대로. lock 켜지면 자동 prepend.
 const ANGLES = ANGLE_VARIATIONS.map((a) => ({
   key: a.key,
   label: a.label,
-  prompt: `${IDENTITY_LOCK_PROMPT} ${a.variation}`,
+  prompt: withIdentityLock(a.variation),
 }));
 
 // 글자/매거진 표지 분포 차단 + 보정 과잉 차단 + 변형 차단
