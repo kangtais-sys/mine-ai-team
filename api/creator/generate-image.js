@@ -3,12 +3,14 @@
 //   또는 POST { baseAssetUrl, prompt, aspectRatio } → 임시 호출 (저장 X)
 //
 // === 2026-05-24 80% 안정화 (canonical identity drift 대응) ===
+// === 2026-05-24 헤어 슬롯 옵션화 — 빈 슬롯 = 캐논 헤어 유지, 레퍼런스 있으면 Vision 텍스트 ===
 //
 // 흐름 (2단계):
-//   [PRE]  메이크업/조명 슬롯은 Vision 으로 텍스트 묘사 추출 → prompt 에만 박음 (image_urls 에서 제외)
-//          → 이유: 얼굴 셀카가 들어가면 nano-banana 가 얼굴 섞을 위험. makeup/lighting 은 추상 속성이라 텍스트로 충분.
-//          → image_urls = canonical + 의상/헤어/배경/제품 = 최대 5장 (기존 7장 → 5장)
-//   [R1]   1차 nano-banana-2/edit 호출 (위 5장 + 강화된 prompt)
+//   [PRE]  메이크업/조명/헤어(레퍼런스 있을 때만) 슬롯은 Vision 으로 텍스트 묘사 추출 → prompt 에만 박음 (image_urls 에서 제외)
+//          → 이유: 얼굴 셀카가 들어가면 nano-banana 가 얼굴 섞을 위험. makeup/lighting/hair 은 픽셀로 넣으면 face mix 유발.
+//          → 헤어 빈 슬롯 = 캐논 헤어 유지 명시 (모델 임의 변경 방지)
+//          → image_urls = canonical + 의상/배경/제품 = 최대 4~N장
+//   [R1]   1차 nano-banana-2/edit 호출 (위 이미지 + 강화된 prompt)
 //          → identity ABSOLUTE 톤 + 슬롯 hint 에 "ignore the face/person, extract only the role" 명시
 //          → 분포 트리거 키워드(8K, professional photography, natural soft lighting) 제거 — cinematic editorial matte 로 교체
 //          → docs/persona-soul-prompt-guide.md §2 반영
@@ -30,7 +32,8 @@ const FAL_ENDPOINT = 'https://fal.run/fal-ai/nano-banana-2/edit';
 const FAL_TIMEOUT_MS = 50000;
 
 // Vision 텍스트 묘사로 변환할 슬롯 — image_urls 에 들어가지 않음
-const VISION_TEXT_SLOTS = new Set(['makeup', 'lighting']);
+// hair: 변경할 때만 레퍼런스 넣음. 빈 슬롯 = 캐논 헤어 유지 (별도 line 으로 명시).
+const VISION_TEXT_SLOTS = new Set(['makeup', 'lighting', 'hair']);
 
 function falHeaders() {
   const key = process.env.FAL_API_KEY;
@@ -95,11 +98,11 @@ async function buildNanoSpec({ baseAssetUrl, scene, globalSlots, baseDescription
   // 2. 피부 상태 (비포/애프터 핵심) — 텍스트
   if (scene?.skin_state) lines.push(`Skin state: ${scene.skin_state}.`);
 
-  // 3. 슬롯 — 픽셀 참조 (의상/헤어/배경/제품) 과 Vision 텍스트 (메이크업/조명) 분리
+  // 3. 슬롯 — 픽셀 참조 (의상/배경/제품) 과 Vision 텍스트 (메이크업/조명/헤어) 분리
   //    슬롯 hint 강화: "extract ONLY ... IGNORE face/person" (가이드 분포 트리거 회피 + 사용자 멘탈모델 일치)
+  //    헤어는 픽셀에서 제외 — 셀카 얼굴 섞임 위험 회피, Vision 텍스트로 처리.
   const pixelSlotMap = [
     ['outfit',     'Outfit',     'extract ONLY the garment (style/color/fabric/silhouette). The person, face, hair, and background in this image are IRRELEVANT — ignore them entirely'],
-    ['hair',       'Hairstyle',  'extract ONLY the hair (style/length/color/parting). The face, outfit, and background in this image are IRRELEVANT — ignore them entirely'],
     ['background', 'Background', 'extract ONLY the environment, props, and depth. Any person in this image is IRRELEVANT — ignore them entirely'],
   ];
 
@@ -116,8 +119,11 @@ async function buildNanoSpec({ baseAssetUrl, scene, globalSlots, baseDescription
     }
   }
 
-  // 4. Vision 텍스트 슬롯 — makeup / lighting (image_urls 에는 안 들어감)
-  for (const key of ['makeup', 'lighting']) {
+  // 4. Vision 텍스트 슬롯 — makeup / lighting / hair (image_urls 에는 안 들어감)
+  //    헤어: 슬롯에 레퍼런스 있을 때만 Vision 으로 묘사 추출 → 변경 적용.
+  //         빈 슬롯이면 아래 [4b] 블록이 캐논 헤어 유지 line 을 박음.
+  let hairChanged = false;
+  for (const key of ['makeup', 'lighting', 'hair']) {
     const eff = effectiveSlot(sceneSlots, globalSlots, key, false);
     if (!eff) continue;
     const text = await resolveVisionDescription(key, eff, visionCache);
@@ -125,9 +131,17 @@ async function buildNanoSpec({ baseAssetUrl, scene, globalSlots, baseDescription
     visionDescriptions[key] = text;
     if (key === 'makeup') {
       lines.push(`Makeup (apply to the FIRST image's face): ${text}`);
+    } else if (key === 'hair') {
+      hairChanged = true;
+      lines.push(`Hairstyle (replace the FIRST image's hair with this new style): ${text}`);
     } else {
       lines.push(`Lighting and color tone: ${text}`);
     }
+  }
+
+  // 4b. 헤어 슬롯 비어있으면 = 캐논 헤어 유지 명시 (모델 임의 변경 방지)
+  if (!hairChanged) {
+    lines.push(`Hair: Keep the hairstyle (length, shape, color, parting, texture) exactly as in the FIRST image. Do not modify the hair.`);
   }
 
   // 5. 제품/소품 (multi) — 픽셀 참조 유지
