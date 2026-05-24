@@ -550,6 +550,64 @@ export default async function handler(req, res) {
       .json({ success: true, persona: { id: personaId, data: updated } });
   }
 
+  // ─────────── POST ?action=update_canonical ───────────
+  // 기존 페르소나의 canonical 갈아끼우기 (재가공 inpaint 결과 반영)
+  // body: { personaId, sourceUrl, angle?, lineageEdit? }
+  //   1) sourceUrl → 기존 personaId 폴더에 storage 영구 저장
+  //   2) data.canonical / candidates 갱신 + lineage.edits 에 lineageEdit push
+  //   3) 기존 storage 파일은 보존 (history)
+  if (req.method === 'POST' && action === 'update_canonical') {
+    const { personaId, sourceUrl, angle = 'front', lineageEdit = null } = req.body || {};
+    if (!personaId || !sourceUrl) {
+      return res.status(400).json({ error: 'personaId, sourceUrl 필수' });
+    }
+
+    const { data: row, error: readErr } = await sb
+      .from('creator_personas')
+      .select('id, data')
+      .eq('id', personaId)
+      .maybeSingle();
+    if (readErr) return res.status(500).json({ error: readErr.message });
+    if (!row) return res.status(404).json({ error: `persona ${personaId} 없음` });
+
+    const identityId = row.data?.identityId || 'mine-primary';
+
+    const persisted = await persistImage(sb, identityId, personaId, angle, sourceUrl);
+    if (!persisted.path) {
+      return res.status(500).json({ error: 'storage 저장 실패' });
+    }
+
+    const newCanonical = { angle, url: persisted.url, path: persisted.path };
+    const prevLineage = row.data?.lineage || {};
+    const newEdits = Array.isArray(prevLineage.edits) ? [...prevLineage.edits] : [];
+    if (lineageEdit && !newEdits.includes(lineageEdit)) newEdits.push(lineageEdit);
+
+    const prevCandidates = Array.isArray(row.data?.candidates) ? row.data.candidates : [];
+    const newData = {
+      ...row.data,
+      canonical: newCanonical,
+      candidates: [
+        ...prevCandidates,
+        { angle, label: '재가공', url: persisted.url, path: persisted.path },
+      ],
+      lineage: { ...prevLineage, edits: newEdits },
+      updatedAt: new Date().toISOString(),
+    };
+
+    const { error: updErr } = await sb
+      .from('creator_personas')
+      .update({ data: newData })
+      .eq('id', personaId);
+    if (updErr) return res.status(500).json({ error: updErr.message });
+
+    return res.status(200).json({
+      success: true,
+      personaId,
+      canonical: newCanonical,
+      lineage: newData.lineage,
+    });
+  }
+
   // ─────────── POST ?action=save_external ───────────
   // 외부 URL (CloudFront 등 임시) → Supabase storage 영구 저장 + 페르소나 record 생성
   // body: { identityId, name, sourceUrl, lineage?, angle?, soulId? }
