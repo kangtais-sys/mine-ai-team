@@ -44,7 +44,49 @@ export default async function handler(req, res) {
       .maybeSingle();
     if (error) return res.status(500).json({ error: error.message });
     if (!data) return res.status(404).json({ error: 'identity 없음', id });
-    return res.status(200).json({ identity: data });
+
+    // ── creator_personas (V3) 의 canonical 을 saved_bases 에 자동 머지 ──
+    // ContentSetup "저장된 베이스" UI 가 단일 배열만 보므로 응답 단에서 합쳐 노출.
+    // - source='persona' flag 로 출처 구분 (manual entry 와 구분)
+    // - URL 기준 중복 제거 (manual 우선 보존)
+    // - 페르소나 추가/삭제 시 자동 반영 (DB 머지 아님, 응답 단 머지)
+    const merged = { ...(data.data || {}) };
+    try {
+      const { data: personas } = await sb
+        .from('creator_personas')
+        .select('id, data')
+        .eq('data->>identityId', id)
+        .eq('data->>version', 'v3');
+
+      const manualBases = Array.isArray(merged.saved_bases) ? merged.saved_bases : [];
+      const manualUrls = new Set(manualBases.map((b) => b?.url).filter(Boolean));
+
+      const personaBases = (personas || [])
+        .filter((row) => row?.data?.canonical?.url)
+        .map((row) => {
+          const d = row.data;
+          const c = d.canonical;
+          return {
+            id: `persona:${row.id}`,
+            name: `${d.name || 'Persona'}${c.angle ? ` · ${c.angle}` : ''}`,
+            assetId: row.id,
+            url: c.url,
+            description: '캐논 페르소나',
+            created_at: d.createdAt || null,
+            source: 'persona',
+            personaId: row.id,
+            angle: c.angle || 'front',
+          };
+        })
+        .filter((e) => !manualUrls.has(e.url));
+
+      merged.saved_bases = [...manualBases, ...personaBases];
+    } catch (e) {
+      // 머지 실패 = manual 만 노출. 캐논 entry 없는 셈 — 화면 깨지지 않음.
+      console.warn('[identity GET] persona merge 실패 (무시):', e.message);
+    }
+
+    return res.status(200).json({ identity: { ...data, data: merged } });
   }
 
   if (req.method === 'POST') {
