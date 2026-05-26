@@ -5,7 +5,8 @@
 //       토큰/헤더 패턴은 media.js (이미 검증된 hf-api-key) 그대로 재사용.
 //       PDF #2 (바이럴 릴스 가이드) 의 iPhone handheld suffix 를 prompt 끝에 자동 append.
 //
-// POST { personaImageUrl, visualPrompt, dialogue?, duration? } → { requestId }
+// POST { personaImageUrl, visualPrompt, duration? } → { requestId }
+// (dialogue 는 별도 voice.js + Creatomate 단계에서 처리, 영상엔 안 박힘)
 // GET  ?requestId=xxx → { status, videoUrl? }
 //
 // 인증: HIGGSFIELD_API_KEY (platform.higgsfield.ai, hf-api-key 헤더)
@@ -32,10 +33,11 @@ function higgsfieldHeaders() {
   };
 }
 
-function buildVideoPrompt(visualPrompt, dialogue) {
+// 입모양 동기화는 별도 단계 안 함 (lipsync 폐기). 영상은 액션/표정만,
+// 보이스오버는 따로 깔아서 자막으로 보여주는 바이럴 패턴.
+function buildVideoPrompt(visualPrompt) {
   return [
     visualPrompt,
-    dialogue ? 'speaking dialogue naturally with synchronized mouth movements' : '',
     'photorealistic 9:16 vertical portrait, smooth motion, no warping',
     IPHONE_HANDHELD_SUFFIX,
   ].filter(Boolean).join(', ');
@@ -94,7 +96,6 @@ export default async function handler(req, res) {
     const {
       personaImageUrl,
       visualPrompt,
-      dialogue = '',
       duration = 5,
     } = req.body || {};
 
@@ -104,7 +105,7 @@ export default async function handler(req, res) {
 
     // Kling 지원 duration: 5 또는 10초
     const clampedDuration = duration >= 8 ? 10 : 5;
-    const prompt = buildVideoPrompt(visualPrompt, dialogue);
+    const prompt = buildVideoPrompt(visualPrompt);
 
     const body = {
       params: {
