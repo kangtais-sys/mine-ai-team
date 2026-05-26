@@ -158,6 +158,7 @@ export default async function handler(req, res) {
         requestId,
         status: 'queued',
         model: 'kling-v2-1-master',
+        _raw: data,
       });
     } catch (e) {
       return res.status(500).json({ error: e.message });
