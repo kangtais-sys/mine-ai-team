@@ -4,15 +4,21 @@
 // 입 부분만 audio 에 맞춰 교체. iPhone handheld 톤 유지의 핵심.
 //
 // 흐름:
-//   POST { videoUrl, audioUrl } → { requestId }
+//   POST { videoUrl, audioUrl | audioBase64, syncMode? } → { requestId }
 //   GET  ?requestId=xxx → { status, lipsyncedVideoUrl? }
+//
+// audioBase64 가 오면 Supabase Storage 에 임시 업로드 → public URL 사용 (fal 은 data URI 거부).
 //
 // 인증: FAL_API_KEY (Authorization: Key xxx)
 // 비용: $0.70/분 (5초 영상 ≈ $0.06)
 
+import { getSupabase } from '../../lib/supabase.js';
+import { randomUUID } from 'crypto';
+
 export const config = { maxDuration: 60 };
 
 const FAL_QUEUE_BASE = 'https://queue.fal.run/fal-ai/sync-lipsync';
+const BUCKET = 'creator-library';
 
 function falHeaders() {
   const key = process.env.FAL_API_KEY;
@@ -21,6 +27,20 @@ function falHeaders() {
     Authorization: `Key ${key}`,
     'Content-Type': 'application/json',
   };
+}
+
+async function uploadAudioToSupabase(audioBase64, mimeType = 'audio/mpeg') {
+  const sb = getSupabase();
+  const buf = Buffer.from(audioBase64, 'base64');
+  const ext = mimeType.includes('mp3') || mimeType.includes('mpeg') ? 'mp3'
+            : mimeType.includes('wav') ? 'wav' : 'm4a';
+  const path = `lipsync-audio/${randomUUID()}.${ext}`;
+  const { error } = await sb.storage
+    .from(BUCKET)
+    .upload(path, buf, { contentType: mimeType, upsert: false });
+  if (error) throw new Error(`Supabase audio upload 실패: ${error.message}`);
+  const { data } = sb.storage.from(BUCKET).getPublicUrl(path);
+  return data?.publicUrl;
 }
 
 export default async function handler(req, res) {
@@ -86,19 +106,32 @@ export default async function handler(req, res) {
 
   // POST — lipsync 요청 제출
   if (req.method === 'POST') {
-    const { videoUrl, audioUrl, syncMode = 'cut_off' } = req.body || {};
+    const {
+      videoUrl,
+      audioUrl,
+      audioBase64,
+      audioMimeType = 'audio/mpeg',
+      syncMode = 'cut_off',
+    } = req.body || {};
 
-    if (!videoUrl || !audioUrl) {
-      return res.status(400).json({ error: 'videoUrl, audioUrl 필수' });
+    if (!videoUrl) return res.status(400).json({ error: 'videoUrl 필수' });
+    if (!audioUrl && !audioBase64) {
+      return res.status(400).json({ error: 'audioUrl 또는 audioBase64 필수' });
     }
 
     try {
+      let finalAudioUrl = audioUrl;
+      if (!finalAudioUrl && audioBase64) {
+        finalAudioUrl = await uploadAudioToSupabase(audioBase64, audioMimeType);
+        console.log(`[scene-lipsync] audio 업로드 완료: ${finalAudioUrl}`);
+      }
+
       const submitRes = await fetch(FAL_QUEUE_BASE, {
         method: 'POST',
         headers: falHeaders(),
         body: JSON.stringify({
           video_url: videoUrl,
-          audio_url: audioUrl,
+          audio_url: finalAudioUrl,
           sync_mode: syncMode,
         }),
         signal: AbortSignal.timeout(30000),
@@ -124,6 +157,7 @@ export default async function handler(req, res) {
         success: true,
         requestId,
         status: 'queued',
+        audioUrl: finalAudioUrl,
       });
     } catch (e) {
       return res.status(500).json({ error: e.message });
