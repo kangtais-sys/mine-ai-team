@@ -80,65 +80,51 @@ async function resolveSlotText(slotKey, eff, cache) {
 }
 
 // Soul V2 t2i prompt 빌더 — 전부 텍스트.
+// Soul V2 가 single-portrait mode 로 진입하려면 캐논 생성과 동일한 라벨 구조 필요.
+// 자유체 prompt → Soul 이 reference 를 두 번 복제 → 상하 diptych 생성 (검증됨 2026-05-26).
+// 라벨 패턴: {subject 첫 문장}. Style/Lighting/Background/Skin/Makeup/Hair/Quality 정형.
+// 슬롯 비어있으면 캐논 기본값으로 채워 라벨 자체는 항상 유지 (시그널 약화 방지).
 async function buildSceneSpec({ scene, globalSlots, baseDescription }) {
   const sceneSlots = scene?.slots || {};
   const cache = new Map();
   const slotTexts = {};
-  const lines = [];
 
-  // 1. Identity 컨텍스트 — Soul 의 custom_reference_id 가 얼굴을 lock 하지만,
-  //    prompt 로도 한 명의 인물임을 명시 (콜라주 분포 차단)
-  const idBase = 'A single Korean woman in her late twenties, one person in frame, full natural body and face integrated as one coherent subject.';
-  lines.push(baseDescription ? `${idBase} Subject context: ${baseDescription}.` : idBase);
-
-  // 2. 피부 상태 (비포/애프터 핵심)
-  if (scene?.skin_state) lines.push(`Skin state: ${scene.skin_state}.`);
-
-  // 3. 슬롯 (전부 텍스트) — outfit / background / makeup / hair / lighting
   for (const key of ['outfit', 'background', 'makeup', 'hair', 'lighting']) {
     const eff = effectiveSlot(sceneSlots, globalSlots, key, false);
     if (!eff) continue;
     const text = await resolveSlotText(key, eff, cache);
-    if (!text) continue;
-    slotTexts[key] = text;
-    if (key === 'outfit') lines.push(`Outfit: ${text}.`);
-    else if (key === 'background') lines.push(`Background and environment: ${text}.`);
-    else if (key === 'makeup') lines.push(`Makeup on the face: ${text}.`);
-    else if (key === 'hair') lines.push(`Hairstyle: ${text}.`);
-    else if (key === 'lighting') lines.push(`Lighting and color tone: ${text}.`);
+    if (text) slotTexts[key] = text;
   }
 
-  // 4. 헤어 명시 안 됐으면 캐논 헤어 유지 (모델 임의 변경 방지)
-  if (!slotTexts.hair) {
-    lines.push('Hair: keep a natural well-groomed hairstyle consistent with the reference face. Do not invent dramatic hair changes.');
-  }
-
-  // 5. 제품/소품 (multi) — 텍스트만
   const prodItems = effectiveSlot(sceneSlots, globalSlots, 'products', true);
+  const productTexts = [];
   if (Array.isArray(prodItems) && prodItems.length) {
-    const productLines = [];
     for (const it of prodItems) {
       if (!it) continue;
-      const role = it.kind === 'tool' ? 'Tool' : 'Product';
       let text = '';
       if (it.description && it.description.trim()) text = it.description.trim();
       else if (it.assetUrl) text = await resolveSlotText('products', it, cache);
-      if (text) productLines.push(`${role}: ${text}.`);
-    }
-    if (productLines.length) {
-      lines.push(...productLines);
-      lines.push('Render products naturally held or placed in the scene, not as inset photos.');
+      if (text) productTexts.push(it.kind === 'tool' ? `tool: ${text}` : text);
     }
   }
 
-  // 6. 카메라/연출
-  if (scene?.visual) lines.push(`Scene action and camera: ${scene.visual}.`);
+  const firstParts = ['A single Korean woman in her late twenties'];
+  if (baseDescription) firstParts.push(baseDescription);
+  if (scene?.visual) firstParts.push(scene.visual);
 
-  // 7. 톤·품질
-  lines.push('Style: cinematic editorial portrait, natural matte skin finish with soft visible fine pores, realistic skin tone, balanced contrast, sharp focus. Single coherent photograph, not a collage, not multiple panels.');
+  const lines = [firstParts.join(', ') + '.'];
+  if (slotTexts.outfit) lines.push(`Outfit: ${slotTexts.outfit}.`);
+  if (productTexts.length) lines.push(`Props: ${productTexts.join('; ')}.`);
+  lines.push('Style: cinematic editorial portrait.');
+  lines.push(`Lighting: ${slotTexts.lighting || 'soft natural light, gentle key + fill, even flattering'}.`);
+  lines.push(`Background: ${slotTexts.background || 'clean simple environment'}.`);
+  lines.push(`Skin: ${scene?.skin_state || 'natural matte finish, soft visible fine pores, realistic skin tone, no oily shine, no sweat'}.`);
+  lines.push(`Makeup: ${slotTexts.makeup || 'natural minimal K-beauty look'}.`);
+  lines.push(`Hair: ${slotTexts.hair || 'natural well-groomed hairstyle consistent with the reference face'}.`);
+  lines.push('Quality: ultra-high detail, natural skin texture, realistic color, sharp focus, balanced contrast.');
 
   return {
-    prompt: lines.filter(Boolean).join(' '),
+    prompt: lines.join(' '),
     slotTexts,
   };
 }
