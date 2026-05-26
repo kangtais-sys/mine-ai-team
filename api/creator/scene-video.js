@@ -42,58 +42,47 @@ function buildVideoPrompt(visualPrompt, dialogue) {
 }
 
 export default async function handler(req, res) {
-  // GET — 상태 확인 (endpoint 경로 후보 fallback)
+  // GET — 상태 확인
+  // 공식 higgsfield-js SDK 검증: GET /v1/job-sets/{jobset_id}
+  // 응답: { id, jobs: [{ id, status, results }] } — jobs[0].status / jobs[0].results 사용
   if (req.method === 'GET') {
     const { requestId } = req.query;
     if (!requestId) return res.status(400).json({ error: 'requestId 필수' });
 
-    const candidates = [
-      `${HIGGSFIELD_BASE}/requests/${requestId}/status`,
-      `${HIGGSFIELD_BASE}/v1/jobs/${requestId}`,
-      `${HIGGSFIELD_BASE}/jobs/${requestId}`,
-      `${HIGGSFIELD_BASE}/v1/image2video/kling/${requestId}`,
-      `${HIGGSFIELD_BASE}/v1/jobsets/${requestId}`,
-      `${HIGGSFIELD_BASE}/job-sets/${requestId}`,
-    ];
-
-    const attempts = [];
-    let data = null;
-    let usedUrl = null;
-
     try {
-      for (const url of candidates) {
-        const r = await fetch(url, {
+      const r = await fetch(
+        `${HIGGSFIELD_BASE}/v1/job-sets/${requestId}`,
+        {
           headers: higgsfieldHeaders(),
           signal: AbortSignal.timeout(8000),
-        });
-        if (r.ok) {
-          data = await r.json();
-          usedUrl = url;
-          break;
         }
+      );
+      if (!r.ok) {
         const txt = await r.text().catch(() => '');
-        attempts.push(`${url.replace(HIGGSFIELD_BASE, '')} -> ${r.status} ${txt.substring(0, 80)}`);
-      }
-      if (!data) {
         return res.status(500).json({
-          error: 'Higgsfield status: 모든 후보 경로 실패',
-          attempts,
+          error: `Higgsfield status ${r.status}: ${txt.substring(0, 200)}`,
         });
       }
-      console.log(`[scene-video] status 경로 확정: ${usedUrl}`);
-      // status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw'
-      if (data.status === 'completed') {
-        const videoUrl = data.video?.url || data.output?.video?.url || null;
-        return res.status(200).json({ status: 'completed', videoUrl });
+      const data = await r.json();
+      const job = data.jobs?.[0];
+      const status = job?.status || data.status;
+      // status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw' | 'canceled'
+      if (status === 'completed') {
+        const videoUrl =
+          job?.results?.video?.url ||
+          job?.results?.url ||
+          data.video?.url ||
+          null;
+        return res.status(200).json({ status: 'completed', videoUrl, _raw: data });
       }
-      if (data.status === 'failed' || data.status === 'nsfw') {
+      if (status === 'failed' || status === 'nsfw' || status === 'canceled') {
         return res.status(200).json({
           status: 'failed',
-          error: data.error || data.status,
+          error: job?.error || data.error || status,
         });
       }
       return res.status(200).json({
-        status: data.status === 'queued' ? 'queued' : 'processing',
+        status: status === 'queued' ? 'queued' : 'processing',
       });
     } catch (e) {
       return res.status(500).json({ error: e.message });
