@@ -42,25 +42,45 @@ function buildVideoPrompt(visualPrompt, dialogue) {
 }
 
 export default async function handler(req, res) {
-  // GET — 상태 확인
+  // GET — 상태 확인 (endpoint 경로 후보 fallback)
   if (req.method === 'GET') {
     const { requestId } = req.query;
     if (!requestId) return res.status(400).json({ error: 'requestId 필수' });
 
-    try {
-      const statusRes = await fetch(
-        `${HIGGSFIELD_BASE}/requests/${requestId}/status`,
-        { headers: higgsfieldHeaders(), signal: AbortSignal.timeout(15000) }
-      );
+    const candidates = [
+      `${HIGGSFIELD_BASE}/requests/${requestId}/status`,
+      `${HIGGSFIELD_BASE}/v1/jobs/${requestId}`,
+      `${HIGGSFIELD_BASE}/jobs/${requestId}`,
+      `${HIGGSFIELD_BASE}/v1/image2video/kling/${requestId}`,
+      `${HIGGSFIELD_BASE}/v1/jobsets/${requestId}`,
+      `${HIGGSFIELD_BASE}/job-sets/${requestId}`,
+    ];
 
-      if (!statusRes.ok) {
-        const err = await statusRes.text().catch(() => '');
+    const attempts = [];
+    let data = null;
+    let usedUrl = null;
+
+    try {
+      for (const url of candidates) {
+        const r = await fetch(url, {
+          headers: higgsfieldHeaders(),
+          signal: AbortSignal.timeout(8000),
+        });
+        if (r.ok) {
+          data = await r.json();
+          usedUrl = url;
+          break;
+        }
+        const txt = await r.text().catch(() => '');
+        attempts.push(`${url.replace(HIGGSFIELD_BASE, '')} -> ${r.status} ${txt.substring(0, 80)}`);
+      }
+      if (!data) {
         return res.status(500).json({
-          error: `Higgsfield status ${statusRes.status}: ${err.substring(0, 200)}`,
+          error: 'Higgsfield status: 모든 후보 경로 실패',
+          attempts,
         });
       }
-
-      const data = await statusRes.json();
+      console.log(`[scene-video] status 경로 확정: ${usedUrl}`);
       // status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw'
       if (data.status === 'completed') {
         const videoUrl = data.video?.url || data.output?.video?.url || null;
