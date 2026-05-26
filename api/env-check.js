@@ -9,23 +9,23 @@ export default async function handler(req, res) {
     elevenLabsKeyLen: elKey.length,
   };
 
-  // ?check=elevenlabs 로 호출 시 ElevenLabs 플랜/사용량 조회
+  // ?check=elevenlabs 로 호출 시 ElevenLabs 진단
   if (req.query?.check === 'elevenlabs' && elKey) {
     try {
-      const r = await fetch('https://api.elevenlabs.io/v1/user/subscription', {
+      const subRes = await fetch('https://api.elevenlabs.io/v1/user/subscription', {
         headers: { 'xi-api-key': elKey },
         signal: AbortSignal.timeout(8000),
       });
-      const data = await r.json();
-      base.elevenlabsPlan = {
-        tier: data.tier,
-        character_count: data.character_count,
-        character_limit: data.character_limit,
-        can_extend_voice_limit: data.can_extend_voice_limit,
-        voice_limit: data.voice_limit,
-        professional_voice_limit: data.professional_voice_limit,
-        status: data.status,
-      };
+      base.subStatus = subRes.status;
+      base.subRaw = (await subRes.text()).substring(0, 500);
+
+      // JiYoung 보이스 직접 fetch
+      const vRes = await fetch('https://api.elevenlabs.io/v1/voices/AW5wrnG1jVizOYY7R1Oo', {
+        headers: { 'xi-api-key': elKey },
+        signal: AbortSignal.timeout(8000),
+      });
+      base.jiyoungStatus = vRes.status;
+      base.jiyoungRaw = (await vRes.text()).substring(0, 400);
     } catch (e) {
       base.elevenlabsPlanError = e.message;
     }
