@@ -19,13 +19,31 @@ export default async function handler(req, res) {
       base.subStatus = subRes.status;
       base.subRaw = (await subRes.text()).substring(0, 500);
 
-      // JiYoung 보이스 직접 fetch
-      const vRes = await fetch('https://api.elevenlabs.io/v1/voices/AW5wrnG1jVizOYY7R1Oo', {
-        headers: { 'xi-api-key': elKey },
-        signal: AbortSignal.timeout(8000),
-      });
-      base.jiyoungStatus = vRes.status;
-      base.jiyoungRaw = (await vRes.text()).substring(0, 400);
+      // JiYoung TTS 직접 호출
+      const ttsRes = await fetch(
+        'https://api.elevenlabs.io/v1/text-to-speech/AW5wrnG1jVizOYY7R1Oo',
+        {
+          method: 'POST',
+          headers: {
+            'xi-api-key': elKey,
+            'Content-Type': 'application/json',
+            'Accept': 'audio/mpeg',
+          },
+          body: JSON.stringify({
+            text: '안녕하세요',
+            model_id: 'eleven_multilingual_v2',
+            language_code: 'ko',
+          }),
+          signal: AbortSignal.timeout(15000),
+        }
+      );
+      base.ttsStatus = ttsRes.status;
+      if (ttsRes.status !== 200) {
+        base.ttsErrorRaw = (await ttsRes.text()).substring(0, 500);
+      } else {
+        const buf = await ttsRes.arrayBuffer();
+        base.ttsAudioBytes = buf.byteLength;
+      }
     } catch (e) {
       base.elevenlabsPlanError = e.message;
     }
