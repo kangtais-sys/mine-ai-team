@@ -27,6 +27,7 @@ async function getAccessToken() {
   await Promise.all([
     redis.set('cafe24:access_token', fresh.access_token, { ex: fresh.expires_in || 3600 }),
     fresh.refresh_token && redis.set('cafe24:refresh_token', fresh.refresh_token),
+    redis.del('health:alert:cafe24'),
   ]);
 
   return fresh.access_token;

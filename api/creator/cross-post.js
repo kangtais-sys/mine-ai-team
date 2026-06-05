@@ -41,13 +41,16 @@ async function optimizeCaption(platform, originalCaption) {
 }
 
 async function getYouTubeAccessToken() {
+  const { getGoogleRefreshToken } = await import('../utils/google-auth.js');
+  const refreshToken = await getGoogleRefreshToken();
+  if (!refreshToken) return null;
   const r = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       client_id: process.env.GOOGLE_CLIENT_ID,
       client_secret: process.env.GOOGLE_CLIENT_SECRET,
-      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+      refresh_token: refreshToken,
       grant_type: 'refresh_token',
     }),
   });

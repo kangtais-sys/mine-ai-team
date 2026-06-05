@@ -15,15 +15,18 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-// ── OAuth 액세스 토큰 (GOOGLE_REFRESH_TOKEN) ──────────────────────
+// ── OAuth 액세스 토큰 (KV 우선 → env fallback) ──────────────────────
 async function getOAuthToken() {
+  const { getGoogleRefreshToken } = await import('../utils/google-auth.js');
+  const refreshToken = await getGoogleRefreshToken();
+  if (!refreshToken) throw new Error('GOOGLE_REFRESH_TOKEN not set (KV or env)');
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       client_id: process.env.GOOGLE_CLIENT_ID,
       client_secret: process.env.GOOGLE_CLIENT_SECRET,
-      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+      refresh_token: refreshToken,
       grant_type: 'refresh_token',
     }),
   });

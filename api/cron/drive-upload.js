@@ -1,14 +1,15 @@
 import { google } from 'googleapis';
+import { getGoogleRefreshToken } from '../utils/google-auth.js';
 
 export const config = { maxDuration: 300 };
 
-function getAuth() {
+async function getAuth() {
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
     process.env.GOOGLE_REDIRECT_URI
   );
-  oauth2Client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+  oauth2Client.setCredentials({ refresh_token: await getGoogleRefreshToken() });
   return oauth2Client;
 }
 
@@ -156,7 +157,7 @@ export default async function handler(req, res) {
   if (!uploadFolderId) return res.status(200).json({ message: 'GOOGLE_DRIVE_UPLOAD_FOLDER_ID not set', processed: 0 });
 
   try {
-    const auth = getAuth();
+    const auth = await getAuth();
     const drive = google.drive({ version: 'v3', auth });
 
     // 영상 파일 감지

@@ -25,14 +25,15 @@ const CHANNELS = [
 
 const SPAM = ['팔로우', '맞팔', 'follow', 'http://', 'https://', '홍보', 'dm주세요', '선팔', 'subscribe'];
 
-function getAuth() {
+async function getAuth() {
+  const { getGoogleRefreshToken } = await import('../utils/google-auth.js');
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
     process.env.GOOGLE_REDIRECT_URI
   );
   oauth2Client.setCredentials({
-    refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+    refresh_token: await getGoogleRefreshToken(),
   });
   return oauth2Client;
 }
@@ -149,11 +150,14 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (!process.env.GOOGLE_REFRESH_TOKEN || !process.env.GOOGLE_CLIENT_ID) {
-    return res.status(500).json({ error: 'Google OAuth 환경변수 누락' });
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    return res.status(500).json({ error: 'Google OAuth 환경변수 누락 (CLIENT_ID)' });
   }
 
-  const auth = getAuth();
+  const auth = await getAuth();
+  if (!auth.credentials.refresh_token) {
+    return res.status(500).json({ error: 'Google refresh_token 없음 — /api/auth/google 재인증 필요' });
+  }
   const youtube = google.youtube({ version: 'v3', auth });
   const since = new Date(Date.now() - 30 * 60 * 1000); // 최근 30분
 

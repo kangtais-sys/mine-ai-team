@@ -20,9 +20,11 @@ async function getTodayRows() {
   if (!sheetId) return [];
 
   let auth;
-  if (process.env.GOOGLE_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID) {
+  const { getGoogleRefreshToken } = await import('../utils/google-auth.js');
+  const googleRefreshToken = await getGoogleRefreshToken();
+  if (googleRefreshToken && process.env.GOOGLE_CLIENT_ID) {
     auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, process.env.GOOGLE_REDIRECT_URI);
-    auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+    auth.setCredentials({ refresh_token: googleRefreshToken });
   } else if (process.env.GOOGLE_CLIENT_EMAIL) {
     auth = new google.auth.GoogleAuth({
       credentials: { client_email: process.env.GOOGLE_CLIENT_EMAIL, private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n') },

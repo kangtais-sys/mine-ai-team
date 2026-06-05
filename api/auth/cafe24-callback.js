@@ -49,6 +49,7 @@ export default async function handler(req, res) {
       redis.set('cafe24:refresh_token', tokenData.refresh_token),
       redis.set('cafe24:mall_id', mallId),
       redis.set('cafe24:scopes', tokenData.scopes?.join(',') || ''),
+      redis.del('health:alert:cafe24'),
     ]);
 
     console.log('[Cafe24 OAuth] Token saved, scopes:', tokenData.scopes);

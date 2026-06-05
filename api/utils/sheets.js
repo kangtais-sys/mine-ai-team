@@ -26,13 +26,15 @@ export async function readPublicSheet(sheetId, gid) {
   return parseCSV(await res.text());
 }
 
+import { getGoogleRefreshToken } from './google-auth.js';
+
 let _cachedToken = null;
 let _tokenExpiry = 0;
 
 export async function getGoogleAccessToken() {
   if (_cachedToken && Date.now() < _tokenExpiry - 60000) return _cachedToken;
-  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
-  if (!refreshToken) throw new Error('GOOGLE_REFRESH_TOKEN not set');
+  const refreshToken = await getGoogleRefreshToken();
+  if (!refreshToken) throw new Error('GOOGLE_REFRESH_TOKEN not set (KV or env)');
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

@@ -1,5 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { readPublicSheet } from './utils/sheets.js';
+import { getGoogleRefreshToken } from './utils/google-auth.js';
 
 const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
@@ -288,9 +289,10 @@ export default async function handler(req, res) {
     // 스마트스토어: Redis에 실제 데이터 있으면 연결됨 (Mac cron이 채움)
     const naverHasData = Object.keys(naverMonthly).length > 0;
     const cafe24HasData = Object.keys(cafe24Monthly).length > 0;
+    const googleToken = await getGoogleRefreshToken();
     const connections = {
       zernio: { connected: !!process.env.ZERNIO_API_KEY, label: 'Zernio SNS', source: 'SNS 자동화' },
-      google: { connected: !!process.env.GOOGLE_REFRESH_TOKEN, label: 'Google', source: 'OAuth' },
+      google: { connected: !!googleToken, label: 'Google', source: 'OAuth' },
       anthropic: { connected: !!process.env.ANTHROPIC_API_KEY, label: 'Anthropic', source: 'Claude AI' },
       instagram: { connected: !!process.env.INSTAGRAM_ACCESS_TOKEN, label: 'Instagram', source: 'Graph API' },
       oliveyoung: { connected: !!process.env.OLIVEYOUNG_SHEET_ID, label: '올리브영', source: 'Google Sheets CSV' },
@@ -441,7 +443,7 @@ export default async function handler(req, res) {
     }).filter((_, i) => i < new Date().getMonth() + 1);
 
     // === I. Health alerts (토큰 만료 등 — dashboard banner용) ===
-    const ALERT_KEYS = ['cafe24', 'instagram', 'meta'];
+    const ALERT_KEYS = ['cafe24', 'instagram', 'meta', 'google'];
     const healthAlertResults = await Promise.all(
       ALERT_KEYS.map(k => redis.get(`health:alert:${k}`).catch(() => null))
     );

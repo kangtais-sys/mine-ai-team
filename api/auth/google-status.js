@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { getGoogleRefreshToken } from '../utils/google-auth.js';
 
 function parseCookies(cookieHeader) {
   const cookies = {};
@@ -17,8 +18,9 @@ export default async function handler(req, res) {
 
   const cookies = parseCookies(req.headers.cookie);
 
-  // Check cookies first (user OAuth flow)
-  const refreshToken = cookies.google_refresh_token || process.env.GOOGLE_REFRESH_TOKEN;
+  // Cookie 우선 → KV 우선 → env fallback
+  // (Cookie는 사용자 브라우저 단위, KV는 모든 서버 API 공유)
+  const refreshToken = cookies.google_refresh_token || await getGoogleRefreshToken();
   const email = cookies.google_email ? decodeURIComponent(cookies.google_email) : null;
   const connectedCookie = cookies.google_connected === 'true';
 
