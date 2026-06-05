@@ -77,7 +77,11 @@ async function fetchMonthlySales(lwaToken, months = 5) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const start = new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
-    const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59).toISOString();
+    // SP-API는 CreatedBefore가 현재 시각 - 2분 이내면 InvalidInput 거부.
+    // 월말이 미래(현재 월)인 경우 현재 시각 - 3분으로 cap.
+    const monthEndMs = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59).getTime();
+    const safeEndMs = Math.min(monthEndMs, Date.now() - 3 * 60 * 1000);
+    const end = new Date(safeEndMs).toISOString();
 
     try {
       // Canceled/Unfulfillable 제외, 실 결제 주문만
