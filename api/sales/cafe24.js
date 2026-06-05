@@ -108,7 +108,11 @@ export default async function handler(req, res) {
   const cacheKey = `sales:cafe24:${new Date().toISOString().slice(0, 13)}`;
   try {
     const cached = await redis.get(cacheKey);
-    if (cached) return res.status(200).json(cached);
+    if (cached) {
+      // 데이터가 valid한 캐시면 alert도 stale — 같이 클리어
+      redis.del('health:alert:cafe24').catch(() => {});
+      return res.status(200).json(cached);
+    }
 
     const accessToken = await getAccessToken();
     const { monthly, daily } = await fetchMonthlySales(accessToken);
