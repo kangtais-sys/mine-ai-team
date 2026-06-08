@@ -9,7 +9,8 @@
     "dev:all": "npm run dev & npm run dev:server",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "rank:oliveyoung": "node scripts/oliveyoung-rank.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
@@ -44,6 +45,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
+    "playwright": "^1.60.0",
     "tailwindcss": "^4.2.2",
     "vite": "^8.0.1"
   }

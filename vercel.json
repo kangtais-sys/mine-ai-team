@@ -1,4 +1,9 @@
 {
+  "build": {
+    "env": {
+      "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1"
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/publish-morning",
@@ -51,6 +56,10 @@
     {
       "path": "/api/cron/chief-report",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/ranking",
+      "schedule": "0 */2 * * *"
     },
     {
       "path": "/api/cron/inbox",

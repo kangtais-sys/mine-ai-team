@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 const useDashboardStore = create((set) => ({
   stats: null,
+  ranking: null,
   loading: false,
   revenueData: [
     { month: '10월', 스마트스토어: 12000000, 올리브영: 18000000, 자사몰: 5000000, 해외: 3000000 },
@@ -34,6 +35,13 @@ const useDashboardStore = create((set) => ({
     } catch {
       set({ loading: false });
     }
+  },
+  fetchRanking: async () => {
+    try {
+      const res = await fetch('/api/ranking');
+      const data = await res.json();
+      set({ ranking: data });
+    } catch { /* keep previous */ }
   },
 }));
 

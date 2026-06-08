@@ -86,8 +86,62 @@ function SalesTable({ title, flag, rows, currency = 'KRW' }) {
   );
 }
 
+function RankChange({ change }) {
+  if (change == null || change === 0) return <span style={{ fontSize: 11, color: '#AEAEB2' }}>—</span>;
+  const up = change > 0; // 양수 = 순위 상승
+  return (
+    <span style={{ fontSize: 11, fontWeight: 600, color: up ? '#34C759' : '#FF3B30' }}>
+      {up ? '▲' : '▼'}{Math.abs(change)}
+    </span>
+  );
+}
+
+function RankingCard({ ranking }) {
+  const items = ranking?.items || [];
+  return (
+    <div style={{ ...CARD }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>🏆 미스트 카테고리 랭킹</div>
+        <div style={{ fontSize: 10, color: '#AEAEB2' }}>
+          {ranking?.updatedAt ? `${timeAgo(ranking.updatedAt)} 갱신` : ''}
+        </div>
+      </div>
+      {items.length === 0 ? (
+        <div style={{ fontSize: 11, color: '#AEAEB2', padding: '8px 0' }}>랭킹 데이터 수집 대기 중</div>
+      ) : (
+        items.map((it, i) => (
+          <a
+            key={i}
+            href={it.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none',
+              padding: '10px 0', borderBottom: i < items.length - 1 ? '1px solid #F5F5F7' : 'none',
+            }}
+          >
+            <span style={{ fontSize: 16 }}>{it.flag}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>{it.platform}</div>
+              <div style={{ fontSize: 10, color: '#AEAEB2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {it.category}{it.source === 'manual' ? ' · 수동' : ''}
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ fontSize: 20, fontWeight: 700, color: '#5E6AD2', lineHeight: 1 }}>
+                {it.rank != null ? `#${it.rank}` : '-'}
+              </span>
+              <RankChange change={it.change} />
+            </div>
+          </a>
+        ))
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard({ urgentCount = 0 }) {
-  const { stats, revenueData, fetchStats } = useDashboardStore();
+  const { stats, revenueData, fetchStats, ranking, fetchRanking } = useDashboardStore();
   const [googleStatus, setGoogleStatus] = useState(null);
   const [igRefreshing, setIgRefreshing] = useState(false);
   const [igPosts, setIgPosts] = useState({ yuminhye: null, millimilli: null });
@@ -149,6 +203,7 @@ export default function Dashboard({ urgentCount = 0 }) {
 
   useEffect(() => {
     fetchStats();
+    fetchRanking();
     fetch('/api/auth/google-status').then(r => r.json()).then(data => {
       if (data.connected) { localStorage.setItem('google_connected', 'true'); localStorage.setItem('google_email', data.email || ''); }
       setGoogleStatus(data);
@@ -423,6 +478,12 @@ export default function Dashboard({ urgentCount = 0 }) {
               },
             ]}
           />
+        </div>
+
+        {/* ── 미스트 카테고리 랭킹 (Amazon US + 올리브영) ── */}
+        <div style={{ marginBottom: 14 }}>
+          <SectionTitle>카테고리 랭킹</SectionTitle>
+          <RankingCard ranking={ranking} />
         </div>
 
         {/* ── 3. 수출 B2B 바이어별 현황 ── */}
