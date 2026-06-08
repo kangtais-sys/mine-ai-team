@@ -94,8 +94,7 @@ JSON만:
     if (!proposals) return res.status(200).json({ error: 'Failed' });
 
     await redis.set('sisuru:proposals', JSON.stringify(proposals), { ex: 86400 });
-    await redis.lpush('activity:log', JSON.stringify({ agent: 'AI 크리에이터', action: '시수르더쿠 주제 5개', detail: proposals.proposals?.map(p => p.title).join(' / '), timestamp: Date.now() }));
-    await redis.ltrim('activity:log', 0, 49);
+    // 대시보드 활동 로그 기록 제거 — 크리에이터 영역이 캘린더로 대체되어 불필요
     return res.status(200).json({ success: true, ...proposals });
   } catch (error) {
     console.error('[Trend]', error.message);

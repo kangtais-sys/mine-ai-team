@@ -268,8 +268,12 @@ export default async function handler(req, res) {
     }
 
     // === F. Activity log (KV) ===
-    const activityLog = await redis.lrange('activity:log', 0, 9);
-    const parsedLog = (activityLog || []).map(l => { try { return typeof l === 'string' ? JSON.parse(l) : l; } catch { return l; } });
+    // 넉넉히 읽고 'AI 크리에이터' 자동 활동(시수르더쿠 주제 등)은 제외 — 크리에이터 영역이 캘린더로 대체됨
+    const activityLogRaw = await redis.lrange('activity:log', 0, 39);
+    const parsedLog = (activityLogRaw || [])
+      .map(l => { try { return typeof l === 'string' ? JSON.parse(l) : l; } catch { return l; } })
+      .filter(l => l && l.agent !== 'AI 크리에이터')
+      .slice(0, 10);
 
     // === H. Naver + Cafe24 from Redis (Mac cron / Vercel cache) ===
     const [naverDaily, cafe24Daily, chiefReport] = await Promise.all([
