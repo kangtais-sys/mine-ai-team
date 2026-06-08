@@ -105,6 +105,36 @@ function buildMediaItems(draft) {
   return [];
 }
 
+// §4 — 드래프트를 Zernio 즉시 발행 (publish 액션 + 정시 발행 cron 공용 단일 경로).
+// draft 의 status/publishedAt/publishResult/error 를 변경. dryRun 이면 Zernio 호출 없이 payload만 반환.
+export async function publishDraftToZernio(draft, { dryRun = false } = {}) {
+  if (!envTrim('ZERNIO_API_KEY')) return { ok: false, error: 'ZERNIO_API_KEY 없음', code: 500 };
+  const text = [draft.caption, draft.hashtags].filter(Boolean).join('\n\n');
+  const mediaItems = buildMediaItems(draft);
+  const unsafe = mediaItems.find(m => !isSafePublicHttpsUrl(m.url));
+  if (unsafe) {
+    draft.status = 'failed'; draft.error = `안전하지 않은 미디어 URL 차단: ${unsafe.url}`;
+    return { ok: false, error: draft.error, code: 400 };
+  }
+  const body = {
+    profileId: (draft.profileId || PROFILE[draft.region] || PROFILE.kr || '').trim(),
+    text,
+    platforms: [{ platform: draft.platform, platformSpecificData: { caption: text.substring(0, 2200) } }],
+    status: 'published',
+    ...(mediaItems.length && { mediaItems }),
+  };
+  if (dryRun) return { ok: true, dryRun: true, body };
+  const result = await zPost(body);
+  if (result.error || (result.message && /error/i.test(result.message))) {
+    draft.status = 'failed'; draft.error = result.error || result.message;
+    return { ok: false, error: draft.error, result, code: 500 };
+  }
+  draft.status = 'published';
+  draft.publishedAt = new Date().toISOString();
+  draft.publishResult = { postId: result._id || result.id, via: 'zernio' };
+  return { ok: true, result };
+}
+
 export default async function handler(req, res) {
   const sb = getSupabase();
 
@@ -191,32 +221,11 @@ export default async function handler(req, res) {
 
       if (action === 'publish') {
         patchMeta();
-        if (!process.env.ZERNIO_API_KEY) return res.status(500).json({ error: 'ZERNIO_API_KEY 없음' });
-        const text = [draft.caption, draft.hashtags].filter(Boolean).join('\n\n');
-        const mediaItems = buildMediaItems(draft);
-        // SSRF 가드 — 발행 직전 모든 미디어 URL 검증(공개 https 아니면 거부)
-        const unsafe = mediaItems.find(m => !isSafePublicHttpsUrl(m.url));
-        if (unsafe) {
-          draft.status = 'failed'; draft.error = `안전하지 않은 미디어 URL 차단: ${unsafe.url}`;
+        const pr = await publishDraftToZernio(draft);
+        if (!pr.ok) {
           await sb.from('creator_drafts').update({ data: draft }).eq('id', id);
-          return res.status(400).json({ error: draft.error });
+          return res.status(pr.code || 500).json({ error: pr.error });
         }
-        const body = {
-          profileId: draft.profileId || PROFILE[draft.region] || PROFILE.kr,
-          text,
-          platforms: [{ platform: draft.platform, platformSpecificData: { caption: text.substring(0, 2200) } }],
-          status: 'published',
-          ...(mediaItems.length && { mediaItems }),
-        };
-        const result = await zPost(body);
-        if (result.error || (result.message && /error/i.test(result.message))) {
-          draft.status = 'failed'; draft.error = result.error || result.message;
-          await sb.from('creator_drafts').update({ data: draft }).eq('id', id);
-          return res.status(500).json({ error: draft.error });
-        }
-        draft.status = 'published';
-        draft.publishedAt = new Date().toISOString();
-        draft.publishResult = { postId: result._id || result.id, via: 'zernio' };
       }
 
       await sb.from('creator_drafts').update({ data: draft }).eq('id', id);
