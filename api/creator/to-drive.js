@@ -16,6 +16,34 @@ const redis = new Redis({
 const FOLDER_NAME = '밀리밀리 US 수동발행';
 const CH_LABEL = { us_ig: 'US-IG', us_tt: 'US-TT', kr_ig: 'KR-IG', kr_tt: 'KR-TT' };
 
+// SSRF 가드 — 우리 서버가 mediaUrl 을 직접 fetch 하므로 공개 https 만 허용(내부/사설 IP 차단).
+function ipv4ToInt(h) {
+  if (/^\d+$/.test(h)) return Number(h) >>> 0;
+  if (/^0x[0-9a-f]+$/i.test(h)) return parseInt(h, 16) >>> 0;
+  if (/^0[0-7]+$/.test(h)) return parseInt(h, 8) >>> 0;
+  const p = h.split('.');
+  if (p.length === 4 && p.every(x => /^\d+$/.test(x) && +x < 256)) return ((+p[0] << 24) | (+p[1] << 16) | (+p[2] << 8) | +p[3]) >>> 0;
+  return null;
+}
+function isPrivateV4Int(n) {
+  const a = (n >>> 24) & 255, b = (n >>> 16) & 255;
+  return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 100 && b >= 64 && b <= 127);
+}
+function isSafePublicHttpsUrl(u) {
+  let url; try { url = new URL(u); } catch { return false; }
+  if (url.protocol !== 'https:') return false;
+  const host = url.hostname.toLowerCase();
+  if (host === 'localhost') return false;
+  if (host.startsWith('[') || host.includes(':')) {
+    const h6 = host.replace(/^\[|\]$/g, '');
+    if (h6 === '::1' || h6 === '::' || /^(f[cd][0-9a-f]{2}:|fe80:)/.test(h6) || /::ffff:/i.test(h6)) return false;
+    return true;
+  }
+  const n = ipv4ToInt(host);
+  if (n != null) return !isPrivateV4Int(n);
+  return true;
+}
+
 async function getDrive() {
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, process.env.GOOGLE_REDIRECT_URI,
@@ -46,6 +74,7 @@ async function findOrCreateFolder(drive) {
 // 드래프트 영상을 드라이브에 업로드. 반환 { fileId, webViewLink, folderId }
 export async function uploadDraftToDrive(draft) {
   if (!draft?.mediaUrl) throw new Error('mediaUrl 없음');
+  if (!isSafePublicHttpsUrl(draft.mediaUrl)) throw new Error('안전하지 않은 mediaUrl(공개 https 아님)');
   const drive = await getDrive();
   const folderId = await findOrCreateFolder(drive);
 

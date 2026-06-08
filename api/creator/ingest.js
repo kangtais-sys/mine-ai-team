@@ -14,7 +14,9 @@ const PROFILE = {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  if (req.headers.authorization !== `Bearer ${process.env.CREATOR_INGEST_SECRET}`) {
+  const secret = process.env.CREATOR_INGEST_SECRET;
+  if (!secret) return res.status(503).json({ error: 'Service misconfigured' }); // fail-closed
+  if (req.headers.authorization !== `Bearer ${secret}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
