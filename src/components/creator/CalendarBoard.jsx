@@ -148,7 +148,9 @@ function Cell({ draft, weekday, onClick }) {
         height: 46, position: 'relative', flexShrink: 0, overflow: 'hidden',
         background: draft.mediaUrl && !isVideo
           ? `center/cover url(${draft.mediaUrl})`
-          : `linear-gradient(135deg, hsl(${draft.thumbHue ?? 260} 60% 88%), hsl(${(draft.thumbHue ?? 260) + 30} 55% 78%))`,
+          : (draft.mediaUrls && draft.mediaUrls.length
+            ? `center/cover url(${draft.mediaUrls[0]})`
+            : `linear-gradient(135deg, hsl(${draft.thumbHue ?? 260} 60% 88%), hsl(${(draft.thumbHue ?? 260) + 30} 55% 78%))`),
       }}>
         {draft.mediaUrl && isVideo && (
           <video src={draft.mediaUrl} muted playsInline preload="metadata"
@@ -160,7 +162,7 @@ function Cell({ draft, weekday, onClick }) {
           </div>
         )}
         <span style={{ position: 'absolute', top: 4, left: 5, fontSize: 9, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.5)' }}>
-          {isVideo ? 'VIDEO' : (draft.format === 'cardnews' ? 'CARD' : 'IMG')}
+          {isVideo ? 'VIDEO' : (draft.format === 'cardnews' ? `CARD${draft.mediaUrls?.length ? ' ×' + draft.mediaUrls.length : ''}` : 'IMG')}
         </span>
       </div>
       {/* 본문 */}
@@ -240,20 +242,31 @@ function Drawer({ cell, onClose, onAction, busy }) {
           <div style={{ fontSize: 11, color: '#8E8E93' }}>타겟: <b style={{ color: '#3A3A3C' }}>{channel.market}</b> · 시장 트렌드 기반 후킹</div>
 
           {/* 미리보기 */}
-          <div style={{
-            borderRadius: 12, aspectRatio: '9/16', maxHeight: 280, alignSelf: 'center', width: '60%',
-            overflow: 'hidden', position: 'relative',
-            background: draft?.mediaUrl && !isVideo ? `center/cover url(${draft.mediaUrl}) #000`
-              : `linear-gradient(135deg, hsl(${draft?.thumbHue ?? 260} 60% 86%), hsl(${(draft?.thumbHue ?? 260) + 30} 55% 74%))`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
-          }}>
-            {draft?.mediaUrl && isVideo && (
-              <video src={draft.mediaUrl} controls playsInline preload="metadata"
-                style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#000' }} />
-            )}
-            {!draft && <span style={{ fontSize: 12, opacity: .8 }}>아직 생성 안 됨</span>}
-            {draft && !draft.mediaUrl && <span style={{ fontSize: 11, opacity: .9 }}>미리보기 대기</span>}
-          </div>
+          {draft && draft.mediaUrls && draft.mediaUrls.length ? (
+            // 카드뉴스 캐러셀 — 슬라이드 가로 스크롤
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '2px 0 8px', scrollSnapType: 'x mandatory' }}>
+              {draft.mediaUrls.map((u, i) => (
+                <a key={i} href={u} target="_blank" rel="noreferrer"
+                  style={{ flex: '0 0 auto', width: 150, aspectRatio: '4/5', borderRadius: 10, overflow: 'hidden',
+                    border: '1px solid #E5E5EA', scrollSnapAlign: 'start', background: `center/cover url(${u}) #000` }} />
+              ))}
+            </div>
+          ) : (
+            <div style={{
+              borderRadius: 12, aspectRatio: '9/16', maxHeight: 280, alignSelf: 'center', width: '60%',
+              overflow: 'hidden', position: 'relative',
+              background: draft?.mediaUrl && !isVideo ? `center/cover url(${draft.mediaUrl}) #000`
+                : `linear-gradient(135deg, hsl(${draft?.thumbHue ?? 260} 60% 86%), hsl(${(draft?.thumbHue ?? 260) + 30} 55% 74%))`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+            }}>
+              {draft?.mediaUrl && isVideo && (
+                <video src={draft.mediaUrl} controls playsInline preload="metadata"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#000' }} />
+              )}
+              {!draft && <span style={{ fontSize: 12, opacity: .8 }}>아직 생성 안 됨</span>}
+              {draft && !draft.mediaUrl && <span style={{ fontSize: 11, opacity: .9 }}>미리보기 대기</span>}
+            </div>
+          )}
 
           {/* 미디어 업로드 (§3 — Blob 직업로드) */}
           {draft && (
