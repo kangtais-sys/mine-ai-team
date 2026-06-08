@@ -38,7 +38,16 @@ export default async function handler(req, res) {
     if (!buf.length) return res.status(400).json({ error: '빈 이미지' });
     if (buf.length > 4 * 1024 * 1024) return res.status(413).json({ error: '4MB 초과 — 캡처 품질 낮춰서' });
 
-    const ext = mt.includes('png') ? 'png' : mt.includes('webp') ? 'webp' : 'jpg';
+    // 이미지 타입 allowlist + 매직바이트 검증 — 임의 컨텐츠(html/svg) 공개 호스팅(XSS) 차단
+    const ALLOWED = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+    const ext = ALLOWED[mt];
+    if (!ext) return res.status(415).json({ error: '허용 안 되는 형식(jpeg/png/webp만)' });
+    const sniffOk =
+      (mt === 'image/png' && buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) ||
+      (mt === 'image/jpeg' && buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) ||
+      (mt === 'image/webp' && buf.length > 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP');
+    if (!sniffOk) return res.status(415).json({ error: '이미지 형식 불일치(매직바이트)' });
+
     const safeLabel = (label || 'capture').replace(/[^a-zA-Z0-9가-힣_-]/g, '').slice(0, 40) || 'capture';
     const blob = await put(`capture/${safeLabel}.${ext}`, buf, {
       access: 'public', contentType: mt, addRandomSuffix: true,
