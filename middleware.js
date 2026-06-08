@@ -23,6 +23,7 @@ const PUBLIC_PREFIXES = [
   '/api/cron/',
   '/api/auth/',
   '/api/video-analyze',
+  '/api/creator/ingest', // Cowork 콘텐츠 투입 — 자체 Bearer 시크릿으로 보호됨
 ];
 
 export default function middleware(req) {

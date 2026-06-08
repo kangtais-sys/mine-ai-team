@@ -5,6 +5,8 @@
 
 import { getSupabase } from '../../lib/supabase.js';
 
+export const config = { maxDuration: 120 }; // US 승인 시 드라이브 업로드 포함 가능
+
 const ZERNIO = 'https://zernio.com/api/v1';
 
 // env 값 끝 개행/공백 방어 (§2 — Vercel env 의 \n 으로 인한 Zernio 발행 실패 차단)
@@ -208,7 +210,21 @@ export default async function handler(req, res) {
       }
 
       if (action === 'save')     { patchMeta(); }
-      if (action === 'approve')  { patchMeta(); draft.status = 'approved'; }
+      if (action === 'approve')  {
+        patchMeta(); draft.status = 'approved';
+        // #2 — 미국 드래프트는 승인 시 영상을 드라이브로 자동 업로드(수동 발행용). 실패해도 승인은 유지.
+        if (draft.region === 'us' && draft.mediaUrl) {
+          try {
+            const { uploadDraftToDrive } = await import('./to-drive.js');
+            const r = await uploadDraftToDrive(draft);
+            draft.drive = { fileId: r.fileId, link: r.webViewLink, uploadedAt: new Date().toISOString() };
+            delete draft.driveError;
+          } catch (e) {
+            draft.driveError = e.message;
+            console.error('[approve→drive]', e.message);
+          }
+        }
+      }
       if (action === 'schedule') { patchMeta(); draft.status = 'scheduled'; }
 
       // 자연어 수정 요청 → 재생성 큐로 (외부 파이프라인이 status 'generating' + lastRevisionNote를 읽어 처리)
