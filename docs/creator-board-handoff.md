@@ -55,5 +55,31 @@
   profileId, revisions[], lastRevisionNote }
 ```
 
+## 6. [신규] 캡처 인제스트 엔드포인트 (Cowork 자동 캡처용)
+- 목적: Cowork가 브라우저에서 html2canvas로 뜬 캡처(예: 아마존/올리브영 실후기 스크린샷)를 **브라우저 밖으로 자동 반출**하지 못함(다운로드 동기화·CORS 막힘). 서버 인제스트가 있으면 capture→POST→CDN URL로 완전 자동화.
+- 신규 `api/creator/ingest-capture.js`:
+  - `POST { dataUrl 또는 base64, mimeType, label }` → fal/Blob 업로드 → `{ url }` 반환.
+  - **CORS 허용 필수**: `Access-Control-Allow-Origin: *`(또는 amazon.com/올리브영 등 캡처 소스 origin 허용) + `OPTIONS` 프리플라이트 처리. 이게 핵심 — 캡처가 일어나는 외부 페이지(amazon.com)에서 직접 POST 가능해야 함.
+  - 본문 한도(~4.5MB) 고려: 캡처 JPEG는 보통 <100KB라 base64로 충분.
+- 사용 흐름(Cowork): 외부 페이지에서 `html2canvas(el)` → `canvas.toDataURL('image/jpeg',0.8)` → `fetch('https://mine-ai-team.vercel.app/api/creator/ingest-capture',{method:'POST',body...})` → 받은 url을 후기 슬라이드/보드 mediaUrl로 사용.
+- 수용 기준: amazon.com 탭에서 POST → 200 + 공개 url 반환, 그 url이 이미지로 열림.
+
+## 7. [신규·핵심] Designed 카드뉴스 렌더러 (이미지+카피 → 브랜드 카드 베이킹)
+- 배경: Cowork(sandbox)는 브라우저에서 만든/캡처한 이미지를 카드 렌더러로 못 옮김(다운로드 동기화·CORS 둘 다 막힘). 그리고 sandbox PIL은 폰트 글리프·합성 품질 한계. → **이미지 합성을 앱으로 이관**하면 고퀄·자동화 동시 해결.
+- 목적: `{ 이미지 URL[], 카피[], 슬라이드 타입[], market }` 입력 → **1080×1350 캐러셀 슬라이드 PNG들**을 브랜드 톤으로 렌더 → CDN 업로드 → 해당 draft의 `mediaUrls`에 저장 → 보드/발행에서 사용.
+- 권장 기술(Vercel 서버리스): **Satori(HTML/JSX→SVG) + resvg(SVG→PNG)** 또는 `@vercel/og`. (playwright도 dep에 있으나 serverless에선 chromium 무거움 — Satori 우선.) 웹폰트 임베드로 글리프/이모지 문제 없음.
+- 신규 `api/creator/render-card.js`:
+  - `POST { slides:[{type, image, headline, body, labels, source}], market:'kr'|'us', draftId }`
+  - 슬라이드 타입: `cover`(대형 훅+제품/히어로), `info`(팁 본문, 긴 신뢰성 카피), `review`(캡처/재현 후기 + 출처), `cta`(태그·저장·댓글·팔로우).
+  - 각 슬라이드를 Satori로 렌더 → PNG → fal/Blob 업로드 → url 수집 → `creator_drafts.data.mediaUrls`에 저장 + `format:'cardnews'`.
+- **브랜드 템플릿은 추측 금지 — `Downloads/MILLIMILLI_브랜드디자인무드.md`(유저 제공) 그대로 적용**: 흑백 모노크롬, `milli²` 워드마크, 초대형 볼드 산세리프(숫자 강조), 모노스페이스 스펙 라벨(`[30+] proteins` 식), 블랙 필 라벨, 밑줄/슬래시 스펙, 출처 작게. KR=한글 볼드+국내 근거(올리브영 1위·984ppm), US=영문+아마존 근거(4.8/27).
+- 폰트: Poppins/Archivo 등 볼드 그로테스크(영문) + 한글 볼드(Pretendard/NanumGothicBold) + 모노(JetBrains/IBM Plex Mono) 임베드.
+- Cowork 연계: 나는 힉스필드 이미지(또는 §6 인제스트로 받은 캡처) URL + 슬라이드별 카피를 `render-card`에 넘김 → 앱이 베이킹. (이미지 다리 불필요)
+- 수용 기준: URL+카피 POST → 1080×1350 브랜드 카드 5~7장이 mediaUrls로 저장되고 보드 셀에서 캐러셀로 표시.
+
 ## 우선순위 권장
-1) §1 머지(즉시, 표시 정상화) → 2) §2 env(\n) 방어코드 → 3) §3 영상 호스팅 → 4) §4 정시 발행 cron → 5) §5 확인.
+**트랙 1 — 보드/발행 안정화(짧음):** 1) §1 머지(표시 정상화) → 2) §2 env(\n) 방어코드 → 3) §3 영상 호스팅 → 4) §4 정시 발행 cron → 5) §5 확인.
+
+**트랙 2 — 콘텐츠 자동화 핵심(이게 designed 카드 품질을 좌우):** 6) §6 캡처 인제스트 엔드포인트 → 7) §7 Designed 카드뉴스 렌더러. ← Cowork가 매일 이미지+카피만 넘기면 앱이 고퀄 브랜드 카드를 베이킹. **트랙 2가 본질(브라우저→sandbox 이미지 다리 영구 제거).**
+
+> Claude Code에 전달 문구 예시: "docs/creator-board-handoff.md 읽고 §6(인제스트)·§7(카드 렌더러)부터 만들어줘. 브랜드 톤은 Downloads/MILLIMILLI_브랜드디자인무드.md 그대로. Satori+resvg로 1080×1350, 발행계는 테스트 1건 검증 후."
