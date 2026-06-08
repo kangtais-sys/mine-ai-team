@@ -244,10 +244,10 @@ function Drawer({ cell, onClose, onAction, busy }) {
           {/* 미리보기 */}
           {draft && draft.mediaUrls && draft.mediaUrls.length ? (
             // 카드뉴스 캐러셀 — 슬라이드 가로 스크롤
-            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '2px 0 8px', scrollSnapType: 'x mandatory' }}>
+            <div style={{ display: 'flex', height: 190, gap: 8, overflowX: 'auto', padding: '2px 0 8px', scrollSnapType: 'x mandatory' }}>
               {draft.mediaUrls.map((u, i) => (
                 <a key={i} href={u} target="_blank" rel="noreferrer"
-                  style={{ flex: '0 0 auto', width: 150, aspectRatio: '4/5', borderRadius: 10, overflow: 'hidden',
+                  style={{ flex: '0 0 auto', width: 150, height: '100%', borderRadius: 10, overflow: 'hidden',
                     border: '1px solid #E5E5EA', scrollSnapAlign: 'start', background: `center/cover url(${u}) #000` }} />
               ))}
             </div>
