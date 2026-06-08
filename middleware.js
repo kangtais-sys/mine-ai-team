@@ -24,6 +24,7 @@ const PUBLIC_PREFIXES = [
   '/api/auth/',
   '/api/video-analyze',
   '/api/creator/ingest', // Cowork 콘텐츠 투입 — 자체 Bearer 시크릿으로 보호됨
+  '/api/creator/ingest-capture', // 외부 페이지 캡처 인제스트(CORS) — 자체 Bearer 시크릿
 ];
 
 export default function middleware(req) {
