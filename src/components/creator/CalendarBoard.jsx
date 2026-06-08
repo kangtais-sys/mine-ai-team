@@ -36,7 +36,7 @@ const WEEKDAYS = [
   { key: 'thu', label: '목', concept: '0603 비포·애프터',   hint: '못생김→예뻐짐 · POV 자막' },
   { key: 'fri', label: '금', concept: '카드뉴스',           hint: '뜨는 성분/시술 5선' },
   { key: 'sat', label: '토', concept: '제품 합성',          hint: '날씨/장소 감성 합성' },
-  { key: 'sun', label: '일', concept: '휴무',               hint: '미지정' },
+  { key: 'sun', label: '일', concept: '후기 릴스',          hint: '후기 기반 후킹 9:16 영상' },
 ];
 
 const CHANNELS = [
@@ -244,7 +244,7 @@ function Drawer({ cell, onClose, onAction, busy }) {
           {/* 미리보기 */}
           {draft && draft.mediaUrls && draft.mediaUrls.length ? (
             // 카드뉴스 캐러셀 — 슬라이드 가로 스크롤
-            <div style={{ display: 'flex', height: 190, gap: 8, overflowX: 'auto', padding: '2px 0 8px', scrollSnapType: 'x mandatory' }}>
+            <div style={{ display: 'flex', height: 190, flexShrink: 0, gap: 8, overflowX: 'auto', padding: '2px 0 8px', scrollSnapType: 'x mandatory' }}>
               {draft.mediaUrls.map((u, i) => (
                 <a key={i} href={u} target="_blank" rel="noreferrer"
                   style={{ flex: '0 0 auto', width: 150, height: '100%', borderRadius: 10, overflow: 'hidden',

@@ -103,7 +103,7 @@ function renderReview(s, market) {
   return frame([
     row({ justifyContent: 'space-between', alignItems: 'flex-start' }, [wordmark(), marketBadge(market)]),
     s.headline ? txt(s.headline, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 56, color: BLACK, lineHeight: 1.1, marginTop: 40, letterSpacing: -1 }) : null,
-    s.image ? h('div', { display: 'flex', marginTop: 36, width: '100%', height: 720, borderRadius: 24, overflow: 'hidden', backgroundColor: GRAY, border: `2px solid ${BLACK}` }, [slideImage(s.image, { width: W - 160, height: 720 })]) : null,
+    s.image ? h('div', { display: 'flex', marginTop: 36, width: '100%', height: 720, borderRadius: 24, overflow: 'hidden', backgroundColor: GRAY, border: `2px solid ${BLACK}` }, [slideImage(s.image, { width: W - 160, height: 720, objectFit: 'contain' })]) : null,
     s.source ? mono(`출처 · ${s.source}`, { fontSize: 24, color: SUB, marginTop: 24 }) : null,
     footer(),
   ].filter(Boolean));
