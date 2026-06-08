@@ -50,17 +50,46 @@ function setSchedule(draft, dateStr, timeStr) {
   draft.scheduledAt = localWallClockToUTC(dateStr, time, tz); // Zernio/cron용(UTC 절대시각)
 }
 
-// SSRF 가드 — 외부로 발행할 미디어 URL은 공개 https 만 허용(내부/사설/링크로컬 IP 차단)
+// 다양한 IPv4 표기(점10진/단일10진/16진/8진)를 정수로 정규화 — 우회 차단용
+function ipv4ToInt(h) {
+  if (/^\d+$/.test(h)) return Number(h) >>> 0;                 // 2130706433
+  if (/^0x[0-9a-f]+$/i.test(h)) return parseInt(h, 16) >>> 0;  // 0x7f000001
+  if (/^0[0-7]+$/.test(h)) return parseInt(h, 8) >>> 0;        // 017700000001
+  const p = h.split('.');
+  if (p.length === 4 && p.every(x => /^\d+$/.test(x) && +x < 256))
+    return ((+p[0] << 24) | (+p[1] << 16) | (+p[2] << 8) | +p[3]) >>> 0;
+  return null;
+}
+function isPrivateV4Int(n) {
+  const a = (n >>> 24) & 255, b = (n >>> 16) & 255;
+  return a === 0 || a === 10 || a === 127                       // 와일드카드/사설/루프백
+    || (a === 169 && b === 254)                                 // 링크로컬
+    || (a === 192 && b === 168)                                 // 사설
+    || (a === 172 && b >= 16 && b <= 31)                        // 사설
+    || (a === 100 && b >= 64 && b <= 127);                      // CGNAT
+}
+
+// SSRF 가드(방어심화) — 외부로 발행할 미디어 URL은 공개 https 만 허용.
+// ※ 이 URL은 우리 서버가 fetch하지 않고 Zernio(제3자)에 문자열로 전달됨 →
+//   연결시점(DNS resolve-then-connect) 방어는 비적용. 여기선 명백한 내부지정 차단에 집중.
 function isSafePublicHttpsUrl(u) {
   let url;
   try { url = new URL(u); } catch { return false; }
   if (url.protocol !== 'https:') return false;
-  const host = url.hostname.toLowerCase();
-  if (host === 'localhost' || host === '0.0.0.0' || host === '::1' || host === '[::1]') return false;
-  if (/^127\./.test(host) || /^10\./.test(host) || /^0\./.test(host)) return false;      // 루프백/사설/와일드카드
-  if (/^169\.254\./.test(host) || /^192\.168\./.test(host)) return false;                 // 링크로컬/사설
-  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) return false;                             // 172.16~31 사설
-  if (/^\[?(f[cd][0-9a-f]{2}:|fe80:)/.test(host)) return false;                           // IPv6 ULA/링크로컬
+  let host = url.hostname.toLowerCase();
+  if (host === 'localhost') return false;
+  // IPv6
+  if (host.startsWith('[') || host.includes(':')) {
+    const h6 = host.replace(/^\[|\]$/g, '');
+    if (h6 === '::1' || h6 === '::') return false;                 // 루프백/미지정
+    if (/^(f[cd][0-9a-f]{2}:|fe80:)/.test(h6)) return false;       // ULA/링크로컬
+    if (/::ffff:/i.test(h6)) return false;                         // IPv4-mapped 전면 거부(정상 미디어 미사용)
+    return true;
+  }
+  // IPv4(점10진/단일10진/16진/8진) 정규화 후 사설대역 검사
+  const n = ipv4ToInt(host);
+  if (n != null) return !isPrivateV4Int(n);
+  // 그 외는 호스트명 — 통과(우리가 fetch하지 않으므로 DNS 리바인딩 비해당)
   return true;
 }
 
