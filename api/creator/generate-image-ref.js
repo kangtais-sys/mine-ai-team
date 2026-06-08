@@ -1,65 +1,58 @@
-// §8 — 레퍼런스-가이드 이미지 자체생성 (앱-사이드 Higgsfield 공식 API).
-// {prompt, referenceUrls[], aspect} → 핀터 레퍼런스(§6 캡처)를 Higgsfield 에 업로드 →
-//   nano_banana_2(이미지-레퍼런스 모델)로 무드 반영 오리지널 생성 → 우리 Blob 에 저장 → {url}.
-// 카드 메인 이미지를 주제 맞춤 오리지널로. (persona-image.js 의 검증된 업로드/잡/폴링 흐름 재사용)
+// §8 — 레퍼런스-가이드 이미지 자체생성 (Higgsfield Cloud 공식 API, 안정 hf-api-key).
+// {prompt, referenceUrls[], aspect} → (referenceUrls 있으면 custom-reference 생성) →
+//   /v1/text2image/soul 로 오리지널 생성 → 우리 Blob 저장 → {url}.
+// ★ device-auth(회전 fnf 토큰) 의존 제거 — 영상 파이프라인과 동일한 HIGGSFIELD_API_KEY 사용(만료 없음).
 //
-// 인증: Bearer CREATOR_INGEST_SECRET (다른 코웍 엔드포인트와 동일). 미들웨어 예외.
-// ⚠️ 힉스필드 웹 UI 긁기 금지 — 공식 /agents API 만 사용.
+// 인증: Bearer CREATOR_INGEST_SECRET (코웍). 미들웨어 예외.
+// 검증: 422 프로브로 스키마 확인 — text2image/soul params{prompt,width_and_height(enum)},
+//        custom-references {name, input_images:[{type:'image_url',image_url}]}.
 import { put } from '@vercel/blob';
-import { promises as dns } from 'dns';
-import { fnfFetch as fnfFetchBase } from '../../lib/higgsfield-tokens.js';
 
 export const config = { maxDuration: 120 };
 
-const FNF_BASE = 'https://fnf.higgsfield.ai';
-const fnfFetch = (url, options = {}) => fnfFetchBase(url, options, 'generate-image-ref');
+const BASE = 'https://platform.higgsfield.ai';
 
-// 4:5(카드) → Higgsfield 포트레이트 enum '3:4', 9:16(릴스) 그대로
-const ASPECT = { '4:5': '3:4', '3:4': '3:4', '9:16': '9:16', '1:1': '1:1' };
-
-// SSRF — 레퍼런스 URL 을 우리가 직접 fetch 하므로 공개 https 만 + DNS 해석해 사설/내부 IP 거부.
-function ipv4ToInt(h) {
-  if (/^\d+$/.test(h)) return Number(h) >>> 0;
-  if (/^0x[0-9a-f]+$/i.test(h)) return parseInt(h, 16) >>> 0;
-  if (/^0[0-7]+$/.test(h)) return parseInt(h, 8) >>> 0;
-  const p = h.split('.');
-  if (p.length === 4 && p.every(x => /^\d+$/.test(x) && +x < 256)) return ((+p[0] << 24) | (+p[1] << 16) | (+p[2] << 8) | +p[3]) >>> 0;
-  return null;
-}
-function isPrivateV4Int(n) {
-  const a = (n >>> 24) & 255, b = (n >>> 16) & 255;
-  return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 100 && b >= 64 && b <= 127);
-}
-function isPrivateAddr(address, family) {
-  if (family === 4) { const n = ipv4ToInt(address); return n == null || isPrivateV4Int(n); }
-  const a = (address || '').toLowerCase();
-  return a === '::1' || a === '::' || /^(f[cd][0-9a-f]{2}:|fe80:)/.test(a) || /^::ffff:/.test(a);
-}
-async function safeHttps(u) {
-  let x; try { x = new URL(u); } catch { return false; }
-  if (x.protocol !== 'https:') return false;
-  const h = x.hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  if (h === 'localhost') return false;
-  const lit = ipv4ToInt(h);
-  if (lit != null) return !isPrivateV4Int(lit);
-  if (h.includes(':')) return !isPrivateAddr(h, 6);
-  let addrs; try { addrs = await dns.lookup(h, { all: true }); } catch { return false; }
-  return addrs.length > 0 && !addrs.some(a => isPrivateAddr(a.address, a.family));
+function hfHeaders() {
+  const key = (process.env.HIGGSFIELD_API_KEY || '').replace(/^["']|["']$/g, '').trim();
+  if (!key) throw new Error('HIGGSFIELD_API_KEY 없음');
+  return { 'hf-api-key': key, 'Content-Type': 'application/json', 'Origin': 'https://cloud.higgsfield.ai', 'Referer': 'https://cloud.higgsfield.ai/' };
 }
 
-// 이미지 URL → Higgsfield 업로드 슬롯 → PUT → media_input 참조
-async function uploadRef(url) {
-  const slot = await fnfFetch(`${FNF_BASE}/agents/uploads?type=image`, { method: 'POST', body: JSON.stringify({ url: 'placeholder' }) });
-  if (!slot.ok) throw new Error(`업로드 슬롯 실패(${slot.status})`);
-  const { id: mediaId, upload_url } = await slot.json();
-  if (!mediaId || !upload_url) throw new Error('업로드 슬롯 응답 이상');
-  const imgRes = await fetch(url, { redirect: 'manual' });
-  if (!imgRes.ok || !imgRes.body) throw new Error(`레퍼런스 다운로드 실패(${imgRes.status})`);
-  const mime = imgRes.headers.get('content-type') || 'image/jpeg';
-  const buf = Buffer.from(await imgRes.arrayBuffer());
-  const putRes = await fetch(upload_url, { method: 'PUT', headers: { 'Content-Type': mime }, body: buf });
-  if (!putRes.ok && putRes.status !== 200) throw new Error(`S3 PUT 실패(${putRes.status})`);
-  return { id: mediaId, type: 'media_input' };
+// aspect → Higgsfield Soul width_and_height enum (검증된 허용값)
+const SIZE = { '4:5': '1536x2048', '3:4': '1536x2048', '9:16': '1152x2048', '1:1': '1536x1536', '2:3': '1120x1680' };
+
+const isHttps = (u) => { try { return new URL(u).protocol === 'https:'; } catch { return false; } };
+
+// referenceUrls → custom-reference 생성 → reference id (best-effort)
+async function createReference(urls) {
+  const res = await fetch(`${BASE}/v1/custom-references`, {
+    method: 'POST', headers: hfHeaders(),
+    body: JSON.stringify({ name: `ref-${Date.now()}`, input_images: urls.map(u => ({ type: 'image_url', image_url: u })) }),
+  });
+  if (!res.ok) throw new Error(`custom-reference 생성 실패(${res.status}): ${(await res.text()).slice(0, 150)}`);
+  const d = await res.json();
+  const id = d.id || d.request_id || d.custom_reference_id;
+  if (!id) throw new Error('reference id 없음');
+  return id;
+}
+
+async function pollJobSet(jobSetId, deadlineMs) {
+  while (Date.now() < deadlineMs) {
+    await new Promise(r => setTimeout(r, 3000));
+    const r = await fetch(`${BASE}/v1/job-sets/${jobSetId}`, { headers: hfHeaders() });
+    if (!r.ok) continue;
+    const data = await r.json();
+    const job = data.jobs?.[0];
+    const status = job?.status || data.status;
+    if (status === 'completed') {
+      const rr = job?.results || {};
+      const url = rr.raw?.url || rr.min?.url || rr.image?.url || rr.url || rr.images?.[0]?.url || data.url || null;
+      if (url) return url;
+      throw new Error(`완료지만 이미지 URL 못 찾음: ${JSON.stringify(rr).slice(0, 200)}`);
+    }
+    if (['failed', 'nsfw', 'canceled'].includes(status)) throw new Error(`생성 ${status}: ${job?.error || ''}`);
+  }
+  throw new Error('생성 타임아웃');
 }
 
 export default async function handler(req, res) {
@@ -70,51 +63,35 @@ export default async function handler(req, res) {
 
   const { prompt, referenceUrls = [], aspect = '4:5' } = req.body || {};
   if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'prompt 필요' });
-  const refs = Array.isArray(referenceUrls) ? referenceUrls.slice(0, 3) : [];
-  for (const u of refs) if (!(await safeHttps(u))) return res.status(400).json({ error: `안전하지 않은 referenceUrl: ${u}` });
+  const refs = (Array.isArray(referenceUrls) ? referenceUrls : []).filter(isHttps).slice(0, 4);
+  const width_and_height = SIZE[aspect] || SIZE['4:5'];
 
   try {
-    // 1) 레퍼런스 업로드
-    const inputImages = [];
-    for (const u of refs) inputImages.push(await uploadRef(u));
-
-    // 2) nano_banana_2 잡 생성 (레퍼런스 무드 반영 오리지널)
-    const jobRes = await fnfFetch(`${FNF_BASE}/agents/jobs`, {
-      method: 'POST',
-      body: JSON.stringify({
-        job_set_type: 'nano_banana_2',
-        params: {
-          prompt: prompt.trim(),
-          aspect_ratio: ASPECT[aspect] || '3:4',
-          ...(inputImages.length && { input_images: inputImages }),
-          enhance_prompt: true,
-        },
-      }),
-    });
-    if (!jobRes.ok) throw new Error(`잡 생성 실패(${jobRes.status}): ${(await jobRes.text()).slice(0, 200)}`);
-    const ids = await jobRes.json();
-    const jobId = Array.isArray(ids) ? ids[0] : ids.id;
-    if (!jobId) throw new Error('잡 ID 없음');
-
-    // 3) 폴링 (최대 105초)
-    const deadline = Date.now() + 105_000;
-    let resultUrl = null;
-    while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 3000));
-      const st = await fnfFetch(`${FNF_BASE}/agents/jobs/${jobId}`, { method: 'GET' });
-      if (!st.ok) continue;
-      const job = await st.json();
-      if (job.status === 'completed' && job.result_url) { resultUrl = job.result_url; break; }
-      if (job.status === 'failed') throw new Error('생성 잡 실패');
+    // 1) 레퍼런스 생성 (있을 때만, best-effort — 실패해도 텍스트 생성은 진행)
+    let refId = null, refNote = null;
+    if (refs.length) {
+      try { refId = await createReference(refs); }
+      catch (e) { refNote = `reference skip: ${e.message}`; console.warn('[generate-image-ref]', refNote); }
     }
-    if (!resultUrl) throw new Error('생성 타임아웃');
 
-    // 4) 결과를 우리 Blob 에 저장(앱 소유 URL — Higgsfield CloudFront 만료/CORS 회피)
-    const imgRes = await fetch(resultUrl);
-    const buf = Buffer.from(await imgRes.arrayBuffer());
-    const blob = await put(`gen/ref-${jobId}.png`, buf, { access: 'public', contentType: 'image/png', addRandomSuffix: true });
+    // 2) text2image/soul 생성
+    const params = { prompt: prompt.trim(), width_and_height };
+    if (refId) { params.custom_reference_id = refId; params.custom_reference_strength = 0.6; }
+    const sub = await fetch(`${BASE}/v1/text2image/soul`, { method: 'POST', headers: hfHeaders(), body: JSON.stringify({ params }) });
+    if (!sub.ok) throw new Error(`생성 제출 실패(${sub.status}): ${(await sub.text()).slice(0, 200)}`);
+    const subData = await sub.json();
+    const jobSetId = subData.id || subData.request_id;
+    if (!jobSetId) throw new Error(`job-set id 없음: ${JSON.stringify(subData).slice(0, 150)}`);
 
-    return res.status(200).json({ url: blob.url, refs: inputImages.length, aspect: ASPECT[aspect] || '3:4' });
+    // 3) 폴링 → 이미지 URL
+    const imageUrl = await pollJobSet(jobSetId, Date.now() + 100_000);
+
+    // 4) 우리 Blob 저장(앱 소유)
+    const img = await fetch(imageUrl);
+    const buf = Buffer.from(await img.arrayBuffer());
+    const blob = await put(`gen/soul-${jobSetId}.png`, buf, { access: 'public', contentType: 'image/png', addRandomSuffix: true });
+
+    return res.status(200).json({ url: blob.url, size: width_and_height, usedReference: !!refId, ...(refNote && { refNote }) });
   } catch (e) {
     console.error('[generate-image-ref]', e.message);
     return res.status(500).json({ error: e.message });
