@@ -13,6 +13,7 @@ export const config = { maxDuration: 120 };
 
 const W = 1080, H = 1350;
 const BLACK = '#0A0A0A', WHITE = '#FFFFFF', GRAY = '#F2F1EE', SUB = '#6B6B6B';
+const LOGO_URL = 'https://zre3xstenznneqve.public.blob.vercel-storage.com/capture/milli_logo-S5AYbqtEpiw6igBWtUm0MPNMpgXZEf.png';
 
 // ── 폰트 로드(모듈 캐시) ──
 let FONTS = null;
@@ -73,16 +74,33 @@ function slideImage(src, style) {
 }
 
 // ── 슬라이드 타입별 ──
+// 미니멀 에디토리얼 리디자인 (첫 PIL 시안 기준): 실제 로고 + 모노 평점 + 헤드라인 지배 + 아웃라인 라벨 1개 + 작은 제품 액센트 + swipe
 function renderCover(s, market) {
+  const rating = market === 'us' ? '4.8★  AMAZON US' : 'OLIVE YOUNG 1위';
+  const spec = (s.labels && s.labels.length) ? s.labels.join('   /   ') : (market === 'us' ? '500 DALTON   /   30+ PROTEIN' : '500 DALTON   /   단백질 29가지');
   return frame([
-    row({ justifyContent: 'space-between', alignItems: 'flex-start' }, [wordmark(), marketBadge(market)]),
-    col({ marginTop: 56, flex: 1 }, [
-      s.headline ? txt(s.headline, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 92, color: BLACK, lineHeight: 1.05, letterSpacing: -2 }) : null,
-      s.body ? txt(s.body, { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 38, color: SUB, lineHeight: 1.4, marginTop: 28 }) : null,
-      (s.labels && s.labels.length) ? row({ marginTop: 36, gap: 14, flexWrap: 'wrap' }, s.labels.map(l => pill(l))) : null,
-      s.image ? h('div', { display: 'flex', marginTop: 'auto', width: '100%', height: 540, borderRadius: 28, overflow: 'hidden', border: `2px solid ${BLACK}` }, [slideImage(s.image, { width: W - 160, height: 540 })]) : null,
+    // 상단: 실제 milli² 로고 + 모노 평점(필❌) + 얇은 구분선
+    col({}, [
+      row({ justifyContent: 'space-between', alignItems: 'center' }, [
+        { type: 'img', props: { src: LOGO_URL, style: { height: 40, objectFit: 'contain' } } },
+        mono(rating, { fontSize: 27, color: BLACK, letterSpacing: 1 }),
+      ]),
+      h('div', { display: 'flex', height: 1, backgroundColor: '#E3E3E3', marginTop: 20 }, ''),
+    ]),
+    // 헤드라인 지배(초대형) + 짧은 서브 1줄
+    col({ marginTop: 64 }, [
+      s.headline ? txt(s.headline, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 108, color: BLACK, lineHeight: 1.02, letterSpacing: -3 }) : null,
+      s.body ? txt(s.body, { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 36, color: SUB, marginTop: 30 }) : null,
+      // 아웃라인 박스 라벨 1개 (필❌)
+      h('div', { display: 'flex', alignSelf: 'flex-start', marginTop: 44, border: `2px solid ${BLACK}`, borderRadius: 12, padding: '16px 24px' }, [mono(spec, { fontSize: 27 })]),
     ].filter(Boolean)),
-    footer(),
+    // 하단: 작은 제품 액센트(우측) + swipe (좌측) — 헤드라인이 주인공
+    row({ marginTop: 'auto', justifyContent: 'space-between', alignItems: 'flex-end' }, [
+      mono('swipe →', { fontSize: 24, color: SUB }),
+      s.image
+        ? h('div', { display: 'flex', width: 300, height: 380, borderRadius: 18, overflow: 'hidden' }, [slideImage(s.image, { width: 300, height: 380 })])
+        : mono('milli²', { fontSize: 22, color: '#C7C7CC' }),
+    ]),
   ]);
 }
 
