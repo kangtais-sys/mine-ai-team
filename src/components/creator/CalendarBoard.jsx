@@ -50,7 +50,10 @@ function startOfWeekMon(d) {
   return x;
 }
 function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
-function iso(d) { return new Date(d).toISOString().slice(0, 10); }
+function iso(d) {
+  const x = new Date(d);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+}
 function fmtMD(d) { return `${d.getMonth() + 1}/${d.getDate()}`; }
 
 // ─── 샘플 폴백(로컬 프리뷰용) ────────────────────────────
