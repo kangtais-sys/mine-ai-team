@@ -69,7 +69,7 @@ function frame(children, { bg = WHITE } = {}) {
 
 function slideImage(src, style) {
   if (!src) return null;
-  return h('img', { src, style: { objectFit: 'cover', ...style } });
+  return { type: 'img', props: { src, style: { objectFit: 'cover', ...style } } };
 }
 
 // ── 슬라이드 타입별 ──
