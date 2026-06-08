@@ -62,6 +62,10 @@
       "schedule": "0 */2 * * *"
     },
     {
+      "path": "/api/cron/creator-publish-due",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/cron/inbox",
       "schedule": "*/5 * * * *"
     },
