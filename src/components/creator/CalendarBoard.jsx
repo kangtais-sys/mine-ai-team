@@ -4,11 +4,16 @@
 // 데이터: GET /api/creator/calendar?week=YYYY-MM-DD (creator_drafts, version 'milli-v1')
 // API 미응답(로컬 vite) 시 내장 샘플 주간으로 폴백 렌더.
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ChevronLeft, ChevronRight, Camera, Music2, Plus, Play,
-  Check, Pencil, Clock, Send, Trash2, X, Loader2, RefreshCw, Sparkles,
+  Check, Pencil, Clock, Send, Trash2, X, Loader2, RefreshCw, Sparkles, Upload,
 } from 'lucide-react';
+import { upload } from '@vercel/blob/client';
+
+// 영상 URL 판별 (format 또는 확장자)
+const isVideoMedia = (draft) =>
+  draft?.format === 'reel' || draft?.format === 'shorts' || /\.(mp4|mov|webm|m4v)(\?|$)/i.test(draft?.mediaUrl || '');
 
 // ─── 상수 ────────────────────────────────────────────────
 const ACCENT = '#5E6AD2';
@@ -128,7 +133,7 @@ function Cell({ draft, weekday, onClick }) {
     );
   }
   const s = STATUS[draft.status] || STATUS.draft;
-  const isVideo = draft.format === 'reel' || draft.format === 'shorts';
+  const isVideo = isVideoMedia(draft);
   return (
     <button onClick={onClick} style={{
       width: '100%', height: '100%', minHeight: 96, border: `1px solid ${s.color}33`,
@@ -140,11 +145,15 @@ function Cell({ draft, weekday, onClick }) {
     onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,.04)'; }}>
       {/* 썸네일 */}
       <div style={{
-        height: 46, position: 'relative', flexShrink: 0,
-        background: draft.mediaUrl
+        height: 46, position: 'relative', flexShrink: 0, overflow: 'hidden',
+        background: draft.mediaUrl && !isVideo
           ? `center/cover url(${draft.mediaUrl})`
           : `linear-gradient(135deg, hsl(${draft.thumbHue ?? 260} 60% 88%), hsl(${(draft.thumbHue ?? 260) + 30} 55% 78%))`,
       }}>
+        {draft.mediaUrl && isVideo && (
+          <video src={draft.mediaUrl} muted playsInline preload="metadata"
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+        )}
         {draft.mediaUrl && isVideo && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Play size={16} color="#fff" fill="#fff" />
@@ -172,11 +181,36 @@ function Drawer({ cell, onClose, onAction, busy }) {
   const [hashtags, setHashtags] = useState(cell?.draft?.hashtags || '');
   const [time, setTime] = useState(cell?.draft?.scheduledAt?.slice(11, 16) || '09:00');
   const [revisionNote, setRevisionNote] = useState('');
+  const fileRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState('');
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadErr('');
+    setUploading(true);
+    try {
+      const blob = await upload(file.name, file, {
+        access: 'public',
+        handleUploadUrl: '/api/creator/blob-upload',
+        contentType: file.type,
+        multipart: file.size > 5 * 1024 * 1024,
+      });
+      const fmt = file.type.startsWith('video') ? 'reel' : (draft?.format || 'cardnews');
+      // 업로드한 URL 을 드래프트에 저장(save) — 저장 후 보드 리로드되어 셀에 영상 표시
+      onAction('save', { ...cell, caption, hashtags, time, mediaUrl: blob.url, format: fmt });
+    } catch (err) {
+      setUploadErr(err?.message || '업로드 실패');
+      setUploading(false);
+    }
+  }
 
   if (!cell) return null;
   const { channel, weekday, date, draft } = cell;
   const status = draft?.status || 'empty';
-  const isVideo = draft && (draft.format === 'reel' || draft.format === 'shorts');
+  const isVideo = isVideoMedia(draft);
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', justifyContent: 'flex-end' }}>
@@ -208,14 +242,33 @@ function Drawer({ cell, onClose, onAction, busy }) {
           {/* 미리보기 */}
           <div style={{
             borderRadius: 12, aspectRatio: '9/16', maxHeight: 280, alignSelf: 'center', width: '60%',
-            background: draft?.mediaUrl ? `center/cover url(${draft.mediaUrl}) #000`
+            overflow: 'hidden', position: 'relative',
+            background: draft?.mediaUrl && !isVideo ? `center/cover url(${draft.mediaUrl}) #000`
               : `linear-gradient(135deg, hsl(${draft?.thumbHue ?? 260} 60% 86%), hsl(${(draft?.thumbHue ?? 260) + 30} 55% 74%))`,
             display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
           }}>
+            {draft?.mediaUrl && isVideo && (
+              <video src={draft.mediaUrl} controls playsInline preload="metadata"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#000' }} />
+            )}
             {!draft && <span style={{ fontSize: 12, opacity: .8 }}>아직 생성 안 됨</span>}
-            {draft?.mediaUrl && isVideo && <Play size={34} fill="#fff" />}
             {draft && !draft.mediaUrl && <span style={{ fontSize: 11, opacity: .9 }}>미리보기 대기</span>}
           </div>
+
+          {/* 미디어 업로드 (§3 — Blob 직업로드) */}
+          {draft && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <input ref={fileRef} type="file" accept="video/mp4,video/quicktime,image/*"
+                onChange={handleFile} style={{ display: 'none' }} />
+              <button type="button" disabled={uploading || busy} onClick={() => fileRef.current?.click()}
+                style={{ ...ghostBtn, justifyContent: 'center', opacity: uploading ? .6 : 1 }}>
+                {uploading ? <Loader2 size={14} className="spin" /> : <Upload size={14} />}
+                {uploading ? '업로드 중…' : (draft.mediaUrl ? '미디어 교체' : '영상/이미지 업로드')}
+              </button>
+              {uploadErr && <span style={{ fontSize: 10.5, color: '#FF3B30' }}>{uploadErr}</span>}
+              <span style={{ fontSize: 10, color: '#AEAEB2' }}>mp4·이미지 직접 업로드(최대 200MB). 업로드 후 자동 저장됩니다.</span>
+            </div>
+          )}
 
           {draft && <StatusBadge status={status} />}
 

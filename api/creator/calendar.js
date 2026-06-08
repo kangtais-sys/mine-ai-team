@@ -165,6 +165,10 @@ export default async function handler(req, res) {
         if (payload.caption != null) draft.caption = payload.caption;
         if (payload.hashtags != null) draft.hashtags = payload.hashtags;
         if (payload.time) setSchedule(draft, draft.date, payload.time);
+        // §3 — 보드에서 Blob 업로드한 미디어 URL 저장
+        if (payload.mediaUrl !== undefined) draft.mediaUrl = payload.mediaUrl;
+        if (payload.mediaUrls !== undefined) draft.mediaUrls = payload.mediaUrls;
+        if (payload.format) draft.format = payload.format;
         draft.updatedAt = new Date().toISOString();
       };
 
