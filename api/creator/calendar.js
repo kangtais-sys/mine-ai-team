@@ -7,16 +7,19 @@ import { getSupabase } from '../../lib/supabase.js';
 
 const ZERNIO = 'https://zernio.com/api/v1';
 
+// env 값 끝 개행/공백 방어 (§2 — Vercel env 의 \n 으로 인한 Zernio 발행 실패 차단)
+const envTrim = (k, fb = '') => (process.env[k] || fb).trim();
+
 // region → Zernio 프로필 (accounts.js와 동일)
 const PROFILE = {
-  kr: process.env.ZERNIO_MILLIMILLI_PROFILE_ID || '69d08cc1986d57bb8f733102',
-  us: process.env.ZERNIO_MILLIMILLI_US_PROFILE_ID || '69fbfcd01fc1fdb66f249aa8',
+  kr: envTrim('ZERNIO_MILLIMILLI_PROFILE_ID', '69d08cc1986d57bb8f733102'),
+  us: envTrim('ZERNIO_MILLIMILLI_US_PROFILE_ID', '69fbfcd01fc1fdb66f249aa8'),
 };
 
 const zPost = (body) =>
   fetch(`${ZERNIO}/posts`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${process.env.ZERNIO_API_KEY}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${envTrim('ZERNIO_API_KEY')}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   }).then(r => r.json());
 

@@ -21,7 +21,7 @@ const zFetch = (path, opts = {}) =>
     },
   }).then(r => r.json());
 
-const LALA_PROFILE_ID = process.env.ZERNIO_YUMINHYE_PROFILE_ID || '69d08807986d57bb8f72f7e6';
+const LALA_PROFILE_ID = (process.env.ZERNIO_YUMINHYE_PROFILE_ID || '69d08807986d57bb8f72f7e6').trim();
 
 async function optimizeCaption(platform, originalCaption) {
   const instructions = {

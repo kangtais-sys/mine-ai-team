@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const profileId = process.env.ZERNIO_MILLIMILLI_PROFILE_ID;
+  const profileId = (process.env.ZERNIO_MILLIMILLI_PROFILE_ID || '').trim();
   const today = new Date().toISOString().slice(0, 10);
 
   try {

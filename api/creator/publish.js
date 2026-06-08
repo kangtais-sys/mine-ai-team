@@ -1,7 +1,7 @@
 import { getSupabase } from '../../lib/supabase.js';
 
 const ZERNIO = 'https://zernio.com/api/v1';
-const MILLIMILLI_PROFILE_ID = process.env.ZERNIO_MILLIMILLI_PROFILE_ID || '69d08cc1986d57bb8f733102';
+const MILLIMILLI_PROFILE_ID = (process.env.ZERNIO_MILLIMILLI_PROFILE_ID || '69d08cc1986d57bb8f733102').trim();
 
 const zPost = async (body) => {
   const res = await fetch(`${ZERNIO}/posts`, {

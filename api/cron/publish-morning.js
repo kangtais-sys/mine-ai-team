@@ -38,7 +38,7 @@ export default async function handler(req, res) {
       const postRes = await zFetch('/posts', {
         method: 'POST',
         body: JSON.stringify({
-          profileId: process.env.ZERNIO_MILLIMILLI_PROFILE_ID,
+          profileId: (process.env.ZERNIO_MILLIMILLI_PROFILE_ID || '').trim(),
           text: caption,
           platforms: ['instagram', 'tiktok'],
         }),
