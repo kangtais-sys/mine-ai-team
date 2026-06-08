@@ -5,6 +5,8 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
+export const config = { maxDuration: 300 }; // 첫 YTD 조회(전체 월) 대비 — 이후 마감월 캐시로 빨라짐
+
 async function getAccessToken() {
   const accessToken = await redis.get('cafe24:access_token');
   if (accessToken) return accessToken;
@@ -64,35 +66,48 @@ async function fetchAllOrders(accessToken, startDate, endDate) {
   return allOrders;
 }
 
-async function fetchMonthlySales(accessToken, months = 5) {
-  const monthly = {};
-  const daily = {}; // YYYYMMDD → { revenue, orders }
-  const now = new Date();
+// payment_amount = 이미 취소/환불 반영된 net 결제액(취소건 0). 배송비 포함.
+const orderRevenue = (o) => parseFloat(o.payment_amount || o.total_price || o.actual_payment_amount || 0) || 0;
+
+// 한 달치 조회 → { revenue, orders, daily }
+async function fetchOneMonth(accessToken, year, monthIdx /* 0-based */) {
+  const monthStr = `${year}-${String(monthIdx + 1).padStart(2, '0')}`;
+  const startDate = `${monthStr}-01`;
+  const lastDay = new Date(year, monthIdx + 1, 0).getDate();
+  const endDate = `${monthStr}-${String(lastDay).padStart(2, '0')}`;
+  const orders = await fetchAllOrders(accessToken, startDate, endDate);
+  const revenue = Math.round(orders.reduce((s, o) => s + orderRevenue(o), 0));
+  const daily = {};
+  for (const o of orders) {
+    const dateKey = (o.order_date || o.payment_date || '').slice(0, 10).replace(/-/g, '');
+    if (dateKey.length !== 8) continue;
+    if (!daily[dateKey]) daily[dateKey] = { revenue: 0, orders: 0 };
+    daily[dateKey].revenue += Math.round(orderRevenue(o));
+    daily[dateKey].orders += 1;
+  }
+  return { monthStr, revenue, orders: orders.length, daily };
+}
+
+// YTD: 1월~현재월 전체(이전엔 최근 5개월만 → 6월에 1월 누락되어 YTD 과소). 마감월은 30일 캐시로 재조회 비용 회피.
+async function fetchMonthlySales(accessToken) {
   const kstNow = new Date(Date.now() + 9 * 3600000);
+  const year = kstNow.getFullYear();
+  const curMonth = kstNow.getMonth(); // 0-based
+  const monthly = {};
+  const daily = {};
 
-  for (let i = 0; i < months; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const startDate = `${monthStr}-01`;
-    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    const endDate = `${monthStr}-${String(lastDay).padStart(2, '0')}`;
-
+  for (let mi = 0; mi <= curMonth; mi++) {
+    const monthStr = `${year}-${String(mi + 1).padStart(2, '0')}`;
+    const isClosed = mi < curMonth;
+    const cacheKey = `sales:cafe24:m:${monthStr}`;
     try {
-      const orders = await fetchAllOrders(accessToken, startDate, endDate);
-      const total = orders.reduce((sum, o) => {
-        return sum + parseFloat(o.payment_amount || o.total_price || o.actual_payment_amount || 0);
-      }, 0);
-      monthly[monthStr] = { revenue: Math.round(total), orders: orders.length };
-
-      // 일별 집계: order_date 또는 payment_date 기준
-      for (const o of orders) {
-        const rawDate = o.order_date || o.payment_date || '';
-        const dateKey = rawDate.slice(0, 10).replace(/-/g, ''); // YYYYMMDD
-        if (!dateKey || dateKey.length !== 8) continue;
-        if (!daily[dateKey]) daily[dateKey] = { revenue: 0, orders: 0 };
-        daily[dateKey].revenue += Math.round(parseFloat(o.payment_amount || o.total_price || o.actual_payment_amount || 0));
-        daily[dateKey].orders += 1;
+      let m = isClosed ? await redis.get(cacheKey).catch(() => null) : null;
+      if (!m) {
+        m = await fetchOneMonth(accessToken, year, mi);
+        await redis.set(cacheKey, m, { ex: isClosed ? 60 * 60 * 24 * 30 : 3600 }).catch(() => {});
       }
+      monthly[monthStr] = { revenue: m.revenue, orders: m.orders };
+      Object.assign(daily, m.daily || {});
     } catch (e) {
       console.error(`[Cafe24] ${monthStr}:`, e.message);
       monthly[monthStr] = { revenue: 0, orders: 0 };
