@@ -136,6 +136,11 @@ function RankingCard({ ranking }) {
           </a>
         ))
       )}
+      {items.length > 0 && (
+        <div style={{ fontSize: 9.5, color: '#C7C7CC', marginTop: 10, lineHeight: 1.5 }}>
+          순위 기준 · 올리브영 = 판매 랭킹(미스트/오일 카테고리) · 아마존 US = 베스트셀러(BSR)
+        </div>
+      )}
     </div>
   );
 }
