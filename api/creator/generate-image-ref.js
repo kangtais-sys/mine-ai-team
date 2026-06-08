@@ -6,6 +6,7 @@
 // 인증: Bearer CREATOR_INGEST_SECRET (다른 코웍 엔드포인트와 동일). 미들웨어 예외.
 // ⚠️ 힉스필드 웹 UI 긁기 금지 — 공식 /agents API 만 사용.
 import { put } from '@vercel/blob';
+import { promises as dns } from 'dns';
 import { fnfFetch as fnfFetchBase } from '../../lib/higgsfield-tokens.js';
 
 export const config = { maxDuration: 120 };
@@ -16,11 +17,34 @@ const fnfFetch = (url, options = {}) => fnfFetchBase(url, options, 'generate-ima
 // 4:5(카드) → Higgsfield 포트레이트 enum '3:4', 9:16(릴스) 그대로
 const ASPECT = { '4:5': '3:4', '3:4': '3:4', '9:16': '9:16', '1:1': '1:1' };
 
-// SSRF — 레퍼런스 URL 은 공개 https 만 (우리가 fetch 해서 Higgsfield 에 올림)
-function safeHttps(u) {
-  try { const x = new URL(u); if (x.protocol !== 'https:') return false; const h = x.hostname.toLowerCase();
-    if (h === 'localhost' || /^(127\.|10\.|0\.|169\.254\.|192\.168\.)/.test(h) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(h)) return false;
-    return true; } catch { return false; }
+// SSRF — 레퍼런스 URL 을 우리가 직접 fetch 하므로 공개 https 만 + DNS 해석해 사설/내부 IP 거부.
+function ipv4ToInt(h) {
+  if (/^\d+$/.test(h)) return Number(h) >>> 0;
+  if (/^0x[0-9a-f]+$/i.test(h)) return parseInt(h, 16) >>> 0;
+  if (/^0[0-7]+$/.test(h)) return parseInt(h, 8) >>> 0;
+  const p = h.split('.');
+  if (p.length === 4 && p.every(x => /^\d+$/.test(x) && +x < 256)) return ((+p[0] << 24) | (+p[1] << 16) | (+p[2] << 8) | +p[3]) >>> 0;
+  return null;
+}
+function isPrivateV4Int(n) {
+  const a = (n >>> 24) & 255, b = (n >>> 16) & 255;
+  return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 100 && b >= 64 && b <= 127);
+}
+function isPrivateAddr(address, family) {
+  if (family === 4) { const n = ipv4ToInt(address); return n == null || isPrivateV4Int(n); }
+  const a = (address || '').toLowerCase();
+  return a === '::1' || a === '::' || /^(f[cd][0-9a-f]{2}:|fe80:)/.test(a) || /^::ffff:/.test(a);
+}
+async function safeHttps(u) {
+  let x; try { x = new URL(u); } catch { return false; }
+  if (x.protocol !== 'https:') return false;
+  const h = x.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (h === 'localhost') return false;
+  const lit = ipv4ToInt(h);
+  if (lit != null) return !isPrivateV4Int(lit);
+  if (h.includes(':')) return !isPrivateAddr(h, 6);
+  let addrs; try { addrs = await dns.lookup(h, { all: true }); } catch { return false; }
+  return addrs.length > 0 && !addrs.some(a => isPrivateAddr(a.address, a.family));
 }
 
 // 이미지 URL → Higgsfield 업로드 슬롯 → PUT → media_input 참조
@@ -47,7 +71,7 @@ export default async function handler(req, res) {
   const { prompt, referenceUrls = [], aspect = '4:5' } = req.body || {};
   if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'prompt 필요' });
   const refs = Array.isArray(referenceUrls) ? referenceUrls.slice(0, 3) : [];
-  for (const u of refs) if (!safeHttps(u)) return res.status(400).json({ error: `안전하지 않은 referenceUrl: ${u}` });
+  for (const u of refs) if (!(await safeHttps(u))) return res.status(400).json({ error: `안전하지 않은 referenceUrl: ${u}` });
 
   try {
     // 1) 레퍼런스 업로드
