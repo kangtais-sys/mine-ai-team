@@ -3,6 +3,7 @@
 // 유민혜가 폰 드라이브 앱에서 받아 미국 VPN 으로 직접 게시.
 import { google } from 'googleapis';
 import { Readable } from 'stream';
+import { promises as dns } from 'dns';
 import { Redis } from '@upstash/redis';
 import { getGoogleRefreshToken } from '../utils/google-auth.js';
 
@@ -29,19 +30,25 @@ function isPrivateV4Int(n) {
   const a = (n >>> 24) & 255, b = (n >>> 16) & 255;
   return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 100 && b >= 64 && b <= 127);
 }
-function isSafePublicHttpsUrl(u) {
+function isPrivateAddr(address, family) {
+  if (family === 4) { const n = ipv4ToInt(address); return n == null || isPrivateV4Int(n); }
+  const a = (address || '').toLowerCase();
+  return a === '::1' || a === '::' || /^(f[cd][0-9a-f]{2}:|fe80:)/.test(a) || /^::ffff:/.test(a);
+}
+// SSRF — https 강제 + 호스트를 실제 DNS 해석해 사설/내부 IP 로 풀리면 거부.
+async function isSafePublicHttpsUrl(u) {
   let url; try { url = new URL(u); } catch { return false; }
   if (url.protocol !== 'https:') return false;
-  const host = url.hostname.toLowerCase();
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
   if (host === 'localhost') return false;
-  if (host.startsWith('[') || host.includes(':')) {
-    const h6 = host.replace(/^\[|\]$/g, '');
-    if (h6 === '::1' || h6 === '::' || /^(f[cd][0-9a-f]{2}:|fe80:)/.test(h6) || /::ffff:/i.test(h6)) return false;
-    return true;
-  }
-  const n = ipv4ToInt(host);
-  if (n != null) return !isPrivateV4Int(n);
-  return true;
+  // 리터럴 IP 즉시 검사
+  const litV4 = ipv4ToInt(host);
+  if (litV4 != null) return !isPrivateV4Int(litV4);
+  if (host.includes(':')) return !isPrivateAddr(host, 6);
+  // 호스트명 → 전체 IP 해석 후 하나라도 사설이면 거부
+  let addrs; try { addrs = await dns.lookup(host, { all: true }); } catch { return false; }
+  if (!addrs.length) return false;
+  return !addrs.some(a => isPrivateAddr(a.address, a.family));
 }
 
 async function getDrive() {
@@ -74,12 +81,13 @@ async function findOrCreateFolder(drive) {
 // 드래프트 영상을 드라이브에 업로드. 반환 { fileId, webViewLink, folderId }
 export async function uploadDraftToDrive(draft) {
   if (!draft?.mediaUrl) throw new Error('mediaUrl 없음');
-  if (!isSafePublicHttpsUrl(draft.mediaUrl)) throw new Error('안전하지 않은 mediaUrl(공개 https 아님)');
+  if (!(await isSafePublicHttpsUrl(draft.mediaUrl))) throw new Error('안전하지 않은 mediaUrl(공개 https 아님)');
   const drive = await getDrive();
   const folderId = await findOrCreateFolder(drive);
 
-  // 영상 받아서 스트림으로 업로드 (serverless 본문 한도 영향 없음)
-  const resp = await fetch(draft.mediaUrl);
+  // 영상 받아서 스트림으로 업로드. 리다이렉트는 수동 처리(내부 호스트로의 우회 방지).
+  const resp = await fetch(draft.mediaUrl, { redirect: 'manual' });
+  if (resp.status >= 300 && resp.status < 400) throw new Error(`리다이렉트 거부(${resp.status}) — 직접 URL 필요`);
   if (!resp.ok || !resp.body) throw new Error(`영상 fetch 실패: ${resp.status}`);
   const mimeType = resp.headers.get('content-type') || 'video/mp4';
   const ext = /\.(mp4|mov|webm|m4v|jpg|jpeg|png)(\?|$)/i.exec(draft.mediaUrl)?.[1] || (mimeType.includes('image') ? 'jpg' : 'mp4');
