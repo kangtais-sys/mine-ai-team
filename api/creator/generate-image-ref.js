@@ -75,9 +75,17 @@ export default async function handler(req, res) {
     }
 
     // 2) text2image/soul 생성
-    const params = { prompt: prompt.trim(), width_and_height };
-    if (refId) { params.custom_reference_id = refId; params.custom_reference_strength = 0.6; }
-    const sub = await fetch(`${BASE}/v1/text2image/soul`, { method: 'POST', headers: hfHeaders(), body: JSON.stringify({ params }) });
+    const base = { prompt: prompt.trim(), width_and_height };
+    const submit = (p) => fetch(`${BASE}/v1/text2image/soul`, { method: 'POST', headers: hfHeaders(), body: JSON.stringify({ params: p }) });
+    let usedReference = !!refId;
+    let sub = await submit(refId ? { ...base, custom_reference_id: refId, custom_reference_strength: 0.6 } : base);
+    // 레퍼런스가 아직 학습 전(character_not_found 등)이면 텍스트 전용으로 폴백 — 이미지는 항상 생성
+    if (!sub.ok && refId) {
+      refNote = `reference 미적용(텍스트 폴백): ${(await sub.text()).slice(0, 120)}`;
+      console.warn('[generate-image-ref]', refNote);
+      usedReference = false;
+      sub = await submit(base);
+    }
     if (!sub.ok) throw new Error(`생성 제출 실패(${sub.status}): ${(await sub.text()).slice(0, 200)}`);
     const subData = await sub.json();
     const jobSetId = subData.id || subData.request_id;
@@ -91,7 +99,7 @@ export default async function handler(req, res) {
     const buf = Buffer.from(await img.arrayBuffer());
     const blob = await put(`gen/soul-${jobSetId}.png`, buf, { access: 'public', contentType: 'image/png', addRandomSuffix: true });
 
-    return res.status(200).json({ url: blob.url, size: width_and_height, usedReference: !!refId, ...(refNote && { refNote }) });
+    return res.status(200).json({ url: blob.url, size: width_and_height, usedReference, ...(refNote && { refNote }) });
   } catch (e) {
     console.error('[generate-image-ref]', e.message);
     return res.status(500).json({ error: e.message });
