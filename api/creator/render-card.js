@@ -20,14 +20,17 @@ let FONTS = null;
 export async function loadFonts() {
   if (FONTS) return FONTS;
   const f = async (u) => Buffer.from(await (await fetch(u)).arrayBuffer());
-  const [black, bold, mono] = await Promise.all([
-    f('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/packages/pretendard/dist/public/static/Pretendard-Black.otf'),
-    f('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/packages/pretendard/dist/public/static/Pretendard-Bold.otf'),
+  const P = 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard/packages/pretendard/dist/public/static';
+  const [black, bold, light, mono] = await Promise.all([
+    f(`${P}/Pretendard-Black.otf`),
+    f(`${P}/Pretendard-Bold.otf`),
+    f(`${P}/Pretendard-Regular.otf`),
     f('https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-700-normal.woff'),
   ]);
   FONTS = [
     { name: 'Pretendard', data: black, weight: 900, style: 'normal' },
     { name: 'Pretendard', data: bold, weight: 700, style: 'normal' },
+    { name: 'Pretendard', data: light, weight: 400, style: 'normal' }, // 리치텍스트 라이트
     { name: 'Mono', data: mono, weight: 700, style: 'normal' },
   ];
   return FONTS;
@@ -42,10 +45,34 @@ const txt = (s, style) => h('div', { display: 'flex', ...style }, s);
 // 블랙 필 라벨
 const pill = (s, inv = false) => h('div', {
   display: 'flex', alignItems: 'center', backgroundColor: inv ? WHITE : BLACK, color: inv ? BLACK : WHITE,
-  fontFamily: 'Pretendard', fontWeight: 700, fontSize: 30, padding: '12px 26px', borderRadius: 999, lineHeight: 1,
+  fontFamily: 'Pretendard', fontWeight: 700, fontSize: 30, padding: '12px 26px', borderRadius: 0, lineHeight: 1,
 }, s);
 // 모노 스펙 라벨
 const mono = (s, style) => txt(s, { fontFamily: 'Mono', fontWeight: 700, fontSize: 26, color: BLACK, letterSpacing: 1, ...style });
+
+// 리치텍스트 — `**강조**`=볼드(900), 나머지=라이트(400). 단어 단위 flexWrap 으로 흐름.
+function richText(str, { fontSize, color, lineHeight = 1.5, justify = 'flex-start' } = {}) {
+  const segs = []; const re = /\*\*(.+?)\*\*/g; let last = 0, m;
+  while ((m = re.exec(str))) { if (m.index > last) segs.push({ t: str.slice(last, m.index), b: false }); segs.push({ t: m[1], b: true }); last = re.lastIndex; }
+  if (last < str.length) segs.push({ t: str.slice(last), b: false });
+  const words = segs.flatMap(s => s.t.split(/\s+/).filter(Boolean).map(w => ({ w, b: s.b })));
+  return h('div', { display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: justify },
+    words.map(x => txt(x.w, { fontFamily: 'Pretendard', fontWeight: x.b ? 900 : 400, fontSize, color, lineHeight, marginRight: Math.round(fontSize * 0.28), marginBottom: Math.round(fontSize * 0.18) })));
+}
+
+// 손그림 거친 타원 (살짝 비뚤·오버슛) — 핵심 수치 강조용. img(data:svg)로 오버레이.
+function roughEllipseSvg(w, h, color) {
+  const p = `M ${w * .52} ${h * .1} C ${w * .92} ${h * .04} ${w * 1.0} ${h * .62} ${w * .56} ${h * .9} C ${w * .12} ${h * 1.04} ${w * .0} ${h * .42} ${w * .46} ${h * .12} C ${w * .62} ${h * .04} ${w * .8} ${h * .08} ${w * .9} ${h * .2}`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}"><path d="${p}" fill="none" stroke="${color}" stroke-width="${Math.max(4, w * .014)}" stroke-linecap="round"/></svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+// node 를 손그림 원으로 감쌈 (pad: 타원이 텍스트보다 얼마나 클지)
+function circled(node, w, ht, { color = BLACK, padX = 34, padY = 26 } = {}) {
+  return h('div', { display: 'flex', position: 'relative', alignItems: 'center', justifyContent: 'center', padding: `${padY}px ${padX}px` }, [
+    node,
+    { type: 'img', props: { src: roughEllipseSvg(w + padX * 2, ht + padY * 2, color), style: { position: 'absolute', left: 0, top: 0, width: w + padX * 2, height: ht + padY * 2 } } },
+  ]);
+}
 
 const wordmark = (color = BLACK) => row({ alignItems: 'flex-start' }, [
   txt('milli', { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 40, color, letterSpacing: -1 }),
@@ -83,7 +110,8 @@ function renderCover(s, market) {
     col({}, [
       row({ justifyContent: 'space-between', alignItems: 'center' }, [
         { type: 'img', props: { src: LOGO_URL, style: { height: 40, objectFit: 'contain' } } },
-        mono(rating, { fontSize: 27, color: BLACK, letterSpacing: 1 }),
+        // 손그림 원 포인트(핵심 수치) — 평점에 거친 타원 오버레이
+        circled(mono(rating, { fontSize: 27, color: BLACK, letterSpacing: 1 }), 250, 34, { padX: 18, padY: 12 }),
       ]),
       h('div', { display: 'flex', height: 1, backgroundColor: '#E3E3E3', marginTop: 20 }, ''),
     ]),
@@ -92,13 +120,13 @@ function renderCover(s, market) {
       s.headline ? txt(s.headline, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 108, color: BLACK, lineHeight: 1.02, letterSpacing: -3 }) : null,
       s.body ? txt(s.body, { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 36, color: SUB, marginTop: 30 }) : null,
       // 아웃라인 박스 라벨 1개 (필❌)
-      h('div', { display: 'flex', alignSelf: 'flex-start', marginTop: 44, border: `2px solid ${BLACK}`, borderRadius: 12, padding: '16px 24px' }, [mono(spec, { fontSize: 27 })]),
+      h('div', { display: 'flex', alignSelf: 'flex-start', marginTop: 44, border: `2px solid ${BLACK}`, borderRadius: 0, padding: '16px 24px' }, [mono(spec, { fontSize: 27 })]),
     ].filter(Boolean)),
     // 하단: 작은 제품 액센트(우측) + swipe (좌측) — 헤드라인이 주인공
     row({ marginTop: 'auto', justifyContent: 'space-between', alignItems: 'flex-end' }, [
       mono('swipe →', { fontSize: 24, color: SUB }),
       s.image
-        ? h('div', { display: 'flex', width: 300, height: 380, borderRadius: 18, overflow: 'hidden' }, [slideImage(s.image, { width: 300, height: 380 })])
+        ? h('div', { display: 'flex', width: 300, height: 380, borderRadius: 0, overflow: 'hidden' }, [slideImage(s.image, { width: 300, height: 380 })])
         : mono('milli²', { fontSize: 22, color: '#C7C7CC' }),
     ]),
   ]);
@@ -110,33 +138,40 @@ function renderInfo(s) {
     col({ marginTop: 48, flex: 1 }, [
       s.headline ? txt(s.headline, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 68, color: BLACK, lineHeight: 1.1, letterSpacing: -1 }) : null,
       h('div', { display: 'flex', width: 120, height: 8, backgroundColor: BLACK, marginTop: 28, marginBottom: 28 }, ''),
-      s.body ? txt(s.body, { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 42, color: '#2A2A2A', lineHeight: 1.5 }) : null,
-      (s.labels && s.labels.length) ? col({ marginTop: 40, gap: 16 }, s.labels.map(l => mono(`/ ${l}`, { fontSize: 30 }))) : null,
+      s.body ? richText(s.body, { fontSize: 42, color: '#2A2A2A', lineHeight: 1.5 }) : null, // 리치텍스트(**강조**=볼드)
+      (s.labels && s.labels.length) ? col({ marginTop: 36, gap: 16 }, s.labels.map(l => mono(`/ ${l}`, { fontSize: 30 }))) : null,
     ].filter(Boolean)),
+    // §5 info 슬라이드 이미지 지원 (직각)
+    s.image ? h('div', { display: 'flex', width: '100%', height: 460, overflow: 'hidden', backgroundColor: GRAY, marginBottom: 24 }, [slideImage(s.image, { width: W - 160, height: 460 })]) : null,
     footer(),
-  ]);
+  ].filter(Boolean));
 }
 
 function renderReview(s, market) {
   return frame([
     row({ justifyContent: 'space-between', alignItems: 'flex-start' }, [wordmark(), marketBadge(market)]),
     s.headline ? txt(s.headline, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 56, color: BLACK, lineHeight: 1.1, marginTop: 40, letterSpacing: -1 }) : null,
-    s.image ? h('div', { display: 'flex', marginTop: 36, width: '100%', height: 720, borderRadius: 24, overflow: 'hidden', backgroundColor: GRAY, border: `2px solid ${BLACK}` }, [slideImage(s.image, { width: W - 160, height: 720, objectFit: 'contain' })]) : null,
+    s.image ? h('div', { display: 'flex', marginTop: 36, width: '100%', height: 720, borderRadius: 0, overflow: 'hidden', backgroundColor: GRAY, border: `2px solid ${BLACK}` }, [slideImage(s.image, { width: W - 160, height: 720, objectFit: 'contain' })]) : null,
     s.source ? mono(`출처 · ${s.source}`, { fontSize: 24, color: SUB, marginTop: 24 }) : null,
     footer(),
   ].filter(Boolean));
 }
 
+// §4 — CTA 블랙 반전: 배경 #0A0A0A + 화이트 텍스트/로고/필 반전
 function renderCta(s) {
   return frame([
     col({ flex: 1, justifyContent: 'center', alignItems: 'center' }, [
-      h('div', { display: 'flex', transform: 'scale(2)', marginBottom: 60 }, [wordmark()]),
-      s.headline ? txt(s.headline, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 64, color: BLACK, textAlign: 'center', lineHeight: 1.15, letterSpacing: -1 }) : null,
-      s.body ? txt(s.body, { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 36, color: SUB, textAlign: 'center', marginTop: 24, lineHeight: 1.4 }) : null,
-      row({ marginTop: 48 }, [pill(`${s.cta || '최다판매구성 추천받기'}  →`)]),
+      h('div', { display: 'flex', transform: 'scale(2)', marginBottom: 60 }, [wordmark(WHITE)]),
+      s.headline ? txt(s.headline, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 64, color: WHITE, textAlign: 'center', lineHeight: 1.15, letterSpacing: -1 }) : null,
+      s.body ? h('div', { display: 'flex', marginTop: 24, maxWidth: 800 }, [richText(s.body, { fontSize: 36, color: '#D6D6D6', lineHeight: 1.4, justify: 'center' })]) : null,
+      row({ marginTop: 48 }, [pill(`${s.cta || '최다판매구성 추천받기'}  →`, true)]), // 반전 필(흰 배경·검정 글씨)
     ].filter(Boolean)),
-    footer(),
-  ], { bg: WHITE });
+    // 블랙 위 라이트 푸터
+    row({ justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }, [
+      mono('500 DALTON PROTEIN SERIES', { fontSize: 20, color: '#8A8A8A' }),
+      mono('milli²', { fontSize: 20, color: '#8A8A8A' }),
+    ]),
+  ], { bg: BLACK });
 }
 
 export function renderSlide(s, market) {
