@@ -50,6 +50,20 @@ function setSchedule(draft, dateStr, timeStr) {
   draft.scheduledAt = localWallClockToUTC(dateStr, time, tz); // Zernio/cron용(UTC 절대시각)
 }
 
+// SSRF 가드 — 외부로 발행할 미디어 URL은 공개 https 만 허용(내부/사설/링크로컬 IP 차단)
+function isSafePublicHttpsUrl(u) {
+  let url;
+  try { url = new URL(u); } catch { return false; }
+  if (url.protocol !== 'https:') return false;
+  const host = url.hostname.toLowerCase();
+  if (host === 'localhost' || host === '0.0.0.0' || host === '::1' || host === '[::1]') return false;
+  if (/^127\./.test(host) || /^10\./.test(host) || /^0\./.test(host)) return false;      // 루프백/사설/와일드카드
+  if (/^169\.254\./.test(host) || /^192\.168\./.test(host)) return false;                 // 링크로컬/사설
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) return false;                             // 172.16~31 사설
+  if (/^\[?(f[cd][0-9a-f]{2}:|fe80:)/.test(host)) return false;                           // IPv6 ULA/링크로컬
+  return true;
+}
+
 function buildMediaItems(draft) {
   if ((draft.format === 'reel' || draft.format === 'shorts') && draft.mediaUrl)
     return [{ type: 'video', url: draft.mediaUrl, filename: 'content.mp4' }];
@@ -144,6 +158,13 @@ export default async function handler(req, res) {
         if (!process.env.ZERNIO_API_KEY) return res.status(500).json({ error: 'ZERNIO_API_KEY 없음' });
         const text = [draft.caption, draft.hashtags].filter(Boolean).join('\n\n');
         const mediaItems = buildMediaItems(draft);
+        // SSRF 가드 — 발행 직전 모든 미디어 URL 검증(공개 https 아니면 거부)
+        const unsafe = mediaItems.find(m => !isSafePublicHttpsUrl(m.url));
+        if (unsafe) {
+          draft.status = 'failed'; draft.error = `안전하지 않은 미디어 URL 차단: ${unsafe.url}`;
+          await sb.from('creator_drafts').update({ data: draft }).eq('id', id);
+          return res.status(400).json({ error: draft.error });
+        }
         const body = {
           profileId: draft.profileId || PROFILE[draft.region] || PROFILE.kr,
           text,
