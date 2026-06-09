@@ -214,139 +214,144 @@ function Drawer({ cell, onClose, onAction, busy }) {
   const status = draft?.status || 'empty';
   const isVideo = isVideoMedia(draft);
 
+  const inputBox = { width: '100%', border: '1px solid #E0E0E5', borderRadius: 10, padding: '14px 16px', fontSize: 15, lineHeight: 1.6, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none', color: '#1D1D1F' };
+  const fieldLabel = { fontSize: 13, fontWeight: 700, color: '#3A3A3C', marginBottom: 9, display: 'block' };
+
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', justifyContent: 'flex-end' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.28)' }} />
+    <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.45)' }} />
       <div style={{
-        position: 'relative', width: 420, maxWidth: '92vw', height: '100%', background: '#FFF',
-        boxShadow: '-8px 0 30px rgba(0,0,0,.14)', display: 'flex', flexDirection: 'column',
+        position: 'relative', width: 'min(1140px, 96vw)', height: 'min(92vh, 940px)', background: '#FFF',
+        borderRadius: 18, boxShadow: '0 24px 70px rgba(0,0,0,.28)', display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
         {/* 헤더 */}
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #EEE', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 700, color: '#1D1D1F' }}>
-            <span>{channel.flag}</span><PlatformIcon platform={channel.platform} size={15} />
+        <div style={{ padding: '20px 28px', borderBottom: '1px solid #EEE', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 18, fontWeight: 700, color: '#1D1D1F' }}>
+            <span style={{ fontSize: 22 }}>{channel.flag}</span><PlatformIcon platform={channel.platform} size={19} />
             {channel.label}
           </div>
-          <div style={{ marginLeft: 'auto', fontSize: 12, color: '#8E8E93' }}>
-            {weekday.label}요일 · {fmtMD(new Date(date))}
-          </div>
-          <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#8E8E93', padding: 4 }}><X size={18} /></button>
-        </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* 슬롯 정보 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: ACCENT, background: '#EEF0FF', padding: '3px 9px', borderRadius: 6 }}>{weekday.concept}</span>
-            <span style={{ fontSize: 11, color: '#8E8E93' }}>{weekday.hint}</span>
-          </div>
-          <div style={{ fontSize: 11, color: '#8E8E93' }}>타겟: <b style={{ color: '#3A3A3C' }}>{channel.market}</b> · 시장 트렌드 기반 후킹</div>
-
-          {/* 미리보기 */}
-          {draft && draft.mediaUrls && draft.mediaUrls.length ? (
-            // 카드뉴스 캐러셀 — 슬라이드 가로 스크롤
-            <div style={{ display: 'flex', height: 190, flexShrink: 0, gap: 8, overflowX: 'auto', padding: '2px 0 8px', scrollSnapType: 'x mandatory' }}>
-              {draft.mediaUrls.map((u, i) => (
-                <a key={i} href={u} target="_blank" rel="noreferrer"
-                  style={{ flex: '0 0 auto', width: 150, height: '100%', borderRadius: 10, overflow: 'hidden',
-                    border: '1px solid #E5E5EA', scrollSnapAlign: 'start', background: `center/cover url(${u}) #000` }} />
-              ))}
-            </div>
-          ) : (
-            <div style={{
-              borderRadius: 12, aspectRatio: '9/16', maxHeight: 280, alignSelf: 'center', width: '60%',
-              overflow: 'hidden', position: 'relative',
-              background: draft?.mediaUrl && !isVideo ? `center/cover url(${draft.mediaUrl}) #000`
-                : `linear-gradient(135deg, hsl(${draft?.thumbHue ?? 260} 60% 86%), hsl(${(draft?.thumbHue ?? 260) + 30} 55% 74%))`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
-            }}>
-              {draft?.mediaUrl && isVideo && (
-                <video src={draft.mediaUrl} controls playsInline preload="metadata"
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#000' }} />
-              )}
-              {!draft && <span style={{ fontSize: 12, opacity: .8 }}>아직 생성 안 됨</span>}
-              {draft && !draft.mediaUrl && <span style={{ fontSize: 11, opacity: .9 }}>미리보기 대기</span>}
-            </div>
-          )}
-
-          {/* 미디어 업로드 (§3 — Blob 직업로드) */}
-          {draft && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <input ref={fileRef} type="file" accept="video/mp4,video/quicktime,image/*"
-                onChange={handleFile} style={{ display: 'none' }} />
-              <button type="button" disabled={uploading || busy} onClick={() => fileRef.current?.click()}
-                style={{ ...ghostBtn, justifyContent: 'center', opacity: uploading ? .6 : 1 }}>
-                {uploading ? <Loader2 size={14} className="spin" /> : <Upload size={14} />}
-                {uploading ? '업로드 중…' : (draft.mediaUrl ? '미디어 교체' : '영상/이미지 업로드')}
-              </button>
-              {uploadErr && <span style={{ fontSize: 10.5, color: '#FF3B30' }}>{uploadErr}</span>}
-              <span style={{ fontSize: 10, color: '#AEAEB2' }}>mp4·이미지 직접 업로드(최대 200MB). 업로드 후 자동 저장됩니다.</span>
-            </div>
-          )}
-
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: ACCENT, background: '#EEF0FF', padding: '5px 13px', borderRadius: 8 }}>{weekday.concept}</span>
           {draft && <StatusBadge status={status} />}
-
-          {/* 캡션 편집 */}
-          <label style={{ fontSize: 11, fontWeight: 600, color: '#6E6E73' }}>캡션</label>
-          <textarea value={caption} onChange={e => setCaption(e.target.value)} rows={5}
-            placeholder="캡션 — 후킹 + 댓글/저장/공유/팔로우 유도 + AI 연출 명시"
-            style={{ border: '1px solid #E0E0E5', borderRadius: 8, padding: 10, fontSize: 12.5, lineHeight: 1.5, resize: 'vertical', fontFamily: 'inherit' }} />
-
-          <label style={{ fontSize: 11, fontWeight: 600, color: '#6E6E73' }}>해시태그</label>
-          <input value={hashtags} onChange={e => setHashtags(e.target.value)}
-            style={{ border: '1px solid #E0E0E5', borderRadius: 8, padding: 10, fontSize: 12.5, fontFamily: 'inherit' }} />
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Clock size={14} color="#8E8E93" />
-            <span style={{ fontSize: 11, color: '#6E6E73' }}>발행 시각(현지)</span>
-            <input type="time" value={time} onChange={e => setTime(e.target.value)}
-              style={{ marginLeft: 'auto', border: '1px solid #E0E0E5', borderRadius: 8, padding: '6px 10px', fontSize: 12.5 }} />
-          </div>
-
-          {/* ② 자연어 수정 요청 → 재생성 */}
-          {draft && (
-            <div style={{ borderTop: '1px solid #EEE', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#6E6E73' }}>수정 요청 (콘텐츠 재생성)</label>
-              <textarea value={revisionNote} onChange={e => setRevisionNote(e.target.value)} rows={3}
-                placeholder="예: 비포 더 야위게 + 줌 타이트하게(숫자가 볼·턱에) + 캡션 더 후킹하게"
-                style={{ border: '1px solid #E0E0E5', borderRadius: 8, padding: 10, fontSize: 12.5, lineHeight: 1.5, resize: 'vertical', fontFamily: 'inherit' }} />
-              <button disabled={busy || !revisionNote.trim()}
-                onClick={() => onAction('revise', { ...cell, caption, hashtags, time, revisionNote })}
-                style={{ ...ghostBtn, justifyContent: 'center', borderColor: '#D9CCF5', color: ACCENT, opacity: revisionNote.trim() ? 1 : 0.5 }}>
-                {busy ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />} 이 지시대로 재생성
-              </button>
-              {draft.lastRevisionNote && (
-                <div style={{ fontSize: 10.5, color: '#A0A0A8' }}>최근 요청: {draft.lastRevisionNote}</div>
-              )}
-            </div>
-          )}
+          <div style={{ marginLeft: 'auto', fontSize: 14, color: '#8E8E93' }}>{weekday.label}요일 · {fmtMD(new Date(date))}</div>
+          <button onClick={onClose} style={{ border: 'none', background: '#F2F2F5', cursor: 'pointer', color: '#6E6E73', padding: 8, borderRadius: 8, display: 'flex' }}><X size={20} /></button>
         </div>
 
-        {/* 액션 바 */}
-        <div style={{ padding: 16, borderTop: '1px solid #EEE', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {/* 본문: 2단 (좌 미리보기/업로드 · 우 편집) */}
+        <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+          {/* 좌측: 미리보기 + 업로드 */}
+          <div style={{ width: '44%', minWidth: 360, padding: 28, borderRight: '1px solid #F0F0F0', background: '#FAFAFB', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div style={{ fontSize: 13, color: '#6E6E73' }}>타겟: <b style={{ color: '#1D1D1F' }}>{channel.market}</b><div style={{ fontSize: 12, color: '#AEAEB2', marginTop: 4 }}>{weekday.hint}</div></div>
+
+            {/* 미리보기 */}
+            {draft && draft.mediaUrls && draft.mediaUrls.length ? (
+              // 카드뉴스 캐러셀 — 슬라이드 가로 스크롤 (크게)
+              <div style={{ display: 'flex', height: 360, flexShrink: 0, gap: 10, overflowX: 'auto', padding: '2px 0 10px', scrollSnapType: 'x mandatory' }}>
+                {draft.mediaUrls.map((u, i) => (
+                  <a key={i} href={u} target="_blank" rel="noreferrer"
+                    style={{ flex: '0 0 auto', width: 288, height: '100%', borderRadius: 10, overflow: 'hidden',
+                      border: '1px solid #E5E5EA', scrollSnapAlign: 'start', background: `center/cover url(${u}) #000` }} />
+                ))}
+              </div>
+            ) : (
+              <div style={{
+                borderRadius: 12, aspectRatio: '9/16', maxHeight: 520, alignSelf: 'center', width: '78%',
+                overflow: 'hidden', position: 'relative',
+                background: draft?.mediaUrl && !isVideo ? `center/cover url(${draft.mediaUrl}) #000`
+                  : `linear-gradient(135deg, hsl(${draft?.thumbHue ?? 260} 60% 86%), hsl(${(draft?.thumbHue ?? 260) + 30} 55% 74%))`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+              }}>
+                {draft?.mediaUrl && isVideo && (
+                  <video src={draft.mediaUrl} controls playsInline preload="metadata"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#000' }} />
+                )}
+                {!draft && <span style={{ fontSize: 14, opacity: .8 }}>아직 생성 안 됨</span>}
+                {draft && !draft.mediaUrl && <span style={{ fontSize: 13, opacity: .9 }}>미리보기 대기</span>}
+              </div>
+            )}
+
+            {/* 미디어 업로드 (§3 — Blob 직업로드) */}
+            {draft && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <input ref={fileRef} type="file" accept="video/mp4,video/quicktime,image/*"
+                  onChange={handleFile} style={{ display: 'none' }} />
+                <button type="button" disabled={uploading || busy} onClick={() => fileRef.current?.click()}
+                  style={{ ...ghostBtn, padding: '13px 16px', fontSize: 14, opacity: uploading ? .6 : 1 }}>
+                  {uploading ? <Loader2 size={16} className="spin" /> : <Upload size={16} />}
+                  {uploading ? '업로드 중…' : (draft.mediaUrl ? '미디어 교체' : '영상/이미지 업로드')}
+                </button>
+                {uploadErr && <span style={{ fontSize: 12, color: '#FF3B30' }}>{uploadErr}</span>}
+                <span style={{ fontSize: 11.5, color: '#AEAEB2' }}>mp4·이미지 직접 업로드(최대 200MB). 업로드 후 자동 저장됩니다.</span>
+              </div>
+            )}
+          </div>
+
+          {/* 우측: 편집 폼 (넓게) */}
+          <div style={{ flex: 1, padding: 28, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 22 }}>
+            <div>
+              <label style={fieldLabel}>캡션</label>
+              <textarea value={caption} onChange={e => setCaption(e.target.value)} rows={9}
+                placeholder="캡션 — 후킹 + 댓글/저장/공유/팔로우 유도 + AI 연출 명시"
+                style={inputBox} />
+            </div>
+
+            <div>
+              <label style={fieldLabel}>해시태그</label>
+              <textarea value={hashtags} onChange={e => setHashtags(e.target.value)} rows={2}
+                placeholder="#밀리밀리 #proteinmist #beforeafter"
+                style={inputBox} />
+            </div>
+
+            <div>
+              <label style={fieldLabel}>발행 시각 (현지)</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Clock size={18} color="#8E8E93" />
+                <input type="time" value={time} onChange={e => setTime(e.target.value)}
+                  style={{ ...inputBox, width: 'auto', padding: '12px 16px' }} />
+              </div>
+            </div>
+
+            {/* ② 자연어 수정 요청 → 재생성 */}
+            {draft && (
+              <div style={{ borderTop: '1px solid #EEE', paddingTop: 20 }}>
+                <label style={fieldLabel}>수정 요청 (콘텐츠 재생성)</label>
+                <textarea value={revisionNote} onChange={e => setRevisionNote(e.target.value)} rows={3}
+                  placeholder="예: 비포 더 야위게 + 줌 타이트하게(숫자가 볼·턱에) + 캡션 더 후킹하게"
+                  style={inputBox} />
+                <button disabled={busy || !revisionNote.trim()}
+                  onClick={() => onAction('revise', { ...cell, caption, hashtags, time, revisionNote })}
+                  style={{ ...ghostBtn, marginTop: 10, padding: '12px 16px', fontSize: 14, borderColor: '#D9CCF5', color: ACCENT, opacity: revisionNote.trim() ? 1 : 0.5 }}>
+                  {busy ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />} 이 지시대로 재생성
+                </button>
+                {draft.lastRevisionNote && (
+                  <div style={{ fontSize: 12, color: '#A0A0A8', marginTop: 8 }}>최근 요청: {draft.lastRevisionNote}</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 액션 바 (전체폭) */}
+        <div style={{ padding: '16px 28px', borderTop: '1px solid #EEE', display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
           {!draft ? (
-            <button disabled={busy} onClick={() => onAction('generate', { channel, weekday, date })} style={primaryBtn}>
-              {busy ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />} 이 슬롯 생성하기
+            <button disabled={busy} onClick={() => onAction('generate', { channel, weekday, date })} style={{ ...primaryBtn, padding: '15px 18px', fontSize: 15 }}>
+              {busy ? <Loader2 size={17} className="spin" /> : <Sparkles size={17} />} 이 슬롯 생성하기
             </button>
           ) : (
             <>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button disabled={busy} onClick={() => onAction('save', { ...cell, caption, hashtags, time })} style={ghostBtn}>
-                  <Pencil size={14} /> 저장
-                </button>
-                <button disabled={busy} onClick={() => onAction('approve', { ...cell, caption, hashtags, time })} style={ghostBtn}>
-                  <Check size={14} /> 승인
-                </button>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button disabled={busy} onClick={() => onAction('schedule', { ...cell, caption, hashtags, time })} style={ghostBtn}>
-                  <Clock size={14} /> 예약
-                </button>
-                <button disabled={busy} onClick={() => onAction('publish', { ...cell, caption, hashtags, time })} style={primaryBtn}>
-                  {busy ? <Loader2 size={15} className="spin" /> : <Send size={14} />} 발행
-                </button>
-              </div>
-              <button disabled={busy} onClick={() => onAction('delete', cell)} style={{ ...ghostBtn, color: '#FF3B30', borderColor: '#FFD9D6', justifyContent: 'center' }}>
-                <Trash2 size={14} /> 삭제
+              <button disabled={busy} onClick={() => onAction('save', { ...cell, caption, hashtags, time })} style={{ ...ghostBtn, padding: '14px 16px', fontSize: 14 }}>
+                <Pencil size={16} /> 저장
+              </button>
+              <button disabled={busy} onClick={() => onAction('approve', { ...cell, caption, hashtags, time })} style={{ ...ghostBtn, padding: '14px 16px', fontSize: 14 }}>
+                <Check size={16} /> 승인
+              </button>
+              <button disabled={busy} onClick={() => onAction('schedule', { ...cell, caption, hashtags, time })} style={{ ...ghostBtn, padding: '14px 16px', fontSize: 14 }}>
+                <Clock size={16} /> 예약
+              </button>
+              <button disabled={busy} onClick={() => onAction('publish', { ...cell, caption, hashtags, time })} style={{ ...primaryBtn, flex: 1.6, padding: '14px 18px', fontSize: 15 }}>
+                {busy ? <Loader2 size={17} className="spin" /> : <Send size={16} />} 발행
+              </button>
+              <button disabled={busy} onClick={() => onAction('delete', cell)} style={{ ...ghostBtn, flex: '0 0 auto', width: 56, color: '#FF3B30', borderColor: '#FFD9D6', padding: '14px 12px' }}>
+                <Trash2 size={16} />
               </button>
             </>
           )}
