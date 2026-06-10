@@ -237,7 +237,10 @@ export default async function handler(req, res) {
           exportRevenue = { status: 'connected', monthlyTotal, yearlyTotal, months, updatedAt: raw.updatedAt };
         } else {
           // Cache miss — trigger a background refresh (fire and forget)
-          fetch(`https://${process.env.VERCEL_URL || 'mine-ai-team.vercel.app'}/api/sales/amazon`).catch(() => {});
+          // middleware Basic Auth 를 통과하도록 CRON_SECRET Bearer 동봉
+          fetch(`https://${process.env.VERCEL_URL || 'mine-ai-team.vercel.app'}/api/sales/amazon`, {
+            headers: process.env.CRON_SECRET ? { Authorization: `Bearer ${process.env.CRON_SECRET}` } : {},
+          }).catch(() => {});
           exportRevenue = { status: 'pending', monthlyTotal: 0, yearlyTotal: 0 };
         }
       } catch (e) {
