@@ -78,26 +78,23 @@ async function findOrCreateFolder(drive) {
   return id;
 }
 
-// 드래프트 영상을 드라이브에 업로드. 반환 { fileId, webViewLink, folderId }
-export async function uploadDraftToDrive(draft) {
-  if (!draft?.mediaUrl) throw new Error('mediaUrl 없음');
-  if (!(await isSafePublicHttpsUrl(draft.mediaUrl))) throw new Error('안전하지 않은 mediaUrl(공개 https 아님)');
-  const drive = await getDrive();
-  const folderId = await findOrCreateFolder(drive);
-
-  // 영상 받아서 스트림으로 업로드. 리다이렉트는 수동 처리(내부 호스트로의 우회 방지).
-  const resp = await fetch(draft.mediaUrl, { redirect: 'manual' });
+// 단일 URL → 드라이브 업로드 1건. 반환 { fileId, webViewLink }
+async function uploadOneToDrive(drive, folderId, url, { draft, index, total }) {
+  if (!(await isSafePublicHttpsUrl(url))) throw new Error(`안전하지 않은 URL(공개 https 아님): ${url}`);
+  // 미디어 받아서 스트림 업로드. 리다이렉트는 수동 처리(내부 호스트 우회 방지).
+  const resp = await fetch(url, { redirect: 'manual' });
   if (resp.status >= 300 && resp.status < 400) throw new Error(`리다이렉트 거부(${resp.status}) — 직접 URL 필요`);
-  if (!resp.ok || !resp.body) throw new Error(`영상 fetch 실패: ${resp.status}`);
-  const mimeType = resp.headers.get('content-type') || 'video/mp4';
-  const ext = /\.(mp4|mov|webm|m4v|jpg|jpeg|png)(\?|$)/i.exec(draft.mediaUrl)?.[1] || (mimeType.includes('image') ? 'jpg' : 'mp4');
+  if (!resp.ok || !resp.body) throw new Error(`미디어 fetch 실패: ${resp.status}`);
+  const mimeType = resp.headers.get('content-type') || 'application/octet-stream';
+  const ext = /\.(mp4|mov|webm|m4v|jpg|jpeg|png|webp)(\?|$)/i.exec(url)?.[1] || (mimeType.includes('image') ? 'jpg' : 'mp4');
 
   const capShort = (draft.caption || '').replace(/[\\/:*?"<>|\n]/g, ' ').trim().slice(0, 30) || '무제';
-  const name = `[${CH_LABEL[draft.channel] || draft.channel}] ${draft.date} ${capShort}.${ext}`;
+  const seq = total > 1 ? ` ${String(index + 1).padStart(2, '0')}-${total}` : '';
+  const name = `[${CH_LABEL[draft.channel] || draft.channel}] ${draft.date}${seq} ${capShort}.${ext}`;
   const description = [
     draft.caption || '',
     draft.hashtags || '',
-    `— 채널: ${CH_LABEL[draft.channel] || draft.channel} / 날짜: ${draft.date} / 예약: ${draft.scheduledLocal || '-'}`,
+    `— 채널: ${CH_LABEL[draft.channel] || draft.channel} / 날짜: ${draft.date} / 예약: ${draft.scheduledLocal || '-'}${total > 1 ? ` / ${index + 1}/${total}` : ''}`,
   ].filter(Boolean).join('\n\n');
 
   const file = await drive.files.create({
@@ -105,7 +102,24 @@ export async function uploadDraftToDrive(draft) {
     media: { mimeType, body: Readable.fromWeb(resp.body) },
     fields: 'id, webViewLink',
   });
-  return { fileId: file.data.id, webViewLink: file.data.webViewLink, folderId };
+  return { fileId: file.data.id, webViewLink: file.data.webViewLink };
+}
+
+// 드래프트 미디어를 드라이브에 업로드. 카루셀(mediaUrls[])이면 전부 루프, 아니면 단일 mediaUrl.
+// 반환 { files:[{fileId, webViewLink}], count, folderId, fileId, webViewLink }(첫 장 = 하위호환).
+export async function uploadDraftToDrive(draft) {
+  const urls = (Array.isArray(draft?.mediaUrls) && draft.mediaUrls.length)
+    ? draft.mediaUrls
+    : (draft?.mediaUrl ? [draft.mediaUrl] : []);
+  if (!urls.length) throw new Error('mediaUrl/mediaUrls 없음');
+  const drive = await getDrive();
+  const folderId = await findOrCreateFolder(drive);
+
+  const files = [];
+  for (let i = 0; i < urls.length; i++) {
+    files.push(await uploadOneToDrive(drive, folderId, urls[i], { draft, index: i, total: urls.length }));
+  }
+  return { files, count: files.length, folderId, fileId: files[0].fileId, webViewLink: files[0].webViewLink };
 }
 
 // 수동 트리거(보드 '드라이브로 보내기' 버튼 등)도 가능하도록 핸들러 제공
@@ -120,7 +134,10 @@ export default async function handler(req, res) {
     if (!row?.data) return res.status(404).json({ error: '드래프트 없음' });
     const r = await uploadDraftToDrive(row.data);
     const d = row.data;
-    d.drive = { fileId: r.fileId, link: r.webViewLink, uploadedAt: new Date().toISOString() };
+    d.drive = {
+      files: r.files, count: r.count, folderId: r.folderId,
+      fileId: r.fileId, link: r.webViewLink, uploadedAt: new Date().toISOString(),
+    };
     d.updatedAt = new Date().toISOString();
     await sb.from('creator_drafts').update({ data: d }).eq('id', id);
     return res.status(200).json({ ok: true, drive: d.drive });

@@ -9,14 +9,26 @@ export const config = { maxDuration: 120 }; // US 승인 시 드라이브 업로
 
 const ZERNIO = 'https://zernio.com/api/v1';
 
-// env 값 끝 개행/공백 방어 (§2 — Vercel env 의 \n 으로 인한 Zernio 발행 실패 차단)
-const envTrim = (k, fb = '') => (process.env[k] || fb).trim();
+// env 값 끝 개행/공백 방어 (§2 — Vercel env 의 \n 으로 인한 Zernio 발행 실패 차단).
+// 실제 토큰/리터럴 '\n'(역슬래시+n)·실개행·따옴표 모두 제거 — Vercel 저장값 오염 방어.
+const envTrim = (k, fb = '') => String(process.env[k] ?? fb).replace(/\\[rn]/g, '').replace(/^["'\s]+|["'\s]+$/g, '');
 
-// region → Zernio 프로필 (accounts.js와 동일)
+// region → Zernio 프로필 (accounts.js와 동일, Zernio 연결 실측 2026-06-09 일치)
 const PROFILE = {
-  kr: envTrim('ZERNIO_MILLIMILLI_PROFILE_ID', '69d08cc1986d57bb8f733102'),
-  us: envTrim('ZERNIO_MILLIMILLI_US_PROFILE_ID', '69fbfcd01fc1fdb66f249aa8'),
+  kr: envTrim('ZERNIO_MILLIMILLI_PROFILE_ID', '69d08cc1986d57bb8f733102'), // @millimilli.kr (IG+TikTok)
+  us: envTrim('ZERNIO_MILLIMILLI_US_PROFILE_ID', '69fbfcd01fc1fdb66f249aa8'), // @millimilli.us (IG만)
 };
+
+// 채널별 발행 라우팅 (§12 유저 확정 2026-06-09 + Zernio 연결 실측 2026-06-09):
+//  kr_ig/kr_tt → @millimilli.kr Zernio 자동
+//  us_ig       → @millimilli.us Zernio 자동 (Zernio가 IG 토큰으로 서버 발행 → 호출자 egress 무관).
+//                ※ US_IG_PUBLISH=drive 로 두면 검증 전까지 드라이브 폴백.
+//  us_tt       → Zernio 미연결(US TikTok Shop 기기+IP 필요) → to-drive 수동.
+function publishRoute(channel) {
+  if (channel === 'us_tt') return 'drive';
+  if (channel === 'us_ig') return envTrim('US_IG_PUBLISH', 'auto') === 'drive' ? 'drive' : 'zernio';
+  return 'zernio'; // kr_ig, kr_tt
+}
 
 const zPost = (body) =>
   fetch(`${ZERNIO}/posts`, {
@@ -137,6 +149,18 @@ export async function publishDraftToZernio(draft, { dryRun = false } = {}) {
   return { ok: true, result };
 }
 
+// 드래프트 미디어를 드라이브로 업로드하고 draft.drive 기록(카루셀 mediaUrls[] 전부).
+async function sendDraftToDrive(draft) {
+  const { uploadDraftToDrive } = await import('./to-drive.js');
+  const r = await uploadDraftToDrive(draft);
+  draft.drive = {
+    files: r.files, count: r.count, folderId: r.folderId,
+    fileId: r.fileId, link: r.webViewLink, uploadedAt: new Date().toISOString(),
+  };
+  delete draft.driveError;
+  return r;
+}
+
 export default async function handler(req, res) {
   const sb = getSupabase();
 
@@ -212,17 +236,11 @@ export default async function handler(req, res) {
       if (action === 'save')     { patchMeta(); }
       if (action === 'approve')  {
         patchMeta(); draft.status = 'approved';
-        // #2 — 미국 드래프트는 승인 시 영상을 드라이브로 자동 업로드(수동 발행용). 실패해도 승인은 유지.
-        if (draft.region === 'us' && draft.mediaUrl) {
-          try {
-            const { uploadDraftToDrive } = await import('./to-drive.js');
-            const r = await uploadDraftToDrive(draft);
-            draft.drive = { fileId: r.fileId, link: r.webViewLink, uploadedAt: new Date().toISOString() };
-            delete draft.driveError;
-          } catch (e) {
-            draft.driveError = e.message;
-            console.error('[approve→drive]', e.message);
-          }
+        // 드라이브 라우팅 채널(us_tt, 옵션상 us_ig)은 승인 시 미디어를 드라이브로 자동 업로드(수동 발행용).
+        // 카루셀이면 mediaUrls[] 전부 올림. 실패해도 승인은 유지.
+        if (publishRoute(draft.channel) === 'drive' && (draft.mediaUrl || draft.mediaUrls?.length)) {
+          try { await sendDraftToDrive(draft); }
+          catch (e) { draft.driveError = e.message; console.error('[approve→drive]', e.message); }
         }
       }
       if (action === 'schedule') { patchMeta(); draft.status = 'scheduled'; }
@@ -237,6 +255,19 @@ export default async function handler(req, res) {
 
       if (action === 'publish') {
         patchMeta();
+        // 수동 채널(us_tt 등)은 Zernio 미발행 → 드라이브 업로드만(유저가 미국 VPN으로 직접 게시).
+        if (publishRoute(draft.channel) === 'drive') {
+          try {
+            await sendDraftToDrive(draft);
+            draft.status = 'approved'; // 실제 게시는 유저 수동 → approved 유지 + 드라이브 링크 제공
+          } catch (e) {
+            draft.driveError = e.message;
+            await sb.from('creator_drafts').update({ data: draft }).eq('id', id);
+            return res.status(500).json({ error: `드라이브 업로드 실패: ${e.message}` });
+          }
+          await sb.from('creator_drafts').update({ data: draft }).eq('id', id);
+          return res.status(200).json({ ok: true, route: 'drive', manual: true, drive: draft.drive, draft });
+        }
         const pr = await publishDraftToZernio(draft);
         if (!pr.ok) {
           await sb.from('creator_drafts').update({ data: draft }).eq('id', id);

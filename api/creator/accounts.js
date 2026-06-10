@@ -12,9 +12,11 @@ const PROFILES = {
   millimilli_us: '69fbfcd01fc1fdb66f249aa8',
 };
 
+// §2 — 토큰 끝 리터럴 '\n'·개행·따옴표 방어
+const ZKEY = String(process.env.ZERNIO_API_KEY ?? '').replace(/\\[rn]/g, '').replace(/^["'\s]+|["'\s]+$/g, '');
 const zFetch = (path) =>
   fetch(`${ZERNIO}${path}`, {
-    headers: { Authorization: `Bearer ${process.env.ZERNIO_API_KEY}` },
+    headers: { Authorization: `Bearer ${ZKEY}` },
   }).then(r => r.ok ? r.json() : null).catch(() => null);
 
 const mapAccounts = (data) =>
