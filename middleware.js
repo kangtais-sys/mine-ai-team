@@ -26,6 +26,7 @@ const PUBLIC_PREFIXES = [
   '/api/creator/ingest', // Cowork 콘텐츠 투입 — 자체 Bearer 시크릿으로 보호됨
   '/api/creator/ingest-capture', // 외부 페이지 캡처 인제스트(CORS) — 자체 Bearer 시크릿
   '/api/creator/render-card', // Cowork 카드 렌더 호출 — 자체 Bearer 시크릿
+  '/api/creator/render-promo', // Cowork 수요일 프로모 렌더 호출 — 자체 Bearer 시크릿
   '/api/creator/generate-image-ref', // Cowork 레퍼런스 이미지 생성 — 자체 Bearer 시크릿
 ];
 
