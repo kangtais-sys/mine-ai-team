@@ -28,6 +28,7 @@ const PUBLIC_PREFIXES = [
   '/api/creator/render-card', // Cowork 카드 렌더 호출 — 자체 Bearer 시크릿
   '/api/creator/render-promo', // Cowork 수요일 프로모 렌더 호출 — 자체 Bearer 시크릿
   '/api/creator/render-ad', // 오너-후킹 전환광고 렌더 호출 — 자체 Bearer 시크릿
+  '/api/creator/overlay-short', // 숏츠 오버레이 렌더 호출(Cowork) — 자체 Bearer 시크릿
   '/api/creator/generate-image-ref', // Cowork 레퍼런스 이미지 생성 — 자체 Bearer 시크릿
 ];
 
