@@ -389,6 +389,11 @@ function Drawer({ cell, onClose, onAction, busy }) {
               <button disabled={busy} onClick={() => onAction('schedule', { ...cell, caption, hashtags, time, refUrl })} style={{ ...ghostBtn, padding: '14px 16px', fontSize: 14 }}>
                 <Clock size={16} /> 예약
               </button>
+              <button disabled={busy} onClick={() => onAction('copy-to-sibling', { id: draft.id })}
+                title="같은 미디어를 형제 채널로 복사(캡션·내용은 채널별로 따로 편집)"
+                style={{ ...ghostBtn, padding: '14px 14px', fontSize: 13.5, borderColor: '#D9CCF5', color: ACCENT }}>
+                🔁 {channel.platform === 'instagram' ? '틱톡' : '인스타'}에 복사
+              </button>
               <button disabled={busy} onClick={() => onAction('publish', { ...cell, caption, hashtags, time, refUrl })} style={{ ...primaryBtn, flex: 1.6, padding: '14px 18px', fontSize: 15 }}>
                 {busy ? <Loader2 size={17} className="spin" /> : <Send size={16} />} 발행
               </button>

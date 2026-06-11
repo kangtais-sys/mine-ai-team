@@ -1,6 +1,7 @@
-// 데일리 작업 — 보드(creator_drafts) 영상 슬롯(화·목·금·일) 자동 제품화.
-//  refUrl(유튜브 레퍼런스) 있으면 → 썸네일 → /api/video-analyze(Claude Vision) → 캡션·해시태그·훅 생성 → status review
-//  refUrl 없으면 → 라이브러리 폴백(redis creator:library:{slotType} 의 검증 영상 URL) → 있으면 mediaUrl 세팅, 없으면 스킵
+// 데일리 작업 — 보드(creator_drafts) 의 review_hook / trend_info 슬롯만 자동 채움.
+//  ⚠️ shorts 슬롯은 Cowork 스케줄 작업(milli-shorts-daily-fill, Higgsfield)이 담당 — 앱은 절대 건드리지 않음(충돌 방지).
+//  refUrl 있으면 → 썸네일 → /api/video-analyze(Claude Vision) → 캡션·해시태그·훅 생성 → status review
+//  refUrl 없으면 → 라이브러리 폴백(redis creator:library:{slotType}) → 있으면 mediaUrl, 없으면 스킵
 // 멱등: 같은 refUrl 재분석 안 함. status review/approved/scheduled/published 는 건드리지 않음.
 // 인증: Bearer CRON_SECRET (미들웨어 /api/cron/* 통과). ?dry=1 = 대상·동작만 반환(변경 없음).
 import { Redis } from '@upstash/redis';
@@ -15,8 +16,9 @@ const redis = new Redis({
 });
 
 const kstToday = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
-// 숏츠제품화 슬롯(재설계: slotType 'shorts'). 구 day-key('tue'..) 호환도 유지.
-const isVideoSlot = (d) => d.slotType === 'shorts' || ['tue', 'thu', 'fri', 'sun'].includes(d.slotType) || ['reel', 'shorts'].includes(d.format);
+// 앱 담당 슬롯 = review_hook / trend_info 만. shorts 는 Cowork 담당이라 제외(충돌 방지).
+const APP_SLOTS = new Set(['review_hook', 'trend_info']);
+const isAppSlot = (d) => APP_SLOTS.has(d.slotType) && d.slotType !== 'shorts' && !['reel', 'shorts'].includes(d.format);
 
 // 유튜브 링크 → 썸네일 URL (hqdefault 는 항상 존재). shorts/watch/youtu.be 모두 처리.
 function ytThumb(url) {
@@ -36,7 +38,7 @@ export default async function handler(req, res) {
     const { data: rows } = await sb.from('creator_drafts').select('id, data').limit(300);
     const targets = (rows || [])
       .map(r => r.data)
-      .filter(d => d && d.version === 'milli-v1' && d.date === today && isVideoSlot(d) && ['draft', 'generating'].includes(d.status));
+      .filter(d => d && d.version === 'milli-v1' && d.date === today && isAppSlot(d) && ['draft', 'generating'].includes(d.status));
 
     const results = [];
     for (const d of targets) {

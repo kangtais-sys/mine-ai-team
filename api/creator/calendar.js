@@ -216,6 +216,44 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, deleted: ids.length });
       }
 
+      // copy-to-sibling: 같은 미디어를 형제 채널(IG↔TT, 같은 지역)에 복사. 캡션·해시태그는 독립(따로 편집).
+      if (action === 'copy-to-sibling') {
+        const srcId = payload.id || payload.draft?.id;
+        if (!srcId) return res.status(400).json({ error: 'id 필수' });
+        const { data: srcRow } = await sb.from('creator_drafts').select('data').eq('id', srcId).single();
+        if (!srcRow) return res.status(404).json({ error: '원본 드래프트 없음' });
+        const src = srcRow.data;
+        const SIB = { kr_ig: 'kr_tt', kr_tt: 'kr_ig', us_ig: 'us_tt', us_tt: 'us_ig' };
+        const sibCh = SIB[src.channel];
+        if (!sibCh) return res.status(400).json({ error: '형제 채널 없음' });
+        const region = sibCh.startsWith('us') ? 'us' : 'kr';
+        const platform = sibCh.endsWith('tt') ? 'tiktok' : 'instagram';
+        const media = { mediaUrl: src.mediaUrl || null, mediaUrls: src.mediaUrls || [], refUrl: src.refUrl || null, format: src.format || 'reel', slotType: src.slotType || null };
+        const hasMedia = !!(media.mediaUrl || (media.mediaUrls && media.mediaUrls.length) || media.refUrl);
+        const { data: rows } = await sb.from('creator_drafts').select('id, data').limit(300);
+        const existing = (rows || []).find(r => r.data && r.data.version === 'milli-v1' && r.data.channel === sibCh && r.data.date === src.date);
+        if (existing) {
+          const d = existing.data;
+          Object.assign(d, media); // 미디어만 동기화
+          if (!d.caption && src.caption) d.caption = src.caption;       // 캡션 비어있을 때만 시드(이후 독립 편집)
+          if (!d.hashtags && src.hashtags) d.hashtags = src.hashtags;
+          if (hasMedia && ['draft', 'generating'].includes(d.status)) d.status = 'review';
+          d.updatedAt = new Date().toISOString();
+          await sb.from('creator_drafts').update({ data: d }).eq('id', existing.id);
+          return res.status(200).json({ ok: true, action: 'updated', id: existing.id, draft: d });
+        }
+        const newId = `milli_${sibCh}_${src.date}_${Date.now().toString(36)}`;
+        const draft = {
+          id: newId, version: 'milli-v1', channel: sibCh, region, platform, date: src.date,
+          ...media, status: hasMedia ? 'review' : 'draft',
+          caption: src.caption || '', hashtags: src.hashtags || '', // 초기엔 복사, 이후 채널별로 따로 수정
+          profileId: PROFILE[region], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        };
+        setSchedule(draft, src.date, src.scheduledLocal?.slice(11, 16) || '09:00');
+        await sb.from('creator_drafts').insert({ id: newId, persona_id: null, data: draft });
+        return res.status(200).json({ ok: true, action: 'created', id: newId, draft });
+      }
+
       // generate: 빈 슬롯에 초안 행 생성 (실제 미디어 생성은 별도 파이프라인)
       if (action === 'generate') {
         const channel = payload.channel; // 'kr_ig' 등
