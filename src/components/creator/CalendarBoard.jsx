@@ -162,7 +162,7 @@ function Cell({ draft, weekday, onClick }) {
           </div>
         )}
         <span style={{ position: 'absolute', top: 4, left: 5, fontSize: 9, fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.5)' }}>
-          {isVideo ? 'VIDEO' : (draft.format === 'cardnews' ? `CARD${draft.mediaUrls?.length ? ' ×' + draft.mediaUrls.length : ''}` : 'IMG')}
+          {isVideo ? 'VIDEO' : (draft.mediaUrls?.length > 1 ? `CARD ×${draft.mediaUrls.length}` : 'IMG')}
         </span>
       </div>
       {/* 본문 */}
@@ -183,6 +183,7 @@ function Drawer({ cell, onClose, onAction, busy }) {
   const [hashtags, setHashtags] = useState(cell?.draft?.hashtags || '');
   const [time, setTime] = useState(cell?.draft?.scheduledAt?.slice(11, 16) || '09:00');
   const [revisionNote, setRevisionNote] = useState('');
+  const [slide, setSlide] = useState(0); // 캐러셀 현재 슬라이드
   const fileRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState('');
@@ -243,16 +244,43 @@ function Drawer({ cell, onClose, onAction, busy }) {
             <div style={{ fontSize: 13, color: '#6E6E73' }}>타겟: <b style={{ color: '#1D1D1F' }}>{channel.market}</b><div style={{ fontSize: 12, color: '#AEAEB2', marginTop: 4 }}>{weekday.hint}</div></div>
 
             {/* 미리보기 */}
-            {draft && draft.mediaUrls && draft.mediaUrls.length ? (
-              // 카드뉴스 캐러셀 — 슬라이드 가로 스크롤 (크게)
-              <div style={{ display: 'flex', height: 360, flexShrink: 0, gap: 10, overflowX: 'auto', padding: '2px 0 10px', scrollSnapType: 'x mandatory' }}>
-                {draft.mediaUrls.map((u, i) => (
-                  <a key={i} href={u} target="_blank" rel="noreferrer"
-                    style={{ flex: '0 0 auto', width: 288, height: '100%', borderRadius: 10, overflow: 'hidden',
-                      border: '1px solid #E5E5EA', scrollSnapAlign: 'start', background: `center/cover url(${u}) #000` }} />
-                ))}
-              </div>
-            ) : (
+            {draft && draft.mediaUrls && draft.mediaUrls.length ? (() => {
+              // 카드뉴스/카루셀 — 메인 뷰어(화살표·카운터) + 썸네일 스트립(전부 보임)
+              const imgs = draft.mediaUrls;
+              const cur = Math.min(slide, imgs.length - 1);
+              const go = (d) => setSlide((cur + d + imgs.length) % imgs.length);
+              const navBtn = (side) => ({
+                position: 'absolute', top: '50%', [side]: 8, transform: 'translateY(-50%)',
+                width: 36, height: 36, borderRadius: '50%', border: 'none', cursor: 'pointer',
+                background: 'rgba(0,0,0,.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              });
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+                  {/* 메인 뷰어 — 전체가 잘림 없이(contain) 보임 */}
+                  <div style={{ position: 'relative', width: '100%', aspectRatio: '4 / 5', borderRadius: 10, overflow: 'hidden', border: '1px solid #E5E5EA', background: '#000' }}>
+                    <img src={imgs[cur]} alt={`slide ${cur + 1}`} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+                    {imgs.length > 1 && (
+                      <>
+                        <button type="button" onClick={() => go(-1)} style={navBtn('left')} aria-label="이전"><ChevronLeft size={20} /></button>
+                        <button type="button" onClick={() => go(1)} style={navBtn('right')} aria-label="다음"><ChevronRight size={20} /></button>
+                        <div style={{ position: 'absolute', top: 8, right: 10, background: 'rgba(0,0,0,.6)', color: '#fff', fontSize: 12, fontWeight: 600, padding: '3px 9px', borderRadius: 20 }}>{cur + 1} / {imgs.length}</div>
+                      </>
+                    )}
+                  </div>
+                  {/* 썸네일 스트립 — 전체 슬라이드 한눈에, 클릭 이동 */}
+                  {imgs.length > 1 && (
+                    <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
+                      {imgs.map((u, i) => (
+                        <button key={i} type="button" onClick={() => setSlide(i)} aria-label={`슬라이드 ${i + 1}`}
+                          style={{ flex: '0 0 auto', width: 52, height: 65, borderRadius: 6, overflow: 'hidden', padding: 0, cursor: 'pointer',
+                            border: i === cur ? '2px solid #5E6AD2' : '1px solid #E5E5EA', background: `center/cover url(${u}) #000` }} />
+                      ))}
+                    </div>
+                  )}
+                  <a href={imgs[cur]} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: '#5E6AD2', textAlign: 'center', textDecoration: 'none' }}>원본 열기 ({cur + 1}/{imgs.length})</a>
+                </div>
+              );
+            })() : (
               <div style={{
                 borderRadius: 12, aspectRatio: '9/16', maxHeight: 520, alignSelf: 'center', width: '78%',
                 overflow: 'hidden', position: 'relative',
