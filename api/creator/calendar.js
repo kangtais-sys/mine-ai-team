@@ -202,6 +202,7 @@ export default async function handler(req, res) {
           date: payload.date, slotType: payload.slotType || null,
           status: 'draft', format: payload.format || 'reel',
           caption: '', hashtags: '', mediaUrl: null, mediaUrls: [],
+          refUrl: payload.refUrl ? String(payload.refUrl).trim() : null, // shorts 레퍼런스 유튜브 링크
           profileId: PROFILE[region],
           createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
         };
@@ -225,6 +226,8 @@ export default async function handler(req, res) {
         if (payload.mediaUrl !== undefined) draft.mediaUrl = payload.mediaUrl;
         if (payload.mediaUrls !== undefined) draft.mediaUrls = payload.mediaUrls;
         if (payload.format) draft.format = payload.format;
+        // shorts 레퍼런스 유튜브 링크(데일리 작업이 video_analysis→제품화). 빈 문자열이면 null(라이브러리 폴백)
+        if (payload.refUrl !== undefined) draft.refUrl = payload.refUrl ? String(payload.refUrl).trim() : null;
         draft.updatedAt = new Date().toISOString();
       };
 

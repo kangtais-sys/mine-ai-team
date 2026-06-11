@@ -184,6 +184,7 @@ function Drawer({ cell, onClose, onAction, busy }) {
   const [time, setTime] = useState(cell?.draft?.scheduledAt?.slice(11, 16) || '09:00');
   const [revisionNote, setRevisionNote] = useState('');
   const [slide, setSlide] = useState(0); // 캐러셀 현재 슬라이드
+  const [refUrl, setRefUrl] = useState(cell?.draft?.refUrl || ''); // shorts 레퍼런스 유튜브 링크
   const fileRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState('');
@@ -329,6 +330,19 @@ function Drawer({ cell, onClose, onAction, busy }) {
                 style={inputBox} />
             </div>
 
+            {/* shorts 슬롯(화·목·금·일) — 레퍼런스 유튜브 링크. 데일리 작업이 읽어 video_analysis→제품화, 없으면 라이브러리 폴백 */}
+            {(['tue', 'thu', 'fri', 'sun'].includes(weekday?.key) || ['reel', 'shorts'].includes(draft?.format)) && (
+              <div>
+                <label style={fieldLabel}>레퍼런스 영상 (YouTube · shorts 소스)</label>
+                <input type="url" value={refUrl} onChange={e => setRefUrl(e.target.value)}
+                  placeholder="https://youtube.com/shorts/… — 비우면 라이브러리 폴백"
+                  style={{ ...inputBox, fontFamily: 'inherit' }} />
+                <span style={{ fontSize: 11.5, color: '#AEAEB2', marginTop: 4, display: 'block' }}>
+                  데일리 작업이 이 링크를 video_analysis 로 분석해 제품화합니다. 비우면 라이브러리에서 자동 선택.
+                </span>
+              </div>
+            )}
+
             <div>
               <label style={fieldLabel}>발행 시각 (현지)</label>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -366,16 +380,16 @@ function Drawer({ cell, onClose, onAction, busy }) {
             </button>
           ) : (
             <>
-              <button disabled={busy} onClick={() => onAction('save', { ...cell, caption, hashtags, time })} style={{ ...ghostBtn, padding: '14px 16px', fontSize: 14 }}>
+              <button disabled={busy} onClick={() => onAction('save', { ...cell, caption, hashtags, time, refUrl })} style={{ ...ghostBtn, padding: '14px 16px', fontSize: 14 }}>
                 <Pencil size={16} /> 저장
               </button>
-              <button disabled={busy} onClick={() => onAction('approve', { ...cell, caption, hashtags, time })} style={{ ...ghostBtn, padding: '14px 16px', fontSize: 14 }}>
+              <button disabled={busy} onClick={() => onAction('approve', { ...cell, caption, hashtags, time, refUrl })} style={{ ...ghostBtn, padding: '14px 16px', fontSize: 14 }}>
                 <Check size={16} /> 승인
               </button>
-              <button disabled={busy} onClick={() => onAction('schedule', { ...cell, caption, hashtags, time })} style={{ ...ghostBtn, padding: '14px 16px', fontSize: 14 }}>
+              <button disabled={busy} onClick={() => onAction('schedule', { ...cell, caption, hashtags, time, refUrl })} style={{ ...ghostBtn, padding: '14px 16px', fontSize: 14 }}>
                 <Clock size={16} /> 예약
               </button>
-              <button disabled={busy} onClick={() => onAction('publish', { ...cell, caption, hashtags, time })} style={{ ...primaryBtn, flex: 1.6, padding: '14px 18px', fontSize: 15 }}>
+              <button disabled={busy} onClick={() => onAction('publish', { ...cell, caption, hashtags, time, refUrl })} style={{ ...primaryBtn, flex: 1.6, padding: '14px 18px', fontSize: 15 }}>
                 {busy ? <Loader2 size={17} className="spin" /> : <Send size={16} />} 발행
               </button>
               <button disabled={busy} onClick={() => onAction('delete', cell)} style={{ ...ghostBtn, flex: '0 0 auto', width: 56, color: '#FF3B30', borderColor: '#FFD9D6', padding: '14px 12px' }}>
