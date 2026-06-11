@@ -19,19 +19,10 @@ async function extractFirstFrame(videoBuffer) {
   return null;
 }
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
-
-  const { videoUrl, imageUrl, imageBase64 } = req.body || {};
-
-  if (!videoUrl && !imageUrl && !imageBase64) {
-    return res.status(400).json({ error: 'videoUrl, imageUrl, or imageBase64 required' });
-  }
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
-  }
-
+// 코어 — 엔드포인트·cron 공용. {success, ...metadata} 또는 {error} 반환(throw 안 함).
+export async function analyzeMedia({ videoUrl, imageUrl, imageBase64 } = {}) {
+  if (!videoUrl && !imageUrl && !imageBase64) return { error: 'videoUrl, imageUrl, or imageBase64 required' };
+  if (!process.env.ANTHROPIC_API_KEY) return { error: 'ANTHROPIC_API_KEY not set' };
   try {
     let imageContent;
 
@@ -63,7 +54,7 @@ export default async function handler(req, res) {
       } else {
         // Try downloading and using as-is
         const videoRes = await fetch(videoUrl);
-        if (!videoRes.ok) return res.status(400).json({ error: `Failed to fetch: ${videoRes.status}` });
+        if (!videoRes.ok) return { error: `Failed to fetch: ${videoRes.status}` };
 
         // Check if it's an image
         const ct = videoRes.headers.get('content-type') || '';
@@ -75,7 +66,7 @@ export default async function handler(req, res) {
             source: { type: 'base64', media_type: ct, data: base64 },
           };
         } else {
-          return res.status(400).json({ error: 'Video URL must be a Google Drive link (for thumbnail) or direct image URL. Use imageUrl or imageBase64 for direct images.' });
+          return { error: 'Video URL must be a Google Drive link (for thumbnail) or direct image URL. Use imageUrl or imageBase64 for direct images.' };
         }
       }
     }
@@ -102,7 +93,7 @@ export default async function handler(req, res) {
 
     if (!claudeRes.ok) {
       console.error('[VideoAnalyze] Claude error:', JSON.stringify(claudeData));
-      return res.status(200).json({ error: claudeData.error?.message || `Claude ${claudeRes.status}`, raw: claudeData });
+      return { error: claudeData.error?.message || `Claude ${claudeRes.status}`, raw: claudeData };
     }
 
     const text = claudeData.content?.[0]?.text || '';
@@ -112,12 +103,19 @@ export default async function handler(req, res) {
     if (jsonMatch) {
       const metadata = JSON.parse(jsonMatch[0]);
       console.log('[VideoAnalyze] Generated:', metadata.youtube_title);
-      return res.status(200).json({ success: true, ...metadata });
+      return { success: true, ...metadata };
     }
 
-    return res.status(200).json({ success: false, raw: text });
+    return { success: false, raw: text };
   } catch (error) {
     console.error('[VideoAnalyze] Error:', error.message);
-    return res.status(500).json({ error: error.message });
+    return { error: error.message };
   }
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+  const out = await analyzeMedia(req.body || {});
+  const code = out.error ? (/required|Google Drive|Failed to fetch/.test(out.error) ? 400 : 500) : 200;
+  return res.status(code).json(out);
 }

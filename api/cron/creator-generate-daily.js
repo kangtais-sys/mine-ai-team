@@ -5,6 +5,7 @@
 // 인증: Bearer CRON_SECRET (미들웨어 /api/cron/* 통과). ?dry=1 = 대상·동작만 반환(변경 없음).
 import { Redis } from '@upstash/redis';
 import { getSupabase } from '../../lib/supabase.js';
+import { analyzeMedia } from '../video-analyze.js';
 
 export const config = { maxDuration: 300 };
 
@@ -14,9 +15,6 @@ const redis = new Redis({
 });
 
 const VIDEO_SLOTS = new Set(['tue', 'thu', 'fri', 'sun']); // 영상 슬롯
-// 내부 호출은 안정 prod 도메인 사용 — VERCEL_URL(배포별 URL)은 Vercel Deployment Protection 으로 401.
-const BASE = 'https://mine-ai-team.vercel.app';
-
 const kstToday = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
 const isVideoSlot = (d) => VIDEO_SLOTS.has(d.slotType) || ['reel', 'shorts'].includes(d.format);
 
@@ -24,15 +22,6 @@ const isVideoSlot = (d) => VIDEO_SLOTS.has(d.slotType) || ['reel', 'shorts'].inc
 function ytThumb(url) {
   const m = String(url || '').match(/(?:youtu\.be\/|youtube\.com\/(?:shorts\/|watch\?v=|embed\/|live\/|v\/))([A-Za-z0-9_-]{11})/);
   return m ? `https://img.youtube.com/vi/${m[1]}/hqdefault.jpg` : null;
-}
-
-async function analyzeThumb(imageUrl) {
-  const r = await fetch(`${BASE}/api/video-analyze`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.CRON_SECRET}` },
-    body: JSON.stringify({ imageUrl }),
-  });
-  try { return await r.json(); } catch { return { error: `HTTP ${r.status}` }; }
 }
 
 export default async function handler(req, res) {
@@ -58,7 +47,7 @@ export default async function handler(req, res) {
           if (!thumb) { results.push({ id: d.id, error: 'invalid_youtube_url', refUrl: d.refUrl }); continue; }
           if (dry) { results.push({ id: d.id, would: 'analyze', channel: d.channel, slotType: d.slotType, thumb }); continue; }
 
-          const meta = await analyzeThumb(thumb);
+          const meta = await analyzeMedia({ imageUrl: thumb });
           if (meta && meta.success) {
             d.caption = meta.tiktok_caption || meta.youtube_description || d.caption || '';
             d.hashtags = Array.isArray(meta.hashtags) ? meta.hashtags.join(' ') : (meta.hashtags || d.hashtags || '');
