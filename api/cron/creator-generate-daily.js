@@ -14,7 +14,8 @@ const redis = new Redis({
 });
 
 const VIDEO_SLOTS = new Set(['tue', 'thu', 'fri', 'sun']); // 영상 슬롯
-const BASE = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://mine-ai-team.vercel.app';
+// 내부 호출은 안정 prod 도메인 사용 — VERCEL_URL(배포별 URL)은 Vercel Deployment Protection 으로 401.
+const BASE = 'https://mine-ai-team.vercel.app';
 
 const kstToday = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
 const isVideoSlot = (d) => VIDEO_SLOTS.has(d.slotType) || ['reel', 'shorts'].includes(d.format);
