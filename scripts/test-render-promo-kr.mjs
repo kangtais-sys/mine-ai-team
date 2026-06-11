@@ -5,7 +5,7 @@ import { buildSlides, buildCaption, fetchImageDataUrl } from '../api/creator/ren
 
 const M = JSON.parse(readFileSync('docs/manifests/wed_kr_image_manifest.json', 'utf8'));
 const g = M.product_images_hires, o = M.offer_live;
-const images = { hero: g[0], deal: g[0], science: M.detail_strip_sample, proof: g[5] };  // 미스트 통일(g1=앰플,g2=샴푸 회피)
+const images = { hero: g[0], deal: g[0], science: M.detail_strip_sample, proof: g[0] };  // proof=g0 순수 1+1 미스트(g5 '1-SET' 겹침 회피)
 const offer = {
   price: o.sale_price,           // 24,900원 (1+1)
   listPrice: o.list_price,       // 38,000원
@@ -14,7 +14,7 @@ const offer = {
   shipping: '5만원↑ 무료배송 · ~14시 당일출고',
   gift: '7만원↑ 프로틴 앰플 증정',
   interest: '319,937',
-  soldOut: '1분 완판',
+  badge: '[리뉴얼]',
 };
 const market = 'kr';
 console.log('images:', Object.fromEntries(Object.entries(images).map(([k, v]) => [k, v?.slice(0, 70)])));

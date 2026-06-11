@@ -43,8 +43,8 @@ function slideCover(im, offer, market) {
   const hook = isKr
     ? (offer.bonus || '1+1 단독구성')
     : (/buy 1 get 1/i.test(offer.bonus || '') ? 'BUY 1, GET 1 FREE GIFT' : 'FREE GIFT INSIDE');
-  // 우상단 칩: US=실평점 별점 / KR=실지표(완판·관심) — US$/별점 혼용 금지
-  const chip = isKr ? (offer.soldOut || (offer.interest ? `관심 ${offer.interest}` : '자사몰')) : `★ ${offer.rating}`;
+  // 우상단 칩: US=실평점 별점 / KR=미스트 뱃지(예 '[리뉴얼]') 또는 관심지표 — US$/별점·타제품 뱃지('1분완판'=앰플) 금지
+  const chip = isKr ? (offer.badge || (offer.interest ? `관심 ${offer.interest}` : '자사몰')) : `★ ${offer.rating}`;
   return col({ width: W, height: H, backgroundColor: WHITE }, [
     // 제품 히어로 풀블리드 + 상단 오버레이(채널 배지 / 실지표 칩)
     h('div', { display: 'flex', position: 'relative', width: W, height: 858, backgroundColor: GRAY }, [
@@ -93,13 +93,14 @@ function slideProof(im, offer, market) {
   // 실집계 지표만(가짜 후기카드 금지). US=실평점 별점 / KR=관심·완판(US$·별점 혼용 금지)
   const metric = isKr
     ? col({}, [
-        row({ alignItems: 'baseline', marginTop: 22 }, [
-          txt(offer.interest || '', { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 168, color: BLACK, letterSpacing: -6, lineHeight: 1 }),
-          txt(' 명', { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 56, color: SUB }),
+        // "지금까지 319,937명이 관심" — 미스트 자체 실집계만. '1분 완판'(앰플 뱃지) 금지.
+        txt('지금까지', { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 44, color: '#2A2A2A', marginTop: 14 }),
+        row({ alignItems: 'baseline' }, [
+          txt(offer.interest || '', { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 150, color: BLACK, letterSpacing: -5, lineHeight: 1 }),
+          txt('명이 관심', { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 48, color: SUB, marginLeft: 10 }),
         ]),
-        txt('관심고객 · 자사몰 실집계', { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 38, color: '#2A2A2A', marginTop: 6 }),
-        offer.soldOut ? row({ marginTop: 18 }, [pill(offer.soldOut)]) : null,
-      ].filter(Boolean))
+        txt('미스트 자체 실집계 · 라이브', { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 30, color: '#9A9A9A', marginTop: 8 }),
+      ])
     : col({}, [
         row({ alignItems: 'baseline', marginTop: 24 }, [
           txt('★', { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 120, color: BLACK }),
@@ -169,7 +170,7 @@ export function buildCaption(offer, market) {
       '',
       '500달톤 분자 단백질 미스트 — 진짜 흡수되는 크기(984ppm·500달톤 이하). 한 번 뿌리면 속부터 차오르는 물광.',
       '',
-      (offer.interest || offer.soldOut) ? `🔥 ${[offer.interest ? `관심 ${offer.interest}명` : null, offer.soldOut].filter(Boolean).join(' · ')}` : null,
+      offer.interest ? `🔥 지금까지 ${offer.interest}명이 관심` : null,
       dealLine,
       offer.shipping ? `✔ ${offer.shipping}` : null,
       offer.gift ? `✔ ${offer.gift}` : null,
