@@ -28,6 +28,17 @@ const DEFAULT_PERSONAS = {
     dmGreeting: '안녕하세요! 밀리밀리입니다 😊',
     forbid: ['경쟁사 언급', '미확인 효능 주장', '재고 확약', '개인정보 수집'],
   },
+  millimilli_us: {
+    name: 'MILLIMILLI US',
+    handles: ['@millimilli.us'],
+    character: 'Brand account for US market, professional yet friendly, K-beauty expert tone',
+    tone: 'English (US), brand-consistent, accurate product info, warm customer care',
+    topics: ['MILLIMILLI products', 'skincare routine', '500 Dalton / ingredients', 'Amazon US'],
+    commentStyle: 'Genuine thanks, detailed answers to product questions, English only',
+    dmStyle: 'Fast accurate product help, point to Amazon US / millimilli.us, keep brand image',
+    dmGreeting: 'Hi! This is MILLIMILLI 😊',
+    forbid: ['competitor mentions', 'unverified efficacy claims', 'stock guarantees', 'KR-only claims (Olive Young #1 / KRW)'],
+  },
 };
 
 // Rules stored as JSON array at channel:rules key

@@ -10,7 +10,7 @@ export default async function handler(req, res) {
 
   const results = {};
 
-  for (const account of ['yuminhye', 'millimilli']) {
+  for (const account of ['yuminhye', 'millimilli', 'millimilli_us']) {
     try {
       const r = await fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://mine-ai-team.vercel.app'}/api/channel/learn`, {
         method: 'POST',

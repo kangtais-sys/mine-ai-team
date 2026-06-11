@@ -33,6 +33,11 @@ const DM_ACCOUNTS = [
     account: 'millimilli',
   },
   {
+    accountId: '69fbfd0692b3d8e85f86d882', // millimilli.us
+    accountUsername: 'millimilli.us',
+    account: 'millimilli_us',
+  },
+  {
     accountId: '69fca4b192b3d8e85f8cfea6', // lala_lounge_
     accountUsername: 'lala_lounge_',
     account: 'yuminhye',
@@ -52,15 +57,16 @@ export default async function handler(req, res) {
   const skip = (r) => { stats.skipped++; skipReasons[r] = (skipReasons[r] || 0) + 1; };
 
   // 계정별 설정 미리 로드
-  const [ymSettings, mmSettings] = await Promise.all([
+  const [ymSettings, mmSettings, mmUsSettings] = await Promise.all([
     getSettings('yuminhye'),
     getSettings('millimilli'),
+    getSettings('millimilli_us'),
   ]);
 
-  const settingsMap = { yuminhye: ymSettings, millimilli: mmSettings };
+  const settingsMap = { yuminhye: ymSettings, millimilli: mmSettings, millimilli_us: mmUsSettings };
 
   // DM 자동응대 계정이 하나도 없으면 스킵
-  if (!ymSettings.autoDm && !mmSettings.autoDm) {
+  if (!ymSettings.autoDm && !mmSettings.autoDm && !mmUsSettings.autoDm) {
     return res.status(200).json({ skipped: true, reason: 'all autoDm off' });
   }
 

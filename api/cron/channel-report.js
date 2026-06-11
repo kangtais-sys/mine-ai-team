@@ -66,21 +66,26 @@ export default async function handler(req, res) {
     const today = nowKST.toISOString().slice(0, 10);
 
     // 1. 팔로워 & 자동응대 통계
-    const [ymFollowers, mmFollowers, ymCC, mmCC, ymDC, mmDC, ymSettings, mmSettings] = await Promise.all([
+    const [ymFollowers, mmFollowers, mmUsFollowers, ymCC, mmCC, mmUsCC, ymDC, mmDC, mmUsDC, ymSettings, mmSettings, mmUsSettings] = await Promise.all([
       redis.get('followers:yuminhye:instagram'),
       redis.get('followers:millimilli:instagram'),
+      redis.get('followers:millimilli_us:instagram'),
       redis.get('channel:auto:count:comment:yuminhye'),
       redis.get('channel:auto:count:comment:millimilli'),
+      redis.get('channel:auto:count:comment:millimilli_us'),
       redis.get('channel:auto:count:dm:yuminhye'),
       redis.get('channel:auto:count:dm:millimilli'),
+      redis.get('channel:auto:count:dm:millimilli_us'),
       redis.get('channel:settings:yuminhye'),
       redis.get('channel:settings:millimilli'),
+      redis.get('channel:settings:millimilli_us'),
     ]);
 
     // 2. 최근 게시물 avg comments
-    const [ymPosts, mmPosts] = await Promise.all([
+    const [ymPosts, mmPosts, mmUsPosts] = await Promise.all([
       redis.get('channel:posts:yuminhye'),
       redis.get('channel:posts:millimilli'),
+      redis.get('channel:posts:millimilli_us'),
     ]);
 
     const avgComments = (posts) => {
@@ -92,20 +97,24 @@ export default async function handler(req, res) {
     };
 
     // 3. 최근 응대 로그 (최근 100개씩)
-    const [ymCommentLogs, mmCommentLogs, ymDmLogs, mmDmLogs] = await Promise.all([
+    const [ymCommentLogs, mmCommentLogs, mmUsCommentLogs, ymDmLogs, mmDmLogs, mmUsDmLogs] = await Promise.all([
       redis.lrange('channel:auto:comment:logs:yuminhye', 0, 99),
       redis.lrange('channel:auto:comment:logs:millimilli', 0, 99),
+      redis.lrange('channel:auto:comment:logs:millimilli_us', 0, 99),
       redis.lrange('channel:auto:dm:logs:yuminhye', 0, 49),
       redis.lrange('channel:auto:dm:logs:millimilli', 0, 49),
+      redis.lrange('channel:auto:dm:logs:millimilli_us', 0, 49),
     ]);
 
     const ymCategories = categorizeReplies([...ymCommentLogs, ...ymDmLogs]);
     const mmCategories = categorizeReplies([...mmCommentLogs, ...mmDmLogs]);
+    const mmUsCategories = categorizeReplies([...mmUsCommentLogs, ...mmUsDmLogs]);
 
     // 4. 긴급 승인 대기 큐
-    const [ymQueue, mmQueue] = await Promise.all([
+    const [ymQueue, mmQueue, mmUsQueue] = await Promise.all([
       redis.lrange('channel:approval:queue:yuminhye', 0, -1),
       redis.lrange('channel:approval:queue:millimilli', 0, -1),
+      redis.lrange('channel:approval:queue:millimilli_us', 0, -1),
     ]);
 
     const parseQueue = (raw) => {
@@ -113,6 +122,7 @@ export default async function handler(req, res) {
     };
     const ymPending = ymQueue.map(parseQueue).filter(i => i && i.status === 'pending').length;
     const mmPending = mmQueue.map(parseQueue).filter(i => i && i.status === 'pending').length;
+    const mmUsPending = mmUsQueue.map(parseQueue).filter(i => i && i.status === 'pending').length;
 
     const summary = {
       date: today,
@@ -136,7 +146,17 @@ export default async function handler(req, res) {
         categories: mmCategories,
         urgentPending: mmPending,
       },
-      totalUrgent: ymPending + mmPending,
+      millimilli_us: {
+        followers: mmUsFollowers?.count || 0,
+        avgComments7d: avgComments(mmUsPosts),
+        autoCommentTotal: mmUsCC || 0,
+        autoDmTotal: mmUsDC || 0,
+        autoCommentOn: mmUsSettings?.autoComment || false,
+        autoDmOn: mmUsSettings?.autoDm || false,
+        categories: mmUsCategories,
+        urgentPending: mmUsPending,
+      },
+      totalUrgent: ymPending + mmPending + mmUsPending,
       updatedAt: new Date().toISOString(),
     };
 
@@ -146,6 +166,7 @@ export default async function handler(req, res) {
       const fmt = (n) => (n || 0).toLocaleString('ko-KR');
       const ym = summary.yuminhye;
       const mm = summary.millimilli;
+      const mmUs = summary.millimilli_us;
 
       const promptLines = [
         `당신은 밀리밀리(MILLIMILLI) 브랜드의 AI 채널 매니저입니다. 담당은 댓글·DM 응대 운영입니다.`,
@@ -166,6 +187,13 @@ export default async function handler(req, res) {
         `- 자동댓글: ${mm.autoCommentOn ? 'ON' : 'OFF'} / 자동DM: ${mm.autoDmOn ? 'ON' : 'OFF'}`,
         `- 오늘 응대 주제: 제품문의 ${mm.categories.product}건 / 칭찬 ${mm.categories.praise}건 / 불만 ${mm.categories.complaint}건 / 일반 ${mm.categories.general}건 / DM ${mm.categories.dm}건`,
         mm.urgentPending > 0 ? `- ⚠ 긴급/승인 대기: ${mm.urgentPending}건` : '',
+        ``,
+        `■ 밀리밀리 US 계정 (@millimilli.us)`,
+        `- 팔로워: ${fmt(mmUs.followers)}명 | 최근7일 평균댓글: ${mmUs.avgComments7d}개`,
+        `- 누적 자동댓글: ${fmt(mmUs.autoCommentTotal)}건 / 자동DM: ${fmt(mmUs.autoDmTotal)}건`,
+        `- 자동댓글: ${mmUs.autoCommentOn ? 'ON' : 'OFF'} / 자동DM: ${mmUs.autoDmOn ? 'ON' : 'OFF'}`,
+        `- 오늘 응대 주제: 제품문의 ${mmUs.categories.product}건 / 칭찬 ${mmUs.categories.praise}건 / 불만 ${mmUs.categories.complaint}건 / 일반 ${mmUs.categories.general}건 / DM ${mmUs.categories.dm}건`,
+        mmUs.urgentPending > 0 ? `- ⚠ 긴급/승인 대기: ${mmUs.urgentPending}건` : '',
         ``,
         `[보고서 작성 지시]`,
         `1. 오늘 채널 요약 한 줄 (이모지 포함)`,

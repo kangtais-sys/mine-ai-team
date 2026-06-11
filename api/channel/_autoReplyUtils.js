@@ -131,7 +131,7 @@ export async function getEnabledRules(account) {
     const raw = await redis.get('channel:rules');
     const rules = Array.isArray(raw) ? raw : (typeof raw === 'string' ? JSON.parse(raw) : []);
     // 계정 라벨 정규화 (한글/영어 모두 처리)
-    const LABEL_MAP = { '유민혜': 'yuminhye', '밀리밀리': 'millimilli', '전체': 'all' };
+    const LABEL_MAP = { '유민혜': 'yuminhye', '밀리밀리': 'millimilli', '밀리밀리KR': 'millimilli', '밀리밀리kr': 'millimilli', '밀리밀리US': 'millimilli_us', '밀리밀리us': 'millimilli_us', '밀리밀리 US': 'millimilli_us', '전체': 'all' };
     return rules
       .filter(r => {
         if (!r.enabled) return false;
@@ -184,6 +184,15 @@ export function buildPrompt(account, text, extraRules = [], learned = null, urlK
 말투: 반말 또는 가벼운 존댓말, 친근하고 따뜻하게.
 칭찬/공감 → 진심 어린 리액션. 뷰티/스킨케어 질문 → 개인적인 경험 공유.
 개인 연락 요청/광고 → SKIP.${replyStyleText}${learnedText}${urlText}${rulesText}`;
+  }
+
+  if (account === 'millimilli_us') {
+    return `You are the SNS manager for MILLIMILLI (@millimilli.us), a Korean 500-Dalton protein skincare brand, on the US Instagram account. Never reply like a personal influencer.
+ALWAYS reply in English (US tone), 1-2 emojis, max 2 sentences. Do NOT state prices directly. Return only SKIP for spam/abuse.
+Product/ingredient questions → answer within what you know + "DM us @millimilli.us and we'll help 🫶".
+Compliment → warm, genuine thanks.
+Purchase: Amazon US (search "MILLIMILLI 500 Dalton Protein Mist") or millimilli.us.
+⚠️ US market only — never cite Korea-only claims (올리브영 1위 / KRW prices). Use US references only.${replyStyleText}${learnedText}${urlText}${rulesText}`;
   }
 
   const isOYSale = OY_KEYWORDS.some(k => (text || '').includes(k));

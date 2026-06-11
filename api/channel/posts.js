@@ -10,8 +10,10 @@ const ZERNIO = 'https://zernio.com/api/v1';
 // Zernio 프로필 ID → 계정 매핑 (CLAUDE.md 기준)
 const MILLIMILLI_IDS = new Set([
   '69fbfc1992b3d8e85f86d277', // millimilli.kr
-  '69fbfd0692b3d8e85f86d882', // millimilli.us
   '69d08cc1986d57bb8f733102', // 원래 millimilli ID
+]);
+const MILLIMILLI_US_IDS = new Set([
+  '69fbfd0692b3d8e85f86d882', // millimilli.us
 ]);
 const YUMINHYE_IDS = new Set([
   '69fca4b192b3d8e85f8cfea6', // lala_lounge_
@@ -21,9 +23,12 @@ const YUMINHYE_IDS = new Set([
 function belongsToAccount(item, account) {
   const id = item.accountId || item.profileId || item.profile?._id || '';
   const username = (item.accountUsername || '').toLowerCase();
+  if (account === 'millimilli_us') {
+    return MILLIMILLI_US_IDS.has(id) || username === 'millimilli.us';
+  }
   if (account === 'millimilli') {
-    return MILLIMILLI_IDS.has(id)
-      || username.includes('millimilli');
+    // .kr 만 (millimilli.us 는 별도 계정으로 제외)
+    return (MILLIMILLI_IDS.has(id) || username.includes('millimilli')) && username !== 'millimilli.us' && !MILLIMILLI_US_IDS.has(id);
   }
   if (account === 'yuminhye') {
     return YUMINHYE_IDS.has(id)

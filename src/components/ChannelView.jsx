@@ -16,12 +16,20 @@ const ACCOUNTS = {
     ig: 'lala_lounge_',
   },
   millimilli: {
-    label: '밀리밀리',
-    subLabel: '@millimilli_official',
+    label: '밀리밀리 KR',
+    subLabel: '@millimilli.kr',
     emoji: '🏷️',
     color: '#5E6AD2',
     lightBg: '#F0F0FF',
-    ig: 'millimilli_official',
+    ig: 'millimilli.kr',
+  },
+  millimilli_us: {
+    label: '밀리밀리 US',
+    subLabel: '@millimilli.us',
+    emoji: '🌎',
+    color: '#4A90E2',
+    lightBg: '#F0F6FF',
+    ig: 'millimilli.us',
   },
 };
 

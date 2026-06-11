@@ -66,7 +66,7 @@ function ZernioStatusPanel({ creatorData }) {
     { key: 'tiktok', label: 'TikTok', abbr: 'TT', color: '#69C9D0' },
     { key: 'youtube', label: 'YouTube', abbr: 'YT', color: '#FF0000' },
   ];
-  const accounts = ['yuminhye', 'millimilli'];
+  const accounts = ['yuminhye', 'millimilli', 'millimilli_us'];
 
   return (
     <div style={{ background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 10, padding: 14, marginTop: 12 }}>
@@ -272,7 +272,7 @@ const AGENT_DASHBOARDS = {
       }).catch(() => {});
       // Load follower counts from stats (Zernio/Redis 캐시 기반)
       fetch('/api/stats').then(r => r.json()).then(d => {
-        ['yuminhye', 'millimilli'].forEach(acct => {
+        ['yuminhye', 'millimilli', 'millimilli_us'].forEach(acct => {
           const acctData = d?.[acct];
           const followers = acctData?.instagram?.count || acctData?.total || null;
           setIgStats(prev => ({ ...prev, [acct]: { ...prev[acct], followers } }));
@@ -283,7 +283,7 @@ const AGENT_DASHBOARDS = {
         if (d && !d.error) setApprovalQueue(d);
       }).catch(() => {});
       // Load history + avg comments per account
-      ['yuminhye', 'millimilli'].forEach(acct => {
+      ['yuminhye', 'millimilli', 'millimilli_us'].forEach(acct => {
         fetch(`/api/channel/history?account=${acct}`).then(r => r.json()).then(d => {
           if (d && !d.error) setHistory(prev => ({ ...prev, [acct]: d }));
         }).catch(() => {});

@@ -176,8 +176,8 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const { account, mode = 'posts' } = req.body || {};
-  if (!['yuminhye', 'millimilli'].includes(account)) {
-    return res.status(400).json({ error: 'account must be yuminhye or millimilli' });
+  if (!['yuminhye', 'millimilli', 'millimilli_us'].includes(account)) {
+    return res.status(400).json({ error: 'account must be yuminhye, millimilli or millimilli_us' });
   }
 
   try {

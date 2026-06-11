@@ -330,7 +330,7 @@ export default function Dashboard({ urgentCount = 0 }) {
               </div>
               {channelReport.summary && (
                 <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #F2F2F5', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  {['yuminhye', 'millimilli'].map(acct => {
+                  {['yuminhye', 'millimilli', 'millimilli_us'].map(acct => {
                     const s = channelReport.summary[acct];
                     if (!s) return null;
                     const cat = s.categories || {};
