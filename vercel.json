@@ -96,6 +96,10 @@
     {
       "path": "/api/cron/creator-schedule",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/wed-promo",
+      "schedule": "0 23 * * 2"
     }
   ],
   "rewrites": [

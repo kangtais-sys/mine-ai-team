@@ -245,49 +245,55 @@ async function seedDraft(sb, { channel, date, mediaUrls, caption, hashtags, slot
   return { channel, id, action: 'created' };
 }
 
+// ── 코어 파이프라인(엔드포인트·cron 공용): 이미지 fetch → 5장 렌더 → Blob → 보드 시드 ──
+// 반환 { ok, drafts, mediaUrls, slides, market, caption, hashtags }. 실패 시 throw.
+export async function renderPromo({ market = 'us', date, images = {}, offer = {}, publish = false, channels: chOverride } = {}) {
+  if (!date) throw new Error('date 필수');
+  if (!['us', 'kr'].includes(market)) throw new Error('market 은 us|kr');
+  if (!images.hero) throw new Error('images.hero 필수');
+
+  // ① 이미지 서버 fetch → data URL (CDN egress 는 Vercel 에서 닿음)
+  const im = {};
+  for (const k of ['hero', 'deal', 'science', 'proof']) {
+    try { im[k] = await fetchImageDataUrl(images[k]); }
+    catch (e) { console.error(`[render-promo] ${k}:`, e.message); im[k] = null; }
+  }
+  if (!im.hero) throw new Error('hero 이미지 다운로드 실패 — URL 재검증 필요');
+
+  // ② 5장 렌더 → ③ Blob 호스팅 (render-card 와 동일 스택: satori+resvg+put)
+  const fonts = await loadFonts();
+  const slides = buildSlides(im, offer, market);
+  const mediaUrls = [];
+  for (let i = 0; i < slides.length; i++) {
+    const png = await bakePng(slides[i], fonts);
+    const blob = await put(`promo/${market}-${date}-${i + 1}.png`, png, { access: 'public', contentType: 'image/png', addRandomSuffix: true });
+    mediaUrls.push(blob.url);
+  }
+
+  // ④ 캡션 + 보드 시드(ingest 계약) — status:review (승인 게이트). publish=true 라도 자동발행은 승인 플로우에 위임.
+  const { caption, hashtags } = buildCaption(offer, market);
+  const channels = Array.isArray(chOverride) && chOverride.length ? chOverride : [`${market}_ig`];
+  const status = publish ? 'approved' : 'review';
+  const sb = getSupabase();
+  const drafts = [];
+  for (const channel of channels) {
+    drafts.push(await seedDraft(sb, { channel, date, mediaUrls, caption, hashtags, slotType: 'wed_promo', status }));
+  }
+  return { ok: true, drafts, mediaUrls, slides: mediaUrls.length, market, caption, hashtags };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const secret = process.env.CREATOR_INGEST_SECRET;
   if (!secret) return res.status(503).json({ error: 'Service misconfigured (CREATOR_INGEST_SECRET)' });
   if (req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
 
-  const { market = 'us', date, images = {}, offer = {}, publish = false, channels: chOverride } = req.body || {};
-  if (!date) return res.status(400).json({ error: 'date 필수' });
-  if (!['us', 'kr'].includes(market)) return res.status(400).json({ error: 'market 은 us|kr' });
-  if (!images.hero) return res.status(400).json({ error: 'images.hero 필수' });
-
   try {
-    // ① 이미지 서버 fetch → data URL (CDN egress 는 Vercel 에서 닿음)
-    const im = {};
-    for (const k of ['hero', 'deal', 'science', 'proof']) {
-      try { im[k] = await fetchImageDataUrl(images[k]); }
-      catch (e) { console.error(`[render-promo] ${k}:`, e.message); im[k] = null; }
-    }
-    if (!im.hero) return res.status(422).json({ error: 'hero 이미지 다운로드 실패 — URL 재검증 필요' });
-
-    // ② 5장 렌더 → ③ Blob 호스팅 (render-card 와 동일 스택: satori+resvg+put)
-    const fonts = await loadFonts();
-    const slides = buildSlides(im, offer, market);
-    const mediaUrls = [];
-    for (let i = 0; i < slides.length; i++) {
-      const png = await bakePng(slides[i], fonts);
-      const blob = await put(`promo/${market}-${date}-${i + 1}.png`, png, { access: 'public', contentType: 'image/png', addRandomSuffix: true });
-      mediaUrls.push(blob.url);
-    }
-
-    // ④ 캡션 + 보드 시드(ingest 계약) — status:review (승인 게이트). publish=true 라도 자동발행은 승인 플로우에 위임.
-    const { caption, hashtags } = buildCaption(offer, market);
-    const channels = Array.isArray(chOverride) && chOverride.length ? chOverride : [`${market}_ig`];
-    const status = publish ? 'approved' : 'review';
-    const sb = getSupabase();
-    const drafts = [];
-    for (const channel of channels) {
-      drafts.push(await seedDraft(sb, { channel, date, mediaUrls, caption, hashtags, slotType: 'wed_promo', status }));
-    }
-
-    return res.status(200).json({ ok: true, drafts, mediaUrls, slides: mediaUrls.length, market, caption, hashtags });
+    const out = await renderPromo(req.body || {});
+    return res.status(200).json(out);
   } catch (e) {
     console.error('[render-promo]', e.message);
-    return res.status(500).json({ error: e.message });
+    const code = /필수|market|hero 이미지 다운로드/.test(e.message) ? 400 : 500;
+    return res.status(code).json({ error: e.message });
   }
 }
