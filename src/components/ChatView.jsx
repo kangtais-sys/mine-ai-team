@@ -154,7 +154,7 @@ const AGENT_DASHBOARDS = {
     const stats = data || {};
     const agentConns = stats.agentConnections || stats.connections || {};
     const report = stats.agentReports?.chief || stats.chiefReport;
-    const totalFollowers = (stats.yuminhye?.total || 0) + (stats.millimilli?.total || 0);
+    const totalFollowers = (stats.yuminhye?.total || 0) + (stats.millimilli?.total || 0) + (stats.millimilli_us?.total || 0);
     const connectedCount = Object.values(agentConns).filter(v => v?.connected).length;
     const totalCount = Object.keys(agentConns).length;
 
@@ -175,7 +175,7 @@ const AGENT_DASHBOARDS = {
       <>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <KpiCard label="당월 매출 (한국합산)" value={stats.totalRevenue ? fmtKRW(stats.totalRevenue) : '-'} sub="이번 달 누적" icon={DollarSign} />
-          <KpiCard label="총 팔로워" value={totalFollowers > 0 ? fmt(totalFollowers) : '-'} sub="유민혜 + 밀리밀리" icon={Users} />
+          <KpiCard label="총 팔로워" value={totalFollowers > 0 ? fmt(totalFollowers) : '-'} sub="유민혜 + 밀리밀리 KR/US" icon={Users} />
           <KpiCard label="연결된 에이전트" value={totalCount > 0 ? `${connectedCount}/${totalCount}` : '-'} sub="실시간 연결 현황" icon={Target} />
           <KpiCard label="Amazon YTD" value={stats.amazonYTD ? fmtUSD(stats.amazonYTD) : '-'} sub="2026년 누적" icon={Globe} />
         </div>
@@ -249,8 +249,8 @@ const AGENT_DASHBOARDS = {
     const [replyLearnResult, setReplyLearnResult] = useState(null);
 
     // accent per account
-    const ACCENT = { yuminhye: '#FF6B6B', millimilli: '#5E6AD2' };
-    const accent = ACCENT[tab];
+    const ACCENT = { yuminhye: '#FF6B6B', millimilli: '#5E6AD2', millimilli_us: '#4A90E2' };
+    const accent = ACCENT[tab] || '#5E6AD2';
 
     // 탭 전환 시 결과 메시지 초기화
     useEffect(() => {
@@ -507,14 +507,14 @@ const AGENT_DASHBOARDS = {
       </div>
     );
 
-    const tabAccountLabel = { yuminhye: '유민혜', millimilli: '밀리밀리' };
+    const tabAccountLabel = { yuminhye: '유민혜', millimilli: '밀리밀리 KR', millimilli_us: '밀리밀리 US' };
 
     return (
       <>
         <DailyReportCard agentId="creator" />
         {/* Account tabs */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-          {[['yuminhye', '유민혜', '#FF6B6B'], ['millimilli', '밀리밀리', '#5E6AD2']].map(([id, label, color]) => (
+          {[['yuminhye', '유민혜', '#FF6B6B'], ['millimilli', '밀리밀리 KR', '#5E6AD2'], ['millimilli_us', '밀리밀리 US', '#4A90E2']].map(([id, label, color]) => (
             <button
               key={id}
               onClick={() => setTab(id)}
@@ -880,10 +880,10 @@ const AGENT_DASHBOARDS = {
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>컨텍스트 규칙 (상황/이슈 추가)</div>
 
           {(() => {
-            const ACCT_LABEL = { yuminhye: '유민혜', millimilli: '밀리밀리' };
+            const ACCT_LABEL = { yuminhye: ['유민혜'], millimilli: ['밀리밀리', '밀리밀리KR'], millimilli_us: ['밀리밀리US', '밀리밀리 US'] };
             const visibleRules = rules.filter(r =>
               r.account === tab ||
-              r.account === ACCT_LABEL[tab] ||
+              (ACCT_LABEL[tab] || []).includes(r.account) ||
               r.account === '전체' ||
               r.account === 'all' ||
               !r.account
@@ -938,7 +938,7 @@ const AGENT_DASHBOARDS = {
           {/* Add rule */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ display: 'flex', gap: 5 }}>
-              {['전체', '유민혜', '밀리밀리'].map(acct => (
+              {['전체', '유민혜', '밀리밀리KR', '밀리밀리US'].map(acct => (
                 <button
                   key={acct}
                   onClick={() => setRuleAccount(acct)}
