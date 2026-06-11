@@ -116,53 +116,47 @@ async function seedDraft(sb, { channel, date, mediaUrl, caption, hashtags, slotT
   return { channel, id, action: 'created' };
 }
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  const secret = process.env.CREATOR_INGEST_SECRET;
-  if (!secret) return res.status(503).json({ error: 'Service misconfigured (CREATOR_INGEST_SECRET)' });
-  if (req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
-
-  const { footage_url, circle_xy, captions = [], channel, date, slotType = 'shorts', sound, caption, hashtags } = req.body || {};
-  if (!footage_url) return res.status(400).json({ error: 'footage_url 필수' });
-
+// 코어(엔드포인트·cron 공용): 오버레이 PNG → ffmpeg 합성 → (returnBuffer면 버퍼, 아니면 Blob+보드시드)
+export async function overlayShortCore({ footage_url, circle_xy, captions = [], channel, date, slotType = 'shorts', sound, caption, hashtags }, { returnBuffer = false } = {}) {
+  if (!footage_url) throw new Error('footage_url 필수');
   const sid = (channel || 'short') + '_' + Date.now().toString(36);
   const footagePath = `/tmp/${sid}_src.mp4`;
   const overlayPath = `/tmp/${sid}_ovl.png`;
   const outPath = `/tmp/${sid}_out.mp4`;
   const cleanup = async () => { for (const p of [footagePath, overlayPath, outPath]) await fs.unlink(p).catch(() => {}); };
-
   try {
-    // ① 오버레이 PNG
     const png = await renderOverlayPng({ circle_xy, captions });
     await fs.writeFile(overlayPath, png);
-
-    // footage 다운로드 (cloudfront — Vercel 도달)
     const r = await fetch(footage_url, { signal: AbortSignal.timeout(25000) });
     if (!r.ok) throw new Error(`footage 다운로드 실패 ${r.status}`);
     await fs.writeFile(footagePath, Buffer.from(await r.arrayBuffer()));
-
-    // ② ffmpeg overlay 합성
     await composeOverlay(footagePath, overlayPath, outPath, { mute: sound === 'mute' });
-
-    // preview 모드: 파일 직접 응답(시드 없이 품질확인)
-    if (req.query?.preview === 'true') {
-      const buf = await fs.readFile(outPath); await cleanup();
-      res.setHeader('Content-Type', 'video/mp4');
-      return res.status(200).end(buf);
-    }
-
-    // ③ Blob 호스팅 → 보드 시드
     const buf = await fs.readFile(outPath);
+    if (returnBuffer) { await cleanup(); return { buffer: buf }; }
     const blob = await put(`shorts/${channel || 'short'}-${date || 'x'}-${Date.now()}.mp4`, buf, { access: 'public', contentType: 'video/mp4', addRandomSuffix: true });
     let draft = null;
-    if (channel && date) {
-      draft = await seedDraft(getSupabase(), { channel, date, mediaUrl: blob.url, caption, hashtags, slotType });
-    }
+    if (channel && date) draft = await seedDraft(getSupabase(), { channel, date, mediaUrl: blob.url, caption, hashtags, slotType });
     await cleanup();
-    return res.status(200).json({ ok: true, mediaUrl: blob.url, draft });
+    return { ok: true, mediaUrl: blob.url, draft };
+  } catch (e) { await cleanup().catch(() => {}); throw e; }
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  const secret = process.env.CREATOR_INGEST_SECRET;
+  if (!secret) return res.status(503).json({ error: 'Service misconfigured (CREATOR_INGEST_SECRET)' });
+  if (req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
+  if (!req.body?.footage_url) return res.status(400).json({ error: 'footage_url 필수' });
+  try {
+    if (req.query?.preview === 'true') {
+      const { buffer } = await overlayShortCore(req.body, { returnBuffer: true });
+      res.setHeader('Content-Type', 'video/mp4');
+      return res.status(200).end(buffer);
+    }
+    const out = await overlayShortCore(req.body);
+    return res.status(200).json(out);
   } catch (e) {
     console.error('[overlay-short]', e.message);
-    await cleanup().catch(() => {});
     return res.status(/필수|다운로드/.test(e.message) ? 400 : 500).json({ error: e.message });
   }
 }
