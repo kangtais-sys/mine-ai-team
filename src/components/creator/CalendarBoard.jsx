@@ -30,13 +30,13 @@ const STATUS = {
 };
 
 const WEEKDAYS = [
-  { key: 'mon', label: '월', concept: '사이트 후기',        hint: '자사몰/아마존 베스트 후기 후킹' },
-  { key: 'tue', label: '화', concept: '0605 스왑',          hint: '템플릿 스왑 · 이름·날짜·ml 랜덤' },
-  { key: 'wed', label: '수', concept: '프로모션',           hint: '진행 중 프로모션 후킹' },
-  { key: 'thu', label: '목', concept: '0603 비포·애프터',   hint: '못생김→예뻐짐 · POV 자막' },
-  { key: 'fri', label: '금', concept: '카드뉴스',           hint: '뜨는 성분/시술 5선' },
-  { key: 'sat', label: '토', concept: '제품 합성',          hint: '날씨/장소 감성 합성' },
-  { key: 'sun', label: '일', concept: '후기 릴스',          hint: '후기 기반 후킹 9:16 영상' },
+  { key: 'mon', label: '월', slotType: 'review_hook', concept: '후기 후킹',         hint: '자사몰/아마존 베스트 후기 후킹' },
+  { key: 'tue', label: '화', slotType: 'shorts',      concept: '숏츠 제품화',       hint: '유튜브 레퍼런스 링크 → 제품화' },
+  { key: 'wed', label: '수', slotType: 'review_hook', concept: '후기 후킹',         hint: '자사몰/아마존 베스트 후기 후킹' },
+  { key: 'thu', label: '목', slotType: 'shorts',      concept: '숏츠 제품화',       hint: '유튜브 레퍼런스 링크 → 제품화' },
+  { key: 'fri', label: '금', slotType: 'shorts',      concept: '숏츠 제품화',       hint: '유튜브 레퍼런스 링크 → 제품화' },
+  { key: 'sat', label: '토', slotType: 'trend_info',  concept: '뷰티 트렌드 정보성', hint: '뜨는 성분/시술/트렌드 정보성' },
+  { key: 'sun', label: '일', slotType: 'shorts',      concept: '숏츠 제품화',       hint: '유튜브 레퍼런스 링크 → 제품화' },
 ];
 
 const CHANNELS = [
@@ -330,8 +330,8 @@ function Drawer({ cell, onClose, onAction, busy }) {
                 style={inputBox} />
             </div>
 
-            {/* shorts 슬롯(화·목·금·일) — 레퍼런스 유튜브 링크. 데일리 작업이 읽어 video_analysis→제품화, 없으면 라이브러리 폴백 */}
-            {(['tue', 'thu', 'fri', 'sun'].includes(weekday?.key) || ['reel', 'shorts'].includes(draft?.format)) && (
+            {/* 숏츠제품화 슬롯 — 레퍼런스 유튜브 링크. 데일리 작업이 읽어 video_analysis→제품화, 없으면 라이브러리 폴백 */}
+            {(weekday?.slotType === 'shorts' || ['reel', 'shorts'].includes(draft?.format)) && (
               <div>
                 <label style={fieldLabel}>레퍼런스 영상 (YouTube · shorts 소스)</label>
                 <input type="url" value={refUrl} onChange={e => setRefUrl(e.target.value)}
@@ -375,7 +375,7 @@ function Drawer({ cell, onClose, onAction, busy }) {
         {/* 액션 바 (전체폭) */}
         <div style={{ padding: '16px 28px', borderTop: '1px solid #EEE', display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
           {!draft ? (
-            <button disabled={busy} onClick={() => onAction('generate', { channel, weekday, date })} style={{ ...primaryBtn, padding: '15px 18px', fontSize: 15 }}>
+            <button disabled={busy} onClick={() => onAction('generate', { channel, weekday, date, slotType: weekday?.slotType })} style={{ ...primaryBtn, padding: '15px 18px', fontSize: 15 }}>
               {busy ? <Loader2 size={17} className="spin" /> : <Sparkles size={17} />} 이 슬롯 생성하기
             </button>
           ) : (

@@ -14,9 +14,9 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-const VIDEO_SLOTS = new Set(['tue', 'thu', 'fri', 'sun']); // 영상 슬롯
 const kstToday = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
-const isVideoSlot = (d) => VIDEO_SLOTS.has(d.slotType) || ['reel', 'shorts'].includes(d.format);
+// 숏츠제품화 슬롯(재설계: slotType 'shorts'). 구 day-key('tue'..) 호환도 유지.
+const isVideoSlot = (d) => d.slotType === 'shorts' || ['tue', 'thu', 'fri', 'sun'].includes(d.slotType) || ['reel', 'shorts'].includes(d.format);
 
 // 유튜브 링크 → 썸네일 URL (hqdefault 는 항상 존재). shorts/watch/youtu.be 모두 처리.
 function ytThumb(url) {

@@ -9,6 +9,18 @@ export const config = { maxDuration: 120 }; // US 승인 시 드라이브 업로
 
 const ZERNIO = 'https://zernio.com/api/v1';
 
+// 요일별 슬롯 정의 (2026-06 재설계). 프론트 WEEKDAYS 와 동일하게 유지.
+//  월/수=후기후킹 · 화/목/금/일=숏츠제품화(refUrl) · 토=뷰티트렌드 정보성
+const SLOTS = [
+  { key: 'mon', label: '월', slotType: 'review_hook', concept: '후기 후킹' },
+  { key: 'tue', label: '화', slotType: 'shorts', concept: '숏츠 제품화' },
+  { key: 'wed', label: '수', slotType: 'review_hook', concept: '후기 후킹' },
+  { key: 'thu', label: '목', slotType: 'shorts', concept: '숏츠 제품화' },
+  { key: 'fri', label: '금', slotType: 'shorts', concept: '숏츠 제품화' },
+  { key: 'sat', label: '토', slotType: 'trend_info', concept: '뷰티 트렌드 정보성' },
+  { key: 'sun', label: '일', slotType: 'shorts', concept: '숏츠 제품화' },
+];
+
 // env 값 끝 개행/공백 방어 (§2 — Vercel env 의 \n 으로 인한 Zernio 발행 실패 차단).
 // 실제 토큰/리터럴 '\n'(역슬래시+n)·실개행·따옴표 모두 제거 — Vercel 저장값 오염 방어.
 const envTrim = (k, fb = '') => String(process.env[k] ?? fb).replace(/\\[rn]/g, '').replace(/^["'\s]+|["'\s]+$/g, '');
@@ -178,7 +190,7 @@ export default async function handler(req, res) {
       const drafts = (data || [])
         .map(r => r.data)
         .filter(d => d && d.version === 'milli-v1' && d.date >= week && d.date <= weekEnd);
-      return res.status(200).json({ drafts });
+      return res.status(200).json({ drafts, slots: SLOTS });
     } catch (e) {
       console.error('[Calendar GET]', e.message);
       return res.status(200).json({ drafts: [] });
@@ -191,6 +203,19 @@ export default async function handler(req, res) {
     const payload = req.body || {};
 
     try {
+      // wipe: 보드 전체 비우기(milli-v1 전부 삭제). 파괴적이라 CRON_SECRET 게이트.
+      if (action === 'wipe') {
+        if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
+          return res.status(401).json({ error: 'Unauthorized (wipe requires CRON_SECRET)' });
+        }
+        const { data: rows } = await sb.from('creator_drafts').select('id, data').limit(1000);
+        const ids = (rows || []).filter(r => r.data && r.data.version === 'milli-v1').map(r => r.id);
+        for (let i = 0; i < ids.length; i += 100) {
+          await sb.from('creator_drafts').delete().in('id', ids.slice(i, i + 100));
+        }
+        return res.status(200).json({ ok: true, deleted: ids.length });
+      }
+
       // generate: 빈 슬롯에 초안 행 생성 (실제 미디어 생성은 별도 파이프라인)
       if (action === 'generate') {
         const channel = payload.channel; // 'kr_ig' 등
