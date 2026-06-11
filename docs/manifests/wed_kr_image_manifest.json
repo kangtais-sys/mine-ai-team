@@ -1,0 +1,37 @@
+{
+  "_note": "수요일 KR 자사몰 프로모용 이미지/오퍼 매니페스트. 마인맥북 크롬 실세션에서 추출(2026-06-10). 자사몰=캡차 없음 → 앱(Vercel) 서버 curl도 가능성 높음(Claude Code가 검증). product_no=248(미스트) 고정.",
+  "source": "https://millimilli.kr (product_no=248, 500 Dalton Protein Mist)",
+  "captured_at": "2026-06-10",
+  "market": "KR",
+  "_url_note": "제품 페이지 URL은 ?product_no= 쿼리스트링 → Cowork 브라우저 추출 시 하네스 프라이버시 필터가 '쿼리스트링 데이터' 반환을 차단함. 단 product_no=248은 고정이라 앱/스케줄에 상수로 박으면 됨(매주 재발견 불필요). 이미지 URL은 경로기반이라 안 막힘.",
+  "offer_live": {
+    "product": "[리뉴얼] 1&1｜500달톤 프로틴 미스트",
+    "list_price": "38,000원",
+    "sale_price": "24,900원",
+    "discount": "34%",
+    "deal": "1+1 (미스트 2병) = 24,900원",
+    "single_price": "14,900원 (미스트 1병)",
+    "bundle_discounts": "3병 42% / 5병 44% / 10병 48%",
+    "shipping": "택배 3,000원 (50,000원 이상 무료) · ~14:00 주문 시 당일출고",
+    "gift": "7만원↑ 프로틴 앰플 1 증정 / 10만원↑ 앰플 2 증정",
+    "social_proof": "관심 319,941명 (라이브 증가, 미스트 자체 지표). ⚠️ '1분 완판'은 앰플 뱃지 → 미스트에 쓰지 말 것. 미스트 뱃지는 '[리뉴얼]'."
+  },
+  "product_images_hires": [
+    "https://millimilli.kr/web/product/small/202606/5bd5f3743667a7a3056ed74fc1de916d.png",
+    "https://millimilli.kr/web/product/small/202602/78de6a750f55956e826a441349bb0608.png",
+    "https://millimilli.kr/web/product/small/202602/60740b977ea735e1c6168a4dbdf8c8f2.png",
+    "https://millimilli.kr/web/product/small/202602/3f671eaf5da9375d154dce7ec8f0a6e3.png",
+    "https://millimilli.kr/web/product/small/202602/038f05c96a1ae9fd57df38d62b217fcb.png",
+    "https://millimilli.kr/web/product/small/202606/02d0b94f43503a5d7ff10bc72dca7468.png",
+    "https://millimilli.kr/web/product/small/202602/2b3666aee8a56d99bd40eec3062e2a31.png"
+  ],
+  "_images_note": "cafe24 'small/' 경로가 실제 1300x1300 고해상(big 스왑 불필요, big/도 동작). 상세 풀스트립(500달톤 흡수·성분·리뷰강조)은 lazy-load/iframe(charlla.io 영상리뷰 포함) 안이라 Cowork 브라우저론 안전 추출 불가(스크롤=렌더러 프리징). → 자사몰은 캡차 없으니 **앱(Vercel) 서버가 상세페이지를 직접 fetch**해 /web/upload/appfiles/ 및 #prdDetail 스토리 이미지를 파싱하는 게 정석(Claude Code 구현). 확보된 상세컷 1장은 detail_strip_sample.",
+  "detail_strip_sample": "https://millimilli.kr/web/upload/appfiles/ZaReJam3QiELznoZeGGkMG/fefd2093f5274eb69a2e7d8705e13912.jpg",
+  "suggested_slides": [
+    { "n": 1, "type": "cover", "image": "product_images_hires[0] (제품 히어로)", "copy": "풀블리드 제품 + 오퍼밴드 '1+1 24,900원'" },
+    { "n": 2, "type": "science", "image": "detail_strip_sample(흡수 상세컷) 또는 제품컷 + '500달톤' 텍스트", "copy": "500달톤 · 단백질 흡수 (자사몰 클레임 범위, KR 수치만)" },
+    { "n": 3, "type": "proof", "image": "제품 실사컷 + 실지표 오버레이(US와 동일 패턴)", "overlay": "지금까지 319,941명이 관심 (미스트 자체 지표·라이브). '1분 완판' 금지=앰플 거.", "copy": "실지표만. 가짜 후기카드 금지. KR 수치만(US$·아마존 별점 혼용 금지)" },
+    { "n": 4, "type": "deal", "image": "product_images_hires[1]", "copy": "정가 38,000 → 1+1 24,900원(34%) · 당일발송 · 5만↑무료" },
+    { "n": 5, "type": "cta_engage", "image": "product컷(작게)", "copy": "댓글 가르기 '1+1 vs 단품, 너는?' · 친구태그 · 저장 · 팔로우" }
+  ]
+}

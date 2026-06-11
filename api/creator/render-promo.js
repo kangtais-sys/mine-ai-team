@@ -35,29 +35,38 @@ const SCIENCE = {
   us: { stat: '431,964 ppm', sub: 'protein complexes · under 500 Daltons', head: 'WHY IT ACTUALLY ABSORBS' },
   kr: { stat: '984 ppm', sub: '단백질 분자 · 500달톤 이하', head: '왜 흡수되나' },
 };
-const BADGE = (m) => (m === 'us' ? 'AMAZON US' : 'OLIVE YOUNG');
+const BADGE = (m) => (m === 'us' ? 'AMAZON US' : 'MILLIMILLI.KR');
 
 // ── 슬라이드 5종 (이미지 지배) ──
 function slideCover(im, offer, market) {
-  const bonusHook = /buy 1 get 1/i.test(offer.bonus || '') ? 'BUY 1, GET 1 FREE GIFT'
-    : (market === 'us' ? 'FREE GIFT INSIDE' : '증정품 포함');
+  const isKr = market === 'kr';
+  const hook = isKr
+    ? (offer.bonus || '1+1 단독구성')
+    : (/buy 1 get 1/i.test(offer.bonus || '') ? 'BUY 1, GET 1 FREE GIFT' : 'FREE GIFT INSIDE');
+  // 우상단 칩: US=실평점 별점 / KR=실지표(완판·관심) — US$/별점 혼용 금지
+  const chip = isKr ? (offer.soldOut || (offer.interest ? `관심 ${offer.interest}` : '자사몰')) : `★ ${offer.rating}`;
   return col({ width: W, height: H, backgroundColor: WHITE }, [
-    // 제품 히어로 풀블리드 + 상단 오버레이(브랜드/별점)
+    // 제품 히어로 풀블리드 + 상단 오버레이(채널 배지 / 실지표 칩)
     h('div', { display: 'flex', position: 'relative', width: W, height: 858, backgroundColor: GRAY }, [
       im.hero ? img(im.hero, { width: W, height: 858, objectFit: 'cover' }) : txt('', { width: W, height: 858 }),
       row({ position: 'absolute', top: 40, left: 40, width: W - 80, justifyContent: 'space-between' }, [
         pill(BADGE(market)),
         h('div', { display: 'flex', backgroundColor: WHITE, padding: '10px 20px', alignItems: 'center' }, [
-          txt(`★ ${offer.rating}`, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 34, color: BLACK }),
+          txt(chip, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 32, color: BLACK }),
         ]),
       ]),
     ]),
     // 하단 블랙 오퍼밴드 — 증정/가격 크게(3초 훅)
     col({ flex: 1, backgroundColor: BLACK, padding: '46px 56px', justifyContent: 'center' }, [
-      txt(bonusHook, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 76, color: WHITE, lineHeight: 1.0, letterSpacing: -1 }),
+      txt(hook, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 72, color: WHITE, lineHeight: 1.0, letterSpacing: -1 }),
       row({ marginTop: 22, alignItems: 'baseline' }, [
         txt(offer.price || '', { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 92, color: WHITE, letterSpacing: -2 }),
-        offer.shipping ? txt(`   ${(offer.shipping || '').split('·')[0].trim()}`, { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 30, color: '#C7C7CC' }) : null,
+        isKr
+          ? (offer.listPrice ? col({ marginLeft: 20 }, [
+              txt(`정가 ${offer.listPrice}`, { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 26, color: '#9A9A9A', textDecoration: 'line-through' }),
+              offer.discount ? txt(`${offer.discount} 할인`, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 30, color: WHITE, marginTop: 4 }) : null,
+            ].filter(Boolean)) : null)
+          : (offer.shipping ? txt(`   ${(offer.shipping || '').split('·')[0].trim()}`, { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 30, color: '#C7C7CC' }) : null),
       ].filter(Boolean)),
       mono('swipe →', { fontSize: 24, color: SUB, marginTop: 26 }),
     ]),
@@ -80,17 +89,31 @@ function slideScience(im, market) {
 }
 
 function slideProof(im, offer, market) {
+  const isKr = market === 'kr';
+  // 실집계 지표만(가짜 후기카드 금지). US=실평점 별점 / KR=관심·완판(US$·별점 혼용 금지)
+  const metric = isKr
+    ? col({}, [
+        row({ alignItems: 'baseline', marginTop: 22 }, [
+          txt(offer.interest || '', { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 168, color: BLACK, letterSpacing: -6, lineHeight: 1 }),
+          txt(' 명', { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 56, color: SUB }),
+        ]),
+        txt('관심고객 · 자사몰 실집계', { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 38, color: '#2A2A2A', marginTop: 6 }),
+        offer.soldOut ? row({ marginTop: 18 }, [pill(offer.soldOut)]) : null,
+      ].filter(Boolean))
+    : col({}, [
+        row({ alignItems: 'baseline', marginTop: 24 }, [
+          txt('★', { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 120, color: BLACK }),
+          txt(` ${offer.rating}`, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 200, color: BLACK, letterSpacing: -6, lineHeight: 1 }),
+          txt(' / 5', { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 56, color: SUB }),
+        ]),
+        txt(`${offer.reviewCount} verified reviews`, { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 38, color: '#2A2A2A', marginTop: 6 }),
+      ]);
   return col({ width: W, height: H, backgroundColor: WHITE, padding: 72 }, [
     row({ justifyContent: 'space-between', alignItems: 'center' }, [wordmark(), pill(BADGE(market))]),
-    row({ alignItems: 'baseline', marginTop: 24 }, [
-      txt('★', { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 120, color: BLACK }),
-      txt(` ${offer.rating}`, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 200, color: BLACK, letterSpacing: -6, lineHeight: 1 }),
-      txt(' / 5', { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 56, color: SUB }),
-    ]),
-    txt(market === 'us' ? `${offer.reviewCount} verified reviews` : `리뷰 ${offer.reviewCount}개`, { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 38, color: '#2A2A2A', marginTop: 6 }),
-    h('div', { display: 'flex', width: W - 144, height: 470, backgroundColor: GRAY, marginTop: 30, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: `2px solid ${BLACK}` },
-      [im.proof ? img(im.proof, { width: W - 144, height: 470, objectFit: 'contain' }) : null].filter(Boolean)),
-    row({ justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }, [mono('REAL BUYERS · REAL REVIEWS', { fontSize: 20, color: SUB }), mono('milli²', { fontSize: 20, color: SUB })]),
+    metric,
+    h('div', { display: 'flex', width: W - 144, height: 440, backgroundColor: GRAY, marginTop: 28, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: `2px solid ${BLACK}` },
+      [im.proof ? img(im.proof, { width: W - 144, height: 440, objectFit: 'cover' }) : null].filter(Boolean)),
+    row({ justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }, [mono(isKr ? '자사몰 실집계 지표' : 'REAL BUYERS · REAL REVIEWS', { fontSize: 20, color: SUB }), mono('milli²', { fontSize: 20, color: SUB })]),
   ]);
 }
 
@@ -98,13 +121,16 @@ function slideDeal(im, offer, market) {
   return col({ width: W, height: H, backgroundColor: WHITE }, [
     h('div', { display: 'flex', width: W, height: 700, backgroundColor: GRAY, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
       [im.deal ? img(im.deal, { width: W, height: 700, objectFit: 'cover' }) : null].filter(Boolean)),
-    col({ flex: 1, backgroundColor: BLACK, padding: '44px 56px', justifyContent: 'center' }, [
+    col({ flex: 1, backgroundColor: BLACK, padding: '40px 56px', justifyContent: 'center' }, [
       mono(market === 'us' ? 'THE DEAL' : '혜택', { fontSize: 26, color: '#C7C7CC' }),
-      row({ alignItems: 'baseline', marginTop: 10 }, [
-        txt(offer.price || '', { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 104, color: WHITE, letterSpacing: -3, lineHeight: 1 }),
-      ]),
-      offer.bonus ? txt(offer.bonus, { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 34, color: WHITE, marginTop: 16, lineHeight: 1.2 }) : null,
-      offer.shipping ? txt(offer.shipping, { fontFamily: 'Pretendard', fontWeight: 400, fontSize: 28, color: '#C7C7CC', marginTop: 12 }) : null,
+      row({ alignItems: 'baseline', marginTop: 8 }, [
+        txt(offer.price || '', { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 96, color: WHITE, letterSpacing: -3, lineHeight: 1 }),
+        (market === 'kr' && offer.listPrice) ? txt(`  정가 ${offer.listPrice}`, { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 30, color: '#9A9A9A', textDecoration: 'line-through' }) : null,
+        (market === 'kr' && offer.discount) ? txt(`  ${offer.discount}↓`, { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 34, color: WHITE }) : null,
+      ].filter(Boolean)),
+      offer.bonus ? txt(offer.bonus, { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 32, color: WHITE, marginTop: 14, lineHeight: 1.2 }) : null,
+      offer.shipping ? txt(offer.shipping, { fontFamily: 'Pretendard', fontWeight: 400, fontSize: 26, color: '#C7C7CC', marginTop: 10 }) : null,
+      offer.gift ? txt(`🎁 ${offer.gift}`.replace('🎁 ', '+ '), { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 26, color: WHITE, marginTop: 8 }) : null,
     ].filter(Boolean)),
   ]);
 }
@@ -115,10 +141,10 @@ function slideCtaEngage(im, market) {
     : ['→  이거 필요한 친구 태그', '→  다음 재구매 위해 저장', '→  @millimilli.kr 팔로우'];
   return col({ width: W, height: H, backgroundColor: BLACK, padding: 80, justifyContent: 'center', alignItems: 'center' }, [
     h('div', { display: 'flex', marginBottom: 36 }, [wordmark(WHITE, 1.6)]),
-    txt(market === 'us' ? 'ONE MIST, OR TWO?' : '한 번 뿌릴까, 두 번?', { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 84, color: WHITE, textAlign: 'center', lineHeight: 1.05, letterSpacing: -2 }),
-    txt(market === 'us' ? 'Comment 1 or 2 below ↓' : '댓글에 1 또는 2 ↓', { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 40, color: '#C7C7CC', marginTop: 22 }),
+    txt(market === 'us' ? 'ONE MIST, OR TWO?' : '1+1 vs 단품, 너는?', { fontFamily: 'Pretendard', fontWeight: 900, fontSize: 84, color: WHITE, textAlign: 'center', lineHeight: 1.05, letterSpacing: -2 }),
+    txt(market === 'us' ? 'Comment 1 or 2 below ↓' : "댓글에 '1+1' 또는 '단품' ↓", { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 40, color: '#C7C7CC', marginTop: 22 }),
     col({ marginTop: 44, gap: 18 }, lines.map(l => txt(l, { fontFamily: 'Pretendard', fontWeight: 700, fontSize: 34, color: WHITE }))),
-    row({ marginTop: 48 }, [pill(market === 'us' ? 'Shop on Amazon  →' : '올리브영에서 보기  →', true)]),
+    row({ marginTop: 48 }, [pill(market === 'us' ? 'Shop on Amazon  →' : 'millimilli.kr 에서 보기  →', true)]),
   ]);
 }
 
@@ -135,22 +161,26 @@ export function buildSlides(im, offer, market) {
 // ── A-3 캡션 생성 (가치/관전 훅 + 실제 오퍼 + KPI 장치). 시장별 언어. ──
 export function buildCaption(offer, market) {
   if (market === 'kr') {
+    const dealLine = offer.listPrice
+      ? `✔ 정가 ${offer.listPrice} → ${offer.bonus || ''} ${offer.price}${offer.discount ? ` (${offer.discount}↓)` : ''}`.replace(/\s+/g, ' ').trim()
+      : `✔ ${offer.bonus || ''} ${offer.price}`.trim();
     const caption = [
       '단백질이 아니라, 크기 문제였어요. 🔬',
       '',
-      `500달톤 분자 단백질 미스트 — 진짜 흡수되는 크기(984ppm, 500달톤 이하). 한 번 뿌리면 속부터 차오르는 물광.`,
+      '500달톤 분자 단백질 미스트 — 진짜 흡수되는 크기(984ppm·500달톤 이하). 한 번 뿌리면 속부터 차오르는 물광.',
       '',
-      `✔ ★${offer.rating} · 리뷰 ${offer.reviewCount}개`,
-      offer.bonus ? `✔ ${offer.price} · ${offer.bonus}` : `✔ ${offer.price}`,
+      (offer.interest || offer.soldOut) ? `🔥 ${[offer.interest ? `관심 ${offer.interest}명` : null, offer.soldOut].filter(Boolean).join(' · ')}` : null,
+      dealLine,
       offer.shipping ? `✔ ${offer.shipping}` : null,
+      offer.gift ? `✔ ${offer.gift}` : null,
       '',
-      '💬 한 번 뿌려요, 두 번 뿌려요? 댓글로 알려줘요 👇',
+      "💬 1+1 vs 단품, 너는? 댓글로 알려줘요 👇",
       '📌 다음 재구매 위해 저장!',
       '🔖 피부가 다 먹는 친구 태그',
       '',
       '※ AI 연출 컷 포함 · 화장품 표현 범위 내',
     ].filter(l => l !== null).join('\n');
-    const hashtags = '#밀리밀리 #단백질미스트 #500달톤 #물광 #올리브영 #스킨케어 #속건조 #수분미스트 #글로우 #뷰티꿀팁';
+    const hashtags = '#밀리밀리 #단백질미스트 #500달톤 #물광 #수분미스트 #속건조 #스킨케어 #글로우 #자사몰 #뷰티꿀팁';
     return { caption, hashtags };
   }
   const caption = [

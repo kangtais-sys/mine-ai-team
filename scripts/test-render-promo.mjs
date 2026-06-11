@@ -8,7 +8,7 @@ const g = M.product_gallery, a = M.aplus_labeled, o = M.offer_live;
 const images = {
   hero: g[7], deal: g[6],
   science: a.find(x => /dalton|ppm/i.test(x.alt))?.url,
-  proof: a.find(x => /sold|bottles/i.test(x.alt))?.url,
+  proof: 'https://m.media-amazon.com/images/I/41RewGas7lL._SL1500_.jpg',
 };
 const offer = { price: o.price, bonus: o.bonus, rating: o.rating, reviewCount: o.review_count, shipping: o.shipping };
 const market = 'us';
