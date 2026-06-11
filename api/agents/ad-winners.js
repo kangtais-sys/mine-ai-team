@@ -43,21 +43,26 @@ async function fetchJson(url) {
   return d;
 }
 
-// 계정의 ad→thumbnail_url 맵 (id·name 둘 다 키로)
+// 계정의 ad→thumbnail_url 맵 (id·name 둘 다 키로). 실패는 error 로 표면화.
 async function creativeThumbs(accId, token) {
   const byId = {}, byName = {};
   let url = `${GRAPH}/act_${accId}/ads?fields=name,creative{thumbnail_url,image_url,object_story_spec}&limit=300&access_token=${token}`;
-  for (let page = 0; page < 5 && url; page++) {
-    const d = await fetchJson(url);
-    for (const ad of (d.data || [])) {
-      const c = ad.creative || {};
-      const thumb = c.thumbnail_url || c.image_url || c.object_story_spec?.link_data?.picture || c.object_story_spec?.video_data?.image_url || null;
-      if (ad.id) byId[ad.id] = thumb;
-      if (ad.name) byName[ad.name] = thumb;
+  let pages = 0;
+  try {
+    for (; pages < 5 && url; pages++) {
+      const d = await fetchJson(url);
+      for (const ad of (d.data || [])) {
+        const c = ad.creative || {};
+        const thumb = c.thumbnail_url || c.image_url || c.object_story_spec?.link_data?.picture || c.object_story_spec?.video_data?.image_url || null;
+        if (ad.id) byId[ad.id] = thumb;
+        if (ad.name) byName[ad.name] = thumb;
+      }
+      url = d.paging?.next || null;
     }
-    url = d.paging?.next || null;
+  } catch (e) {
+    return { byId, byName, error: e.message, pages };
   }
-  return { byId, byName };
+  return { byId, byName, pages };
 }
 
 export default async function handler(req, res) {
@@ -71,10 +76,12 @@ export default async function handler(req, res) {
   const fields = 'ad_id,ad_name,campaign_name,spend,impressions,clicks,ctr,cpc,actions,action_values';
 
   try {
+    const thumbsMeta = [];
     const perAccount = await Promise.all(accounts.map(async (acc) => {
       try {
         const insUrl = `${GRAPH}/act_${acc.id}/insights?level=ad&date_preset=last_30d&fields=${fields}&limit=300&access_token=${token}`;
-        const [ins, thumbs] = await Promise.all([fetchJson(insUrl), creativeThumbs(acc.id, token).catch(() => ({ byId: {}, byName: {} }))]);
+        const [ins, thumbs] = await Promise.all([fetchJson(insUrl), creativeThumbs(acc.id, token).catch((e) => ({ byId: {}, byName: {}, error: e.message }))]);
+        thumbsMeta.push({ account: acc.name, ids: Object.keys(thumbs.byId).length, names: Object.keys(thumbs.byName).length, withThumb: Object.values(thumbs.byId).filter(Boolean).length, error: thumbs.error || null, sampleInsAdId: ins.data?.[0]?.ad_id || null });
         return (ins.data || []).map(row => {
           const spend = Number(row.spend) || 0;
           const clicks = Number(row.clicks) || 0;
@@ -104,7 +111,9 @@ export default async function handler(req, res) {
       .sort((a, b) => b.roas - a.roas)
       .slice(0, topN);
 
-    return res.status(200).json({ status: 'connected', period: 'last_30d', minSpend, count: winners.length, winners, ...(errors.length ? { accountErrors: errors } : {}) });
+    const payload = { status: 'connected', period: 'last_30d', minSpend, count: winners.length, winners, ...(errors.length ? { accountErrors: errors } : {}) };
+    if (req.query?.debug === '1') payload.thumbsMeta = thumbsMeta;
+    return res.status(200).json(payload);
   } catch (e) {
     return res.status(500).json({ status: 'error', error: e.message, winners: [] });
   }
