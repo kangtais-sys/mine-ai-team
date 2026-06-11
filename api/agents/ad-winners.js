@@ -46,14 +46,15 @@ async function fetchJson(url) {
 // 계정의 ad→thumbnail_url 맵 (id·name 둘 다 키로). 실패는 error 로 표면화.
 async function creativeThumbs(accId, token) {
   const byId = {}, byName = {};
-  let url = `${GRAPH}/act_${accId}/ads?fields=name,creative{thumbnail_url,image_url,object_story_spec}&limit=300&access_token=${token}`;
+  // object_story_spec 은 무거워 "reduce the amount of data" 에러 유발 → thumbnail_url/image_url 만, 페이지 50개씩.
+  let url = `${GRAPH}/act_${accId}/ads?fields=name,creative{thumbnail_url,image_url}&limit=50&access_token=${token}`;
   let pages = 0;
   try {
-    for (; pages < 5 && url; pages++) {
+    for (; pages < 12 && url; pages++) {
       const d = await fetchJson(url);
       for (const ad of (d.data || [])) {
         const c = ad.creative || {};
-        const thumb = c.thumbnail_url || c.image_url || c.object_story_spec?.link_data?.picture || c.object_story_spec?.video_data?.image_url || null;
+        const thumb = c.thumbnail_url || c.image_url || null;
         if (ad.id) byId[ad.id] = thumb;
         if (ad.name) byName[ad.name] = thumb;
       }
