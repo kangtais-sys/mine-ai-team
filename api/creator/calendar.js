@@ -226,12 +226,13 @@ export default async function handler(req, res) {
           id, version: 'milli-v1', channel, region, platform,
           date: payload.date, slotType: payload.slotType || null,
           status: 'draft', format: payload.format || 'reel',
-          caption: '', hashtags: '', mediaUrl: null, mediaUrls: [],
+          // 생성 시 입력한 값(링크·캡션·해시태그) 같이 저장 — 빈 슬롯만 만들고 날리지 않도록
+          caption: payload.caption || '', hashtags: payload.hashtags || '', mediaUrl: null, mediaUrls: [],
           refUrl: payload.refUrl ? String(payload.refUrl).trim() : null, // shorts 레퍼런스 유튜브 링크
           profileId: PROFILE[region],
           createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
         };
-        setSchedule(draft, payload.date, '09:00'); // 기본 현지 09:00
+        setSchedule(draft, payload.date, payload.time || '09:00'); // 입력 시각 or 기본 09:00
         await sb.from('creator_drafts').insert({ id, persona_id: null, data: draft });
         return res.status(200).json({ ok: true, draft });
       }

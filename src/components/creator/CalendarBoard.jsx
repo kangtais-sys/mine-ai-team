@@ -375,8 +375,8 @@ function Drawer({ cell, onClose, onAction, busy }) {
         {/* 액션 바 (전체폭) */}
         <div style={{ padding: '16px 28px', borderTop: '1px solid #EEE', display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
           {!draft ? (
-            <button disabled={busy} onClick={() => onAction('generate', { channel, weekday, date, slotType: weekday?.slotType })} style={{ ...primaryBtn, padding: '15px 18px', fontSize: 15 }}>
-              {busy ? <Loader2 size={17} className="spin" /> : <Sparkles size={17} />} 이 슬롯 생성하기
+            <button disabled={busy} onClick={() => onAction('generate', { channel, weekday, date, slotType: weekday?.slotType, caption, hashtags, time, refUrl })} style={{ ...primaryBtn, padding: '15px 18px', fontSize: 15 }}>
+              {busy ? <Loader2 size={17} className="spin" /> : <Sparkles size={17} />} {(weekday?.slotType === 'shorts' && refUrl.trim()) ? '이 슬롯 저장하기 (링크 포함)' : '이 슬롯 생성하기'}
             </button>
           ) : (
             <>
