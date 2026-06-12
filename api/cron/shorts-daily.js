@@ -85,7 +85,7 @@ async function pollKling(jobSetId) {
   const r = await fetch(`${HF}/v1/job-sets/${jobSetId}`, { headers: hfHeaders() });
   if (!r.ok) return { status: 'processing' };
   const d = await r.json(); const job = d.jobs?.[0]; const st = job?.status || d.status;
-  if (st === 'completed') return { status: 'completed', videoUrl: job?.results?.video?.url || job?.results?.url || d.video?.url || null };
+  if (st === 'completed') return { status: 'completed', videoUrl: job?.results?.raw?.url || job?.results?.video?.url || job?.results?.min?.url || job?.results?.url || d.video?.url || null };
   if (['failed', 'nsfw', 'canceled'].includes(st)) return { status: 'failed', error: job?.error || st };
   return { status: 'processing' };
 }
