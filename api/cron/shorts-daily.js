@@ -7,7 +7,7 @@
 // 인증: Bearer CRON_SECRET. ?dry=1 = 대상만. ?only=<id> = 그 드래프트만.
 import { Redis } from '@upstash/redis';
 import { getSupabase } from '../../lib/supabase.js';
-import { analyzeMedia } from '../video-analyze.js';
+import { analyzeShortFrames } from '../video-analyze.js';
 import { overlayShortCore } from '../creator/overlay-short.js';
 
 export const config = { maxDuration: 300 };
@@ -22,7 +22,9 @@ const hfHeaders = () => {
 const kstToday = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
 const dateNDaysAhead = (n) => new Date(Date.now() + 9 * 3600000 + n * 86400000).toISOString().slice(0, 10);
 const isShorts = (d) => d.slotType === 'shorts' || ['reel', 'shorts'].includes(d.format);
-function ytThumb(url) { const m = String(url || '').match(/(?:youtu\.be\/|youtube\.com\/(?:shorts\/|watch\?v=|embed\/|live\/|v\/))([A-Za-z0-9_-]{11})/); return m ? `https://img.youtube.com/vi/${m[1]}/hqdefault.jpg` : null; }
+function ytId(url) { const m = String(url || '').match(/(?:youtu\.be\/|youtube\.com\/(?:shorts\/|watch\?v=|embed\/|live\/|v\/))([A-Za-z0-9_-]{11})/); return m ? m[1] : null; }
+// 스토리보드 프레임(시작1·중간2·끝3) + hqdefault → 씬 다중분석용
+function ytFrames(url) { const id = ytId(url); return id ? ['1', '2', '3', 'hqdefault'].map(f => `https://img.youtube.com/vi/${id}/${f}.jpg`) : []; }
 
 // shorts-format-library.md 폴백 포맷(로테이션). 컴플라이언스·KPI 내장.
 const FORMATS = [
@@ -127,12 +129,19 @@ export default async function handler(req, res) {
     const target = drafts[0]; // 런당 1개(타임아웃 방지)
     if (target) {
       try {
-        // 컨셉: refUrl 있으면 썸네일 분석 훅, 없으면 포맷 로테이션
-        let fmt = FORMATS[0]; let hook = null;
+        // 컨셉: refUrl 있으면 3프레임 씬분석(비트·전환·룩→프롬프트), 없으면 포맷 로테이션
+        let fmt = FORMATS[0]; let hook = null; let sceneMeta = null;
         if (target.refUrl) {
-          const thumb = ytThumb(target.refUrl);
-          if (thumb) { const meta = await analyzeMedia({ imageUrl: thumb }).catch(() => null); if (meta?.success) hook = meta.thumbnail_text || null; }
-          fmt = FORMATS[0]; // refUrl 기반은 팔자 포맷 기본
+          fmt = { ...FORMATS[0] }; // 팔자 베이스(circle_xy·captions 구조 유지)
+          const frames = ytFrames(target.refUrl);
+          if (frames.length) {
+            const meta = await analyzeShortFrames(frames).catch(() => null);
+            if (meta?.success) {
+              if (meta.kling_prompt) fmt.klingPrompt = meta.kling_prompt; // 씬분석 기반 생성 프롬프트로 교체
+              if (meta.hook) hook = meta.hook;                            // 궁금증 갭 훅
+              sceneMeta = { beats: meta.beats, look: meta.look };
+            }
+          }
         } else {
           const n = Number(await redis.get('creator:shorts:rotation').catch(() => 0)) || 0;
           fmt = FORMATS[n % FORMATS.length];
@@ -148,7 +157,7 @@ export default async function handler(req, res) {
           target.status = 'generating';
           target.klingJobId = klingJobId;
           target.startImage = startImg;
-          target.shortsMeta = { circle_xy: fmt.circle_xy, captions, format: fmt.key, caption: target.caption || '', hashtags: target.hashtags || '' };
+          target.shortsMeta = { circle_xy: fmt.circle_xy, captions, format: fmt.key, scene: sceneMeta, klingPrompt: fmt.klingPrompt, caption: target.caption || '', hashtags: target.hashtags || '' };
           target.source = 'shorts-daily';
           target.updatedAt = new Date().toISOString();
           await sb.from('creator_drafts').update({ data: target }).eq('id', target.id);
