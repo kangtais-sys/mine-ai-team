@@ -116,12 +116,13 @@ export async function analyzeMedia({ videoUrl, imageUrl, imageBase64 } = {}) {
 // 다중프레임(유튜브 스토리보드 1/2/3.jpg = 시작/중간/끝) 씬분석 — Higgsfield HTTP video_analysis 미접근 폴백.
 // 비트·전환·타이밍·룩을 떠서 milli² 생성 프롬프트로. 저작권: 크래프트만(원곡/얼굴 1:1 복제 금지).
 const SCENE_PROMPT = `이 이미지들은 잘 나가는 뷰티 숏츠의 시작/중간/끝 프레임이다. milli² 500달톤 프로틴 미스트(팔자·물광)로 오리지널 제품화할 거다.
+⚠️ 컴플라이언스(절대): 화장품 광고라 '주름 제거/사라짐/없어짐/펴짐/개선/리프팅' 같은 효능 단정 금지. 오직 **수분으로 도톰·물광·라인이 부드러워 보임(겉보기)** 표현만. 임상 입증 범위 내. 위반 워딩 출력 금지.
 구조·전환·타이밍·룩을 분석해 JSON만 출력 (마크다운 없이):
 {
- "hook": "(3초 궁금증 갭 훅, 한국어 한 줄 — 정보 다 주지 말고 반전/미스터리. 예: '팔자, 주름인 줄 알았죠?')",
+ "hook": "(3초 궁금증 갭 훅, 한국어 한 줄 — 정보 다 주지 말고 반전/미스터리. 컴플라이언스 준수. 예: '팔자, 주름인 줄 알았죠? 사실 건조였어요')",
  "beats": ["0-3s 비트", "3-6s 비트", "6-9s 비트"],
  "look": "(조명·색감·페이싱·샷타입 요약, 영문)",
- "kling_prompt": "(milli² 미스트 영상 생성용 영문 프롬프트 1~2문장. 위 룩·전환·타이밍 반영 + 미스트 분사→물광/팔자 도톰(수분, 구조변화 아님) + KPI 궁금증갭·대세감, photorealistic 9:16 vertical, iPhone handheld. 원곡/원본 얼굴 복제 금지, 크래프트만.)"
+ "kling_prompt": "(milli² 미스트 영상 생성용 영문 프롬프트 1~2문장. 위 룩·전환·타이밍 반영 + 미스트 분사→dewy/plumping moisture glow(수분, NOT wrinkle removal/structural change) + KPI 궁금증갭·대세감, photorealistic 9:16 vertical, iPhone handheld. 원곡/원본 얼굴 복제 금지, 크래프트만.)"
 }`;
 
 export async function analyzeShortFrames(imageUrls = []) {
