@@ -11,6 +11,7 @@ import { put } from '@vercel/blob';
 import { getSupabase } from '../../lib/supabase.js';
 import { loadFonts, renderSlide, bakePng } from '../creator/render-card.js';
 import * as refManifest from '../../lib/ref-manifest.js'; // 폴더 기반 레퍼(assets/→Blob, scripts/sync-refs.mjs)
+import { genNanoBanana } from '../../lib/nano-banana.js'; // 학습 없는 직접 이미지(nano_banana_2) — 커버 인물/제품
 
 export const config = { maxDuration: 300 };
 
@@ -48,8 +49,8 @@ const PRODUCT_MIST = '4a56fcd8-478d-4860-b722-03934e6eaf3f';
 const PERSON_PROMPT = 'candid selfie, phone-camera photo, intimate close-up, match the reference face and overall mood very closely (rednote/pinterest selfie aesthetic), photoreal dewy natural skin, real person everyday vibe, soft tone, 4:5 세로. no glossy studio, no model pose, no heavy retouch';
 // 클로즈업(매크로) 프롬프트 — 인물 없음. 제품 레퍼 기반 질감·제형·입자. 자연 실사 매크로.
 const CLOSEUP_PROMPT = 'natural real photo, extreme macro close-up, photoreal, no face, no person, soft natural light, everyday natural context, authentic snapshot feel, NOT studio editorial, shallow depth of field, 4:5 세로. glossy/plastic 금지';
-// 제품 샷 프롬프트 — 일상 맥락(파우치/책상 등) 자연 실사. 단일 제품 레퍼.
-const PRODUCT_PROMPT = 'natural product shot, real photo, everyday context (in a pouch/on a desk/by the sink), authentic snapshot feel, NOT studio editorial/model shoot, soft natural light, photoreal, 4:5 세로. glossy/plastic 금지';
+// 제품 컷 프롬프트(모델+제품) — 모델이 미스트 쓰는 자연 실사 셀카 무드. 글로시 화보 금지.
+const PRODUCT_PROMPT = 'candid real photo, phone-camera selfie vibe, soft natural light, photoreal dewy skin, rednote/pinterest aesthetic, NOT glossy studio editorial, 4:5 세로. no plastic skin, no heavy retouch';
 // 무드 씬 — 핀터레스트 감성. 날씨/계절/감성 배경. 인물 비중 X. 시네마틱 자연광 실사.
 const SCENE_PROMPT = 'pinterest-aesthetic mood photo, real photo, atmospheric cinematic natural light, evocative everyday scene, soft film-like color grade, no text no logo, photoreal (NOT 3d render/illustration), 4:5 세로. glossy/plastic 금지';
 // 커버 사진 타입(레이아웃). 실제 소재(photoSubject)는 슬라이드 필드로 적응.
@@ -137,38 +138,55 @@ async function genHfPhoto({ refUrls = [], prompt, strength = 0.85, blobPrefix, d
 
 // 인물 커버 1장 — 단일 brand-look 레퍼(블렌드 금지) + strength 0.8(얼굴 identity 유지 + 주제 프레이밍 반영).
 //   detail = 레퍼 얼굴의 어느 부위/표정이 주제를 보여주는지(예: '하관·볼, 팔자 라인 보이게'). full=true면 상반신/전신.
+// fnf 결과 URL → 우리 Blob 미러(보드·카드용 안정 URL). 실패 시 원본 URL 그대로.
+async function mirrorToBlob(url, prefix, draftId, idx) {
+  try {
+    const img = await fetch(url); const buf = Buffer.from(await img.arrayBuffer());
+    const blob = await put(`${prefix}/${draftId}-${idx}.png`, buf, { access: 'public', contentType: 'image/png', addRandomSuffix: true });
+    return blob.url;
+  } catch (e) { console.warn('[carousel-daily] blob mirror 실패:', e.message); return url; }
+}
+
 async function genDailyPhoto(keyword, draftId, idx, detail = '', full = false) {
-  const ref = sample(LOOK_POOL, 1).map(mediaUrl); // 단일 레퍼 1장만(기존 20 + env 추가분)
+  const ref = sample(LOOK_POOL, 1).map(mediaUrl); // 단일 레퍼 1장(기존 20 + 폴더 + env)
   const area = (detail || '').trim() || `${keyword} 관련 부위`;
   const shot = full ? 'mirror selfie / waist-up' : 'face close-up selfie';
-  // 포즈 강제 X — 주제 부위는 '가볍게 노출만'(touching/action 금지). 레퍼 무드가 주인공.
+  // 입력 레퍼 얼굴 그대로 사용(nano = 학습 없음). 포즈 강제 X — 주제 부위는 가볍게 노출만.
   const prompt = `${PERSON_PROMPT}. ${shot}, ${area} naturally visible (no posing, no touching).`;
-  return genHfPhoto({ refUrls: ref, prompt, strength: 0.9, blobPrefix: 'carousel-photo', draftId, idx, tag: 'person' });
+  const url = await genNanoBanana({ imageUrls: ref, prompt, ctx: 'person' });
+  return url ? mirrorToBlob(url, 'carousel-photo', draftId, idx) : null;
 }
 
 // 매크로 클로즈업 1장(인물 아님 — 피부 질감/미스트 입자/세럼 제형). 단일 제품 레퍼 + strength 0.85.
 async function genCloseupPhoto(subject, draftId, idx) {
   const subj = (subject || '피부 질감 매크로').trim();
-  const prompt = `${CLOSEUP_PROMPT}. 주제: ${subj}. NO face, no person, photoreal product/texture macro`;
+  const prompt = `${CLOSEUP_PROMPT}. 주제: ${subj}. macro texture from the product reference, NO face, no person`;
   const ref = PRODUCT_POOL ? sample(PRODUCT_POOL, 1) : [mediaUrl(PRODUCT_MIST)];
-  return genHfPhoto({ refUrls: ref, prompt, strength: 0.85, blobPrefix: 'carousel-closeup', draftId, idx, tag: 'closeup' });
+  const url = await genNanoBanana({ imageUrls: ref, prompt, ctx: 'closeup' });
+  return url ? mirrorToBlob(url, 'carousel-closeup', draftId, idx) : null;
 }
 
 // 제품 샷 1장(일상 맥락 — 파우치/책상 등). 단일 제품 레퍼 + strength 0.85. 자연 실사.
 async function genProductPhoto(subject, keyword, draftId, idx) {
   const subj = (subject || '').trim();
-  const prompt = `${PRODUCT_PROMPT}. 콘텐츠 키워드 무드: ${keyword}${subj ? `. 주제: ${subj}` : ''}`;
-  const ref = PRODUCT_POOL ? sample(PRODUCT_POOL, 1) : [mediaUrl(PRODUCT_MIST)];
-  return genHfPhoto({ refUrls: ref, prompt, strength: 0.85, blobPrefix: 'carousel-product', draftId, idx, tag: 'product' });
+  const face = sample(LOOK_POOL, 1).map(mediaUrl);                       // 모델(첫 레퍼)
+  const product = PRODUCT_POOL ? sample(PRODUCT_POOL, 1) : [mediaUrl(PRODUCT_MIST)]; // 실제 제품(둘째 레퍼)
+  // [모델 + 실제 제품] 직접 입력 → "모델이 미스트 쓰는 컷". 라벨은 제품 레퍼에서 보존.
+  const prompt = `${PRODUCT_PROMPT}. the woman from the first reference image naturally holding and using the facial mist from the second reference image near her face, the product bottle clearly visible with its label intact (do not alter the product).${subj ? ` context: ${subj}.` : ''} mood: ${keyword}`;
+  const url = await genNanoBanana({ imageUrls: [...face, ...product], prompt, ctx: 'product' });
+  return url ? mirrorToBlob(url, 'carousel-product', draftId, idx) : null;
 }
 
 // 무드 씬 1장(핀터레스트 감성, 날씨/계절/감성). 레퍼 없이 프롬프트만. 자연 실사.
 async function genScenePhoto(subject, keyword, draftId, idx) {
   const subj = (subject || '').trim();
   const prompt = `${SCENE_PROMPT}. mood/subject: ${subj || keyword}. content theme: ${keyword}`;
-  // 씬 레퍼 폴더 있으면 무드 넛지(0.6, 복제 아님), 없으면 프롬프트-only.
-  const ref = SCENE_POOL ? sample(SCENE_POOL, 1) : [];
-  return genHfPhoto({ refUrls: ref, prompt, strength: ref.length ? 0.6 : 0.85, blobPrefix: 'carousel-scene', draftId, idx, tag: 'scene' });
+  // 씬 레퍼 폴더 있으면 nano(학습 없음)로 무드 반영, 없으면 soul 프롬프트-only(레퍼 없어 학습 안 함).
+  if (SCENE_POOL) {
+    const url = await genNanoBanana({ imageUrls: sample(SCENE_POOL, 1), prompt, ctx: 'scene' });
+    return url ? mirrorToBlob(url, 'carousel-scene', draftId, idx) : null;
+  }
+  return genHfPhoto({ refUrls: [], prompt, strength: 0.85, blobPrefix: 'carousel-scene', draftId, idx, tag: 'scene' });
 }
 
 // 커버 레이아웃 로테이션(redis 카운터) — cover_* 4종
