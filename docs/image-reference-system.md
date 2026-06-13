@@ -46,6 +46,14 @@
 - KR/자사몰(2026-06-13 실측): `단백질 30가지`·`Collagen Water 430,980ppm`·`MOLECULAR 500da`·올리브영 1위.
 - US/아마존(실측): `30 Collagen Peptides`·`500 Dalton`·`4.9★(46)`·`$14.99`·1.86 fl.oz·hypoallergenic.
 
+## ✅ 검증된 생성 레시피 (2026-06-14, MINE 확인)
+> 잼/토큰 이슈로 platform API custom-reference·fnf nano 둘 다 무인 cron엔 부적합. **MCP(claude.ai) Marketing Studio**가 라벨 보존+레퍼 충실로 검증됨.
+- **엔진**: MCP `generate_image` model=`marketing_studio_image` (DTC Ads). 아바타 아닌 image medias 직접.
+- **입력**: `medias=[폴더 레퍼 1장(assets/brand-look 랜덤, media_upload로 import) + 단일 제품 1장(4a56fcd8)]`. ⚠️ 제품은 **단일 이미지만**(엔티티 2장 넣으면 닫힌뚜껑+펌프 합성됨).
+- **프롬프트 = 최소**: 임의 미사여구(자연광/clearly/natural skin 등) 금지. **"레퍼 사진 ~90% 복제(배경·조명·광·얼굴) + 제품 그대로(형태·뚜껑 불변, 펌프/노즐 추가 금지)"** 만 지시.
+- **비율**: 4:5, resolution 2k.
+- **cron 주입**: MCP는 대화형이라 무인 cron 불가 → cron `?coverImageUrl=<MCP생성 URL>&date=&force=1` 로 **커버만 주입**, 나머지(텍스트·본문·US번역·4채널·해시태그·보드시드)는 cron 그대로.
+
 ## 적용 순서 (시스템화 → 적용 → 테스트)
 1. (이 문서) 2풀 시스템 확정 + brand-look 20 태깅 → BRAND/DAILY 리스트 채움.
 2. carousel-daily: 슬라이드별 브랜드룩 에디토리얼 이미지 생성(medias=브랜드룩+제품) → render-card `s.image`로 합성 + 템플릿 로테이션.

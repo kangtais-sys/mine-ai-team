@@ -389,8 +389,14 @@ Return JSON exactly:
 //   질감 본문(closeup/fullimage)=매크로 클로즈업. data_* 본문(stat/compare/steps)은 코드 렌더라 사진 생성 안 함.
 //   슬라이드당 1장·실패 폴백·병렬.
 const headTextOf = (s) => (typeof s.headline === 'object' && s.headline) ? (s.headline.text || '') : (s.headline || '');
-async function attachPhotos(slides, keyword, draftId) {
+async function attachPhotos(slides, keyword, draftId, coverImageUrl = null) {
+  // 커버 이미지 수동 주입(MCP Marketing Studio 검증 컷) — 잼/만료 우회. 주입되면 커버 생성 스킵.
+  if (coverImageUrl) {
+    const cov = slides.find(s => COVER_PHOTO_TYPES.has(s.type));
+    if (cov) cov.image = coverImageUrl;
+  }
   const jobs = slides.map((s, i) => {
+    if (coverImageUrl && COVER_PHOTO_TYPES.has(s.type)) return null; // 커버 주입됨 → 생성 안 함
     if (COVER_PHOTO_TYPES.has(s.type)) {
       // 커버 소재 주제 적응(항상 인물 X). 기본 person.
       const subject = (s.photoSubject || 'person').trim();
@@ -468,6 +474,8 @@ export default async function handler(req, res) {
   //   ?date=YYYY-MM-DD = 특정 날짜 타깃(과거분 재생성용, force 와 함께).
   const dateOverride = (req.query?.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)) ? req.query.date : null;
   const today = dateOverride || kstTomorrow();
+  // ?coverImageUrl= : 커버 이미지를 외부(MCP Marketing Studio 생성분)로 주입 — 잼/만료 우회.
+  const coverImageUrl = req.query?.coverImageUrl ? decodeURIComponent(req.query.coverImageUrl) : null;
   const dow = kstTomorrowDow(); // 내일의 KST 요일로 정보성 게이트
   if (!force && !INFO_DAYS.has(dow)) return res.status(200).json({ ok: true, skip: 'not_info_day(tomorrow)', dow, target: today });
 
@@ -511,7 +519,7 @@ export default async function handler(req, res) {
       const krCopy = await genSlides('kr', keyword, coverType, axis, varietyHint);
       const photoDraftId = `shared_${today}_${Date.now().toString(36)}`;
       // 사진 1세트 생성·주입(공유) — 이후 US 번역본도 동일 image URL 사용
-      await attachPhotos(krCopy.slides, keyword, photoDraftId);
+      await attachPhotos(krCopy.slides, keyword, photoDraftId, coverImageUrl);
       // US = KR 번역본(텍스트만). 실패 시 KR 카피로 폴백(영어 미적용이라도 발행은 유지).
       let usCopy;
       try { usCopy = await translateSlidesToEn(krCopy); }
