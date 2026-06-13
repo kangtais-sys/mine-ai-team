@@ -1,0 +1,43 @@
+{
+  "_note": "수요일 US 프로모 카루셀용 이미지/오퍼 매니페스트. 브라우저(마인맥북 크롬, 실세션)에서 추출 — 아마존 봇차단 우회됨. Claude Code는 아래 url을 curl로 받아 렌더(맥에서 CDN 도달 확인됨). 페이지 스크래핑 금지(캡차).",
+  "source": "https://www.amazon.com/dp/B0GYCB5164",
+  "captured_at": "2026-06-10",
+  "market": "US",
+  "offer_live": {
+    "price": "$14.99",
+    "price_per_floz": "$8.06 / fl oz",
+    "list_discount": null,
+    "bonus": "Free bonus item — buy 1 get 1 free gift / buy 2 get 2 free gifts",
+    "rating": "4.9",
+    "review_count": 34,
+    "shipping": "Prime FREE delivery (Fri Jun 12) · FREE over $35",
+    "stock": "In Stock",
+    "store_card_offer": "NOT live now — do NOT use"
+  },
+  "product_gallery": [
+    "https://m.media-amazon.com/images/I/319Y-hjSTFL._SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/41JDHKDvLYL._SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/41XDQdtqdyL._SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/41Ippig3pOL._SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/41RewGas7lL._SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/41WCBERYLIL._SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/61FoPrF1iCL._SL1500_.jpg",
+    "https://m.media-amazon.com/images/I/61VdRTet5gL._SL1500_.jpg"
+  ],
+  "_gallery_note": "이건 밀리밀리 공식 리스팅 제품컷 → 진짜 제품(프로스티드 병/우윳빛/분사펌프) 그대로. 실사 컷 우선 사용.",
+  "aplus_labeled": [
+    { "slot": "500달톤 흡수(과학)", "alt": "500 dalton 431,964 ppm of protein complexes", "url": "https://m.media-amazon.com/images/S/aplus-media-library-service-media/a7b72186-1e05-4839-b1ef-ad229d866336.__CR0,0,2000,820_PT0_SX1464_V1___.png" },
+    { "slot": "사회적증거_사용금지", "alt": "sold 10,000 bottles in 10 minutes", "_BLOCK": "⚠️ 시장혼용: 이 A+에 'No.1 Olive Young'(KR) 박힘 → US 카루셀 사용 금지. proof는 갤러리 실사컷 + 실평점 오버레이로 대체.", "url": "https://m.media-amazon.com/images/S/aplus-media-library-service-media/897d629c-1583-4c85-939c-d5f0bc1799e1.__CR0,0,2000,820_PT0_SX1464_V1___.png" },
+    { "slot": "플럼핑 효과", "alt": "43% collagen water for plumper looking skin", "url": "https://m.media-amazon.com/images/S/aplus-media-library-service-media/c371ec23-f320-4fa4-9a08-883cf3f40183.__CR0,0,4000,1639_PT0_SX1464_V1___.png" },
+    { "slot": "흡수(속부터광)", "alt": "glows that starts from within, slips beneath skin", "url": "https://m.media-amazon.com/images/S/aplus-media-library-service-media/5062b9ae-ba20-4314-b68f-35d5c3c3b752.__CR0,0,2000,820_PT0_SX1464_V1___.png" },
+    { "slot": "비교(왜 이거)", "alt": "why 500 dalton protein mist over other products", "url": "https://m.media-amazon.com/images/S/aplus-media-library-service-media/3437a648-83f6-4ccc-b657-430675091805.__CR0,0,4000,1639_PT0_SX1464_V1___.png" },
+    { "slot": "임상(신뢰)", "alt": "clinically tested to support wrinkle care and even tone", "url": "https://m.media-amazon.com/images/S/aplus-media-library-service-media/4776f7e7-6946-4c6b-94a2-eabeffe0905b.__CR0,0,2000,820_PT0_SX1464_V1___.png" }
+  ],
+  "suggested_slides": [
+    { "n": 1, "type": "cover", "image": "product_gallery[7] (61VdRTet5gL, 제품 히어로)", "copy": "풀블리드 제품 + 하단 오퍼밴드 'Free gift with every mist'" },
+    { "n": 2, "type": "science", "image": "aplus '500달톤 흡수'", "copy": "왜 흡수되나 — 500 Dalton / 431,964 ppm" },
+    { "n": 3, "type": "proof", "image": "product_gallery 中 US-clean 실사 글로우/사용컷(텍스트배지 없는 것) + 실평점 오버레이", "proof_image_url": "https://m.media-amazon.com/images/I/41RewGas7lL._SL1500_.jpg", "overlay": "4.9★ · 34 Amazon reviews (offer.rating/reviewCount)", "copy": "실제 US 평점만. KR 클레임(올영 No.1 등) 금지. 가짜 후기카드 금지 — 실집계 평점 오버레이." },
+    { "n": 4, "type": "deal", "image": "product_gallery[6] (61FoPrF1iCL)", "copy": "$14.99 · buy 1 get 1 free gift · Prime 배송" },
+    { "n": 5, "type": "cta_engage", "image": "product_gallery (작게)", "copy": "댓글 가르기 'One mist, or two? 👇' · 친구태그 · 저장 · follow" }
+  ]
+}

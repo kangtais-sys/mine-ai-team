@@ -167,6 +167,15 @@ manifest 읽기 →
 ```
 (채널별 1개씩: kr_ig, us_ig … us_tt는 영상일 때만/카루셀은 IG 위주.)
 
+## 13. [영상 합치기 자동화] scripts/assemble-tuesday-video.mjs (Cowork 작성, Claude Code가 맥에서 실행)
+- 목적: 화요일 영상 = **분사 before/after 영상 + 주차 사진컷(스틸) + 자막(선택) + 로열티프리 BGM(선택)** → 9:16 mp4. (주차 진행을 영상으로 만들면 가짜 같다는 피드백 → 스틸 사진컷으로 삽입.)
+- 실행 위치: **유민혜 맥/Claude Code** (Higgsfield cloudfront 접근 가능). ⚠️ Cowork sandbox는 cloudfront 차단(000)이라 실행 불가 — 그래서 이 스크립트는 거기서 돌려야 함.
+- 의존: `ffmpeg`(무료, `brew install ffmpeg`), node 18+. **유료 프로그램 없음.**
+- 입력: CONFIG에 그 주의 Higgsfield 생성물 rawUrl(또는 로컬경로) — 분사영상 1 + 주차스틸 4. 삽입지점/노출시간/BGM/자막 옵션.
+- 동작: 분사영상 중간(기본 50%)에서 잘라 1·2·3·4 WEEK 스틸을 각 ~0.9초 사진컷으로 끼우고 뒤(after)로 이어붙임 → 자막 burn-in(선택) → BGM 믹스(선택). 자막·펜체크는 스틸에 이미 박혀있음.
+- ⚠️ 음악: **로열티프리/라이선스 음원만** burn-in. 저작권곡 금지. 트렌딩 사운드는 틱톡 앱에서 입히는 게 안전·도달률 유리.
+- 상태: Cowork가 sandbox에서 실행·검증 불가(미테스트) → **Claude Code가 맥에서 실행하며 ffprobe/ffmpeg 경로·폰트·삽입지점 미세조정 후 확정.**
+
 ## 우선순위 권장
 **트랙 1 — 보드/발행 안정화(짧음):** 1) §1 머지(표시 정상화) → 2) §2 env(\n) 방어코드 → 3) §3 영상 호스팅 → 4) §4 정시 발행 cron → 5) §5 확인.
 
