@@ -390,9 +390,9 @@ function renderBodyCompare(s) {
       txt(String(label || ''), { fontFamily: FONT, fontWeight: strong ? 700 : 300, fontSize: 40, color: strong ? BLACK : SUB, letterSpacing: -1 }),
       val ? txt(String(val), { fontFamily: FONT, fontWeight: strong ? 700 : 500, fontSize: 36, color: strong ? BLACK : SUB }) : null,
     ].filter(Boolean)),
-    // 트랙(회색) + 채움 막대(직각)
+    // 트랙(쿨톤 배경) + 채움 막대(직각). 약(좌)=쿨그레이 #D6D7D9, 강(우)=BLACK.
     h('div', { display: 'flex', width: '100%', height: 56, backgroundColor: GRAY, borderRadius: 0 }, [
-      h('div', { display: 'flex', width: `${Math.round(ratio * 100)}%`, height: 56, backgroundColor: strong ? BLACK : '#D3D1C7', borderRadius: 0 }, ''),
+      h('div', { display: 'flex', width: `${Math.round(ratio * 100)}%`, height: 56, backgroundColor: strong ? BLACK : '#D6D7D9', borderRadius: 0 }, ''),
     ]),
   ].filter(Boolean));
   return frame([

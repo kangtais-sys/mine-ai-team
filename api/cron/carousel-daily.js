@@ -1,7 +1,8 @@
 // 일일 정보성 꿀팁 캐러셀 cron — 화·목·토·일(=정보성 4일) 자동 생성.
 //   (월·금=실후기[Cowork 캡처], 수=프로모[wed-promo] 는 별도 → 여기서 제외)
-//   흐름: 키워드 로테이션 → LLM 슬라이드 카피(궁금증갭+대세감, 제품 은근 1곳) → render-card 베이킹 → 보드 review 시드.
-//   시장 1회 생성 → IG·TT 공유(같은 카드). KR=한국어 / US=영어. status review만(자동발행 X).
+//   흐름: 키워드 로테이션 → KR LLM 슬라이드 카피(궁금증갭+대세감, 제품 은근 1곳) → 사진 1세트 생성(공유)
+//         → US=번역본(텍스트만, 사진 공유) → render-card 베이킹(KR·US) → 보드 review 시드.
+//   KR·US 통일: 콘셉트·사진 1회만(공유 image URL), 언어만 KR/US 다름. IG·TT 공유(같은 카드). status review만(자동발행 X).
 // 멱등: 오늘자 carousel 슬롯에 mediaUrls 이미 있으면 스킵.
 // 인증: Bearer CRON_SECRET (미들웨어 /api/cron/* 통과). ?dry=1 = 대상·카피만(렌더·시드 없음). ?force=1 = 요일 게이트 무시.
 import Anthropic from '@anthropic-ai/sdk';
@@ -41,11 +42,16 @@ const BRAND_LOOK = [
 ];
 // 제품(미스트 히어로) — product-assets.md
 const PRODUCT_MIST = '4a56fcd8-478d-4860-b722-03934e6eaf3f';
-const DAILY_PROMPT = '젊은 20s 다양한 한국/글로벌 인물, 자연광 일상 무드, photoreal(모공·질감), 글로시 더운 피부, plastic/올드 금지, 4:5 세로';
-// 클로즈업(매크로) 프롬프트 — 인물 없음. 제품 레퍼 기반 질감·제형·입자.
-const CLOSEUP_PROMPT = 'extreme macro close-up, photoreal, no face, no person, soft natural light, shallow depth of field, 4:5 세로';
-// 인물 사진(일상룩) = 커버 타입에만. 매크로 클로즈업 = 질감 본문에만.
-const PERSON_PHOTO_TYPES = new Set(['cover_fullimage', 'cover_split', 'cover_number']);
+// 내추럴 실사 무드 — 레퍼 거의 복제. 글로시 화보컷 금지(MINE 피드백). 자연광 일상 스냅 느낌.
+const DAILY_PROMPT = 'natural candid real photo, everyday natural background, authentic phone-camera/snapshot feel, NOT studio editorial/model shoot, photoreal skin texture (pores·natural skin), match the reference natural mood, 4:5 세로. plastic/glossy/old 금지';
+// 클로즈업(매크로) 프롬프트 — 인물 없음. 제품 레퍼 기반 질감·제형·입자. 자연 실사 매크로.
+const CLOSEUP_PROMPT = 'natural real photo, extreme macro close-up, photoreal, no face, no person, soft natural light, everyday natural context, authentic snapshot feel, NOT studio editorial, shallow depth of field, 4:5 세로. glossy/plastic 금지';
+// 제품 샷 프롬프트 — 일상 맥락(파우치/책상 등) 자연 실사. 단일 제품 레퍼.
+const PRODUCT_PROMPT = 'natural product shot, real photo, everyday context (in a pouch/on a desk/by the sink), authentic snapshot feel, NOT studio editorial/model shoot, soft natural light, photoreal, 4:5 세로. glossy/plastic 금지';
+// 무드 씬 프롬프트 — 인물 비중 X. 키워드에 맞춘 일상 무드(해변/욕실 등). 자연 실사.
+const SCENE_PROMPT = 'natural mood scene, real photo, everyday natural background, authentic snapshot feel, NOT studio editorial, soft natural light, photoreal, 4:5 세로. glossy/plastic 금지';
+// 커버 사진 타입(레이아웃). 실제 소재(photoSubject)는 슬라이드 필드로 적응.
+const COVER_PHOTO_TYPES = new Set(['cover_fullimage', 'cover_split', 'cover_number']);
 const CLOSEUP_PHOTO_TYPES = new Set(['body_closeup', 'body_fullimage']);
 
 function hfHeaders() {
@@ -86,18 +92,21 @@ async function hfPoll(jobSetId, deadlineMs) {
   throw new Error('타임아웃');
 }
 
-// 일상룩 인물 1장 생성 → 우리 Blob 미러 → URL. 실패 시 null(폴백).
-async function genDailyPhoto(keyword, draftId, idx) {
+// 공통 HF Soul 생성기 — refUrls(0~1장) + 프롬프트 → Soul 생성 → 우리 Blob 미러 → URL. 실패 시 null(폴백).
+//   레퍼는 단일 1장(블렌드 금지 — 여러 장 섞으면 화보컷化). strength 0.85~0.9(거의 복제).
+//   refUrls 비면(scene 등) 레퍼 없이 프롬프트만.
+async function genHfPhoto({ refUrls = [], prompt, strength = 0.85, blobPrefix, draftId, idx, tag = 'photo' }) {
   try {
-    const refs = [...sample(BRAND_LOOK, 2 + Math.floor(Math.random() * 2)), PRODUCT_MIST].map(mediaUrl);
     let refId = null;
-    try { refId = await hfCreateReference(refs); } catch (e) { console.warn('[carousel-daily] ref skip:', e.message); }
-    const prompt = `${DAILY_PROMPT}. 콘텐츠 키워드 무드: ${keyword}`;
-    const params = { prompt, width_and_height: '1536x2048' };
-    if (refId) { params.custom_reference_id = refId; params.custom_reference_strength = 0.6; }
+    if (refUrls.length) {
+      try { refId = await hfCreateReference(refUrls); } catch (e) { console.warn(`[carousel-daily] ${tag} ref skip:`, e.message); }
+    }
+    const base = { prompt, width_and_height: '1536x2048' };
+    const params = { ...base };
+    if (refId) { params.custom_reference_id = refId; params.custom_reference_strength = strength; }
     const submit = (p) => fetch(`${HF_BASE}/v1/text2image/soul`, { method: 'POST', headers: hfHeaders(), body: JSON.stringify({ params: p }) });
     let sub = await submit(params);
-    if (!sub.ok && refId) { console.warn('[carousel-daily] ref 미적용 폴백'); sub = await submit({ prompt, width_and_height: '1536x2048' }); }
+    if (!sub.ok && refId) { console.warn(`[carousel-daily] ${tag} ref 미적용 폴백`); sub = await submit(base); }
     if (!sub.ok) throw new Error(`제출 실패(${sub.status})`);
     const subData = await sub.json();
     const jobSetId = subData.id || subData.request_id;
@@ -106,36 +115,40 @@ async function genDailyPhoto(keyword, draftId, idx) {
     if (!imageUrl) throw new Error('이미지 URL 없음');
     const img = await fetch(imageUrl);
     const buf = Buffer.from(await img.arrayBuffer());
-    const blob = await put(`carousel-photo/${draftId}-${idx}.png`, buf, { access: 'public', contentType: 'image/png', addRandomSuffix: true });
+    const blob = await put(`${blobPrefix}/${draftId}-${idx}.png`, buf, { access: 'public', contentType: 'image/png', addRandomSuffix: true });
     return blob.url;
-  } catch (e) { console.warn(`[carousel-daily] photo ${idx} 실패(폴백):`, e.message); return null; }
+  } catch (e) { console.warn(`[carousel-daily] ${tag} ${idx} 실패(폴백):`, e.message); return null; }
 }
 
-// 매크로 클로즈업 1장 생성(인물 아님 — 피부 질감/미스트 입자/세럼 제형). 제품 레퍼만 사용.
-//   brand-look 인물 레퍼 쓰지 않음. 실패 시 null(폴백).
+// 인물 일상룩 1장 — 단일 brand-look 레퍼(블렌드 금지) + strength 0.88(거의 복제). 자연 실사 무드.
+//   인물 수 변주(1인/2인/그룹)는 프롬프트로 가끔. 실패 시 null(폴백).
+async function genDailyPhoto(keyword, draftId, idx) {
+  const ref = sample(BRAND_LOOK, 1).map(mediaUrl); // 단일 레퍼 1장만
+  const groupVariants = ['solo (one person)', 'two friends', 'a small group of friends'];
+  const group = groupVariants[Math.floor(Math.random() * groupVariants.length)];
+  const prompt = `${DAILY_PROMPT}. people: ${group}. 콘텐츠 키워드 무드: ${keyword}`;
+  return genHfPhoto({ refUrls: ref, prompt, strength: 0.88, blobPrefix: 'carousel-photo', draftId, idx, tag: 'photo' });
+}
+
+// 매크로 클로즈업 1장(인물 아님 — 피부 질감/미스트 입자/세럼 제형). 단일 제품 레퍼 + strength 0.85.
 async function genCloseupPhoto(subject, draftId, idx) {
-  try {
-    const refs = [PRODUCT_MIST].map(mediaUrl);
-    let refId = null;
-    try { refId = await hfCreateReference(refs); } catch (e) { console.warn('[carousel-daily] closeup ref skip:', e.message); }
-    const subj = (subject || '피부 질감 매크로').trim();
-    const prompt = `${CLOSEUP_PROMPT}. 주제: ${subj}. NO face, no person, photoreal product/texture macro`;
-    const params = { prompt, width_and_height: '1536x2048' };
-    if (refId) { params.custom_reference_id = refId; params.custom_reference_strength = 0.6; }
-    const submit = (p) => fetch(`${HF_BASE}/v1/text2image/soul`, { method: 'POST', headers: hfHeaders(), body: JSON.stringify({ params: p }) });
-    let sub = await submit(params);
-    if (!sub.ok && refId) { console.warn('[carousel-daily] closeup ref 미적용 폴백'); sub = await submit({ prompt, width_and_height: '1536x2048' }); }
-    if (!sub.ok) throw new Error(`제출 실패(${sub.status})`);
-    const subData = await sub.json();
-    const jobSetId = subData.id || subData.request_id;
-    if (!jobSetId) throw new Error('job-set id 없음');
-    const imageUrl = await hfPoll(jobSetId, Date.now() + 90_000);
-    if (!imageUrl) throw new Error('이미지 URL 없음');
-    const img = await fetch(imageUrl);
-    const buf = Buffer.from(await img.arrayBuffer());
-    const blob = await put(`carousel-closeup/${draftId}-${idx}.png`, buf, { access: 'public', contentType: 'image/png', addRandomSuffix: true });
-    return blob.url;
-  } catch (e) { console.warn(`[carousel-daily] closeup ${idx} 실패(폴백):`, e.message); return null; }
+  const subj = (subject || '피부 질감 매크로').trim();
+  const prompt = `${CLOSEUP_PROMPT}. 주제: ${subj}. NO face, no person, photoreal product/texture macro`;
+  return genHfPhoto({ refUrls: [PRODUCT_MIST].map(mediaUrl), prompt, strength: 0.85, blobPrefix: 'carousel-closeup', draftId, idx, tag: 'closeup' });
+}
+
+// 제품 샷 1장(일상 맥락 — 파우치/책상 등). 단일 제품 레퍼 + strength 0.85. 자연 실사.
+async function genProductPhoto(subject, keyword, draftId, idx) {
+  const subj = (subject || '').trim();
+  const prompt = `${PRODUCT_PROMPT}. 콘텐츠 키워드 무드: ${keyword}${subj ? `. 주제: ${subj}` : ''}`;
+  return genHfPhoto({ refUrls: [PRODUCT_MIST].map(mediaUrl), prompt, strength: 0.85, blobPrefix: 'carousel-product', draftId, idx, tag: 'product' });
+}
+
+// 무드 씬 1장(해변/욕실 등, 키워드 맞춤). 레퍼 없이 프롬프트만(또는 제품 레퍼 약하게는 미사용). 자연 실사.
+async function genScenePhoto(subject, keyword, draftId, idx) {
+  const subj = (subject || '').trim();
+  const prompt = `${SCENE_PROMPT}. 콘텐츠 키워드 무드: ${keyword}${subj ? `. 씬: ${subj}` : ''}`;
+  return genHfPhoto({ refUrls: [], prompt, strength: 0.85, blobPrefix: 'carousel-scene', draftId, idx, tag: 'scene' });
 }
 
 // 커버 레이아웃 로테이션(redis 카운터) — cover_* 4종
@@ -183,11 +196,14 @@ async function genSlides(market, keyword, coverType) {
 - 커버 헤드라인 = 3초 후킹, 정보 다 주지 말고 갭만 연다(반전·"99%가 모르는"·결과 선공개).
 - 톤 = 감각적인 한 줄(과한 설명 금지). 카피를 짧고 강하게. 광고 문구("저희 제품은") 금지.
 - 제품 클레임은 입증 혜택 범위 내에서만. AI 연출/시장 수치 혼용 금지.`;
-  // 커버 타입별 필드 가이드
+  // 커버 타입별 필드 가이드. 사진 들어가는 커버는 photoSubject(주제 적응 — 항상 인물 X)·photoSubjectDetail 지정.
+  //   photoSubject ∈ ["person","product","texture","scene"]: 주제가 인물 중심 아니면 product/texture/scene 선택.
+  //   예: 제형 얘기=texture, 휴대/파우치=product, 무드(해변/욕실)=scene, 사람 루틴/표정=person.
+  const photoSubjectGuide = `"photoSubject":"person|product|texture|scene 중 1개(주제에 맞게 — 인물 중심 아니면 product/texture/scene)","photoSubjectDetail":"사진 주제 한 줄(예: '파우치 안 미스트'·'세럼 제형 매크로'·'욕실 아침 루틴 무드')"`;
   const coverGuide = {
-    cover_fullimage: `{"type":"cover_fullimage","headline":"하단 훅 1~2줄(짧고 강하게)","emphasis":"headline 안의 강조 단어 1개(반드시 headline에 포함)","sub":"보조 한 줄(대세감 신호)"}`,
-    cover_split: `{"type":"cover_split","headline":"우측 헤드라인(두 줄 가능)","emphasis":"headline 안 강조 단어 1개","sub":"보조 한 줄"}`,
-    cover_number: `{"type":"cover_number","num":"초대형 숫자/수치(예: 24h, 3, 500)","headline":"숫자 캡션 한 줄","sub":"보조 한 줄(대세감)"}`,
+    cover_fullimage: `{"type":"cover_fullimage","headline":"하단 훅 1~2줄(짧고 강하게)","emphasis":"headline 안의 강조 단어 1개(반드시 headline에 포함)","sub":"보조 한 줄(대세감 신호)",${photoSubjectGuide}}`,
+    cover_split: `{"type":"cover_split","headline":"우측 헤드라인(두 줄 가능)","emphasis":"headline 안 강조 단어 1개","sub":"보조 한 줄",${photoSubjectGuide}}`,
+    cover_number: `{"type":"cover_number","num":"초대형 숫자/수치(예: 24h, 3, 500)","headline":"숫자 캡션 한 줄","sub":"보조 한 줄(대세감)",${photoSubjectGuide}}`,
     cover_textonly: `{"type":"cover_textonly","headline":"흑배경 위 큰 헤드라인","emphasis":"headline 안 강조 단어 1개","sub":"보조 한 줄"}`,
   };
   const user = `오늘 키워드: ${keyword}
@@ -251,15 +267,106 @@ async function genSlides(market, keyword, coverType) {
   return parsed;
 }
 
-// 사진 주입: 커버=일상룩 인물(genDailyPhoto), 질감 본문(closeup/fullimage)=매크로 클로즈업(genCloseupPhoto).
-//   data_* 본문(stat/compare/steps)은 코드 렌더라 사진 생성 안 함. 슬라이드당 1장·실패 폴백·병렬.
+// KR 슬라이드(+캡션·해시태그) → 영어 번역본 생성(LLM 1회). 콘텐츠·사진은 KR과 공유, 언어만 다름.
+//   텍스트 필드만 번역: headline, body, sub, statLabel, steps[].t, compare.left/leftVal/right/rightVal,
+//   comment, share, emphasis(번역된 headline에 포함된 단어로), caption, hashtags.
+//   type/num/stat(숫자)/image(공유 URL)/circle/visual/photoSubject 등 비텍스트는 그대로 복사.
+async function translateSlidesToEn(parsed) {
+  // 이미지/구조는 그대로. 번역 대상 텍스트만 LLM 에 전달 → JSON 으로 회수.
+  const slides = parsed.slides || [];
+  // 번역 대상만 추출(인덱스 보존)
+  const payload = slides.map((s) => {
+    const o = { type: s.type };
+    if (s.headline != null) o.headline = (typeof s.headline === 'object') ? (s.headline.text || '') : s.headline;
+    if (s.emphasis != null) o.emphasis = s.emphasis;
+    if (s.body != null) o.body = s.body;
+    if (s.sub != null) o.sub = s.sub;
+    if (s.statLabel != null) o.statLabel = s.statLabel;
+    if (s.comment != null) o.comment = s.comment;
+    if (s.share != null) o.share = s.share;
+    if (Array.isArray(s.steps)) o.steps = s.steps.map(st => ({ t: st.t ?? '' }));
+    if (s.compare && typeof s.compare === 'object') {
+      o.compare = { left: s.compare.left ?? '', leftVal: s.compare.leftVal ?? '', right: s.compare.right ?? '', rightVal: s.compare.rightVal ?? '' };
+    }
+    return o;
+  });
+  const system = `You are a professional EN beauty-copy translator for the brand MILLIMILLI.
+Translate Korean carousel copy into natural, punchy US-English marketing copy (not literal). Keep the curiosity-gap + social-proof tone.
+- Preserve **bold** markers exactly (e.g. **단어** → **word**). Keep emoji.
+- For each slide, "emphasis" MUST be a single word that appears verbatim in the translated "headline".
+- Do NOT translate or change numbers/units (24h, 984ppm, 500 Dalton, 4주→4 weeks is fine but keep digits).
+- Return ONLY JSON, same shape as input (array under "slides" + "caption" + "hashtags"). No code fences.`;
+  const user = `Translate to English. Korean caption: ${JSON.stringify(parsed.caption || '')}
+Korean hashtags: ${JSON.stringify(parsed.hashtags || '')}
+Korean slides text (translate the text fields, keep array order/length):
+${JSON.stringify(payload)}
+
+Return JSON exactly:
+{"caption":"EN caption (diary/casual, hook + info + comment-splitting question + save/share trigger, with emoji, <200 chars)","hashtags":"10-15 EN/mixed hashtags space-separated","slides":[ same length as input, each with only the text fields that were present, translated ]}`;
+  const r = await anthropic.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 1800,
+    system,
+    messages: [{ role: 'user', content: user }],
+  });
+  const raw = r.content[0]?.text || '';
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('translate 응답 파싱 실패');
+  const tr = JSON.parse(m[0]);
+  const trSlides = Array.isArray(tr.slides) ? tr.slides : [];
+  // KR 구조를 깊은 복사 후 번역 텍스트만 덮어쓰기(이미지·숫자·구조 보존)
+  const out = { caption: tr.caption || parsed.caption || '', hashtags: tr.hashtags || parsed.hashtags || '', slides: [] };
+  out.slides = slides.map((s, i) => {
+    const en = JSON.parse(JSON.stringify(s)); // 깊은 복사(image/num/stat/circle/visual/photoSubject 등 유지)
+    const t = trSlides[i] || {};
+    if (s.headline != null && t.headline != null) {
+      if (typeof en.headline === 'object' && en.headline) en.headline.text = t.headline;
+      else en.headline = t.headline;
+    }
+    if (t.emphasis != null) en.emphasis = t.emphasis;
+    if (t.body != null) en.body = t.body;
+    if (t.sub != null) en.sub = t.sub;
+    if (t.statLabel != null) en.statLabel = t.statLabel;
+    if (t.comment != null) en.comment = t.comment;
+    if (t.share != null) en.share = t.share;
+    if (Array.isArray(en.steps) && Array.isArray(t.steps)) {
+      en.steps = en.steps.map((st, j) => ({ ...st, t: t.steps[j]?.t ?? st.t }));
+    }
+    if (en.compare && t.compare) {
+      en.compare = { ...en.compare, left: t.compare.left ?? en.compare.left, leftVal: t.compare.leftVal ?? en.compare.leftVal, right: t.compare.right ?? en.compare.right, rightVal: t.compare.rightVal ?? en.compare.rightVal };
+    }
+    return en;
+  });
+  // emphasis 보정(번역 headline 안에 없으면 최장 토큰으로) — KR genSlides 와 동일 정책.
+  for (const s of out.slides) {
+    const headText = (typeof s.headline === 'object' && s.headline) ? (s.headline.text || '') : (s.headline || '');
+    if (!headText) continue;
+    const emph = (s.emphasis || '').trim();
+    if (!emph || !headText.includes(emph)) {
+      const tokens = String(headText).split(/\s+/).filter(Boolean);
+      if (tokens.length) s.emphasis = tokens.reduce((a, b) => (b.length > a.length ? b : a), tokens[0]);
+    }
+  }
+  return out;
+}
+
+// 사진 주입(공유 1세트 — KR/US 공통): 커버는 photoSubject(person/product/texture/scene)로 소재 적응,
+//   질감 본문(closeup/fullimage)=매크로 클로즈업. data_* 본문(stat/compare/steps)은 코드 렌더라 사진 생성 안 함.
+//   슬라이드당 1장·실패 폴백·병렬.
+const headTextOf = (s) => (typeof s.headline === 'object' && s.headline) ? (s.headline.text || '') : (s.headline || '');
 async function attachPhotos(slides, keyword, draftId) {
   const jobs = slides.map((s, i) => {
-    if (PERSON_PHOTO_TYPES.has(s.type)) {
+    if (COVER_PHOTO_TYPES.has(s.type)) {
+      // 커버 소재 주제 적응(항상 인물 X). 기본 person.
+      const subject = (s.photoSubject || 'person').trim();
+      const hint = s.photoSubjectDetail || headTextOf(s) || keyword;
+      if (subject === 'product') return genProductPhoto(hint, keyword, draftId, i + 1).then(url => { if (url) s.image = url; });
+      if (subject === 'texture') return genCloseupPhoto(s.closeupSubject || hint, draftId, i + 1).then(url => { if (url) s.image = url; });
+      if (subject === 'scene') return genScenePhoto(hint, keyword, draftId, i + 1).then(url => { if (url) s.image = url; });
       return genDailyPhoto(keyword, draftId, i + 1).then(url => { if (url) s.image = url; });
     }
     if (CLOSEUP_PHOTO_TYPES.has(s.type)) {
-      return genCloseupPhoto(s.closeupSubject || s.headline?.text || s.headline || keyword, draftId, i + 1).then(url => { if (url) s.image = url; });
+      return genCloseupPhoto(s.closeupSubject || headTextOf(s) || keyword, draftId, i + 1).then(url => { if (url) s.image = url; });
     }
     return null;
   }).filter(Boolean);
@@ -333,22 +440,35 @@ export default async function handler(req, res) {
 
     const fonts = await loadFonts();
     const results = [];
-    // 시장별 1회 생성 → IG·TT 공유
-    for (const market of ['kr', 'us']) {
-      try {
-        const copy = await genSlides(market, keyword, coverType);
-        const draftId = `${market}_${today}_${Date.now().toString(36)}`;
-        // 사진 필요한 슬라이드에 일상룩 인물 사진 생성·주입(실패 시 폴백)
-        await attachPhotos(copy.slides, keyword, draftId);
-        const mediaUrls = await bakeCards(copy.slides, market, draftId, fonts);
-        const caption = copy.caption || '';
-        const hashtags = copy.hashtags || '';
-        for (const ch of CHANNELS.filter(c => c.region === market)) {
-          const seeded = await seedDraft(sb, { channel: ch.key, region: ch.region, platform: ch.platform, date: today, mediaUrls, caption, hashtags });
-          results.push(seeded);
-        }
-      } catch (e) { results.push({ market, error: e.message }); }
-    }
+    // ── KR·US 통일: 콘셉트·사진 1회만 생성(공유), US = 번역본. 사진 URL 동일. ──
+    //   1) KR genSlides → slides   2) attachPhotos(공유 이미지 주입)
+    //   3) US = translateSlidesToEn(텍스트만 영어, image/숫자/구조 그대로)
+    //   4) bake: KR slides→KR 카드, US slides→US 카드 (둘 다 같은 image URL)
+    //   5) seed: kr_ig·kr_tt=KR mediaUrls, us_ig·us_tt=US mediaUrls
+    try {
+      const krCopy = await genSlides('kr', keyword, coverType);
+      const photoDraftId = `shared_${today}_${Date.now().toString(36)}`;
+      // 사진 1세트 생성·주입(공유) — 이후 US 번역본도 동일 image URL 사용
+      await attachPhotos(krCopy.slides, keyword, photoDraftId);
+      // US = KR 번역본(텍스트만). 실패 시 KR 카피로 폴백(영어 미적용이라도 발행은 유지).
+      let usCopy;
+      try { usCopy = await translateSlidesToEn(krCopy); }
+      catch (e) { console.warn('[carousel-daily] translate 실패(KR 폴백):', e.message); usCopy = krCopy; }
+
+      const krDraftId = `kr_${today}_${Date.now().toString(36)}`;
+      const usDraftId = `us_${today}_${Date.now().toString(36)}`;
+      const krMediaUrls = await bakeCards(krCopy.slides, 'kr', krDraftId, fonts);
+      const usMediaUrls = await bakeCards(usCopy.slides, 'us', usDraftId, fonts);
+      const byMarket = {
+        kr: { mediaUrls: krMediaUrls, caption: krCopy.caption || '', hashtags: krCopy.hashtags || '' },
+        us: { mediaUrls: usMediaUrls, caption: usCopy.caption || '', hashtags: usCopy.hashtags || '' },
+      };
+      for (const ch of CHANNELS) {
+        const mk = byMarket[ch.region];
+        const seeded = await seedDraft(sb, { channel: ch.key, region: ch.region, platform: ch.platform, date: today, mediaUrls: mk.mediaUrls, caption: mk.caption, hashtags: mk.hashtags });
+        results.push(seeded);
+      }
+    } catch (e) { results.push({ error: e.message }); }
     const summary = { ok: true, today, keyword, coverType, results };
     try { await redis.set('creator:carousel-daily:latest', { ...summary, at: new Date().toISOString() }, { ex: 86400 * 3 }); } catch {}
     return res.status(200).json(summary);

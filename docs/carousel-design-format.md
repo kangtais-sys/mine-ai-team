@@ -23,11 +23,34 @@
 - 인물·실사 = brand-look 레퍼 무드로 생성(또는 핀터레스트 유사무드+출처). photoreal·다양한 사람.
 - 사진 무드를 브랜드로 바꾸려 하지 말 것 — **틀(타이포)이 브랜드, 사진은 일상**.
 
+## 사진 = 단일 레퍼 "거의 복제" 내추럴 실사 (✅ 2026-06-13 MINE 피드백)
+- **레퍼 1장만**(블렌드 금지 — 여러 장 섞으면 글로시 "모델 화보"化). brand-look/제품에서 랜덤 1장.
+- **custom_reference_strength 0.85~0.9**(인물 0.88·클로즈업/제품 0.85) — 레퍼 무드 거의 복제.
+- 프롬프트 기조: "natural candid real photo, everyday natural background, authentic phone-camera/snapshot feel, NOT studio editorial/model shoot, photoreal skin texture, match the reference natural mood" (+키워드 무드). **글로시·플라스틱·올드 금지.**
+- genCloseupPhoto(질감/제품)도 동일: 자연 실사 매크로, 단일 제품 레퍼, strength 0.85.
+
+## 커버 소재 = 주제 적응 (항상 인물 X) (✅ 2026-06-13 MINE 피드백)
+- genSlides 가 커버 슬라이드에 `photoSubject` ∈ ["person","product","texture","scene"] + `photoSubjectDetail`(주제 한 줄) 지정.
+  주제가 인물 중심 아니면 product/texture/scene 선택. 예: 제형=texture, 휴대/파우치=product, 무드(해변/욕실)=scene, 사람 루틴/표정=person.
+- attachPhotos 가 photoSubject 로 생성기 분기:
+  - person → genDailyPhoto(단일 brand-look 레퍼, 인물 수 1인/2인/그룹 랜덤 변주).
+  - product → genProductPhoto(제품 레퍼 PRODUCT_MIST, "파우치 안/책상 위" 일상 맥락 real photo).
+  - texture → genCloseupPhoto(제형·질감 매크로, 인물 X).
+  - scene → genScenePhoto(무드 씬, 키워드 맞춤, 레퍼 없이 프롬프트만, real photo).
+- **대세감은 사진이 아니라 카피로도 가능**("요즘 다들"·"N만 저장") → 커버 인물 수 강제 금지.
+
+## KR·US 통일 — 콘텐츠·사진 공유, 언어만 다름 (✅ 2026-06-13 MINE 피드백)
+- 콘셉트·사진은 **1회만** 생성: KR 기준 genSlides('kr') → slides → attachPhotos(공유 이미지 1세트 주입).
+- **US = 번역본**: translateSlidesToEn(slides) — 텍스트 필드(headline/body/sub/statLabel/steps[].t/compare.*/comment/share/emphasis/caption/hashtags)만 영어로(LLM 1회, claude-sonnet-4). type/num/stat(숫자)/image(공유 URL)/circle/visual/photoSubject 등 비텍스트는 그대로 복사. emphasis 는 번역된 headline 안 단어로.
+- bake: KR slides→KR 카드, US(번역) slides→US 카드. **두 시장 모두 같은 image URL**.
+- seed: kr_ig·kr_tt=KR mediaUrls, us_ig·us_tt=US mediaUrls.
+- → 사진 생성 1세트로 축소(maxDuration 300s 여유), 번역 LLM 1회 추가.
+
 ## 본문 이미지 소싱 = 내용 타입별 (✅ 2026-06-13 갱신)
 - **커버**(cover_fullimage/split/number) = 일상룩 인물 사진(여러 사람·대세감). genDailyPhoto(brand-look 인물 레퍼).
 - **정보성 본문 = 데이터 비주얼(코드 렌더, 사진 X)**. 무관한 인물 사진 금지. 3종:
   - `body_stat` — 초대형 숫자(stat·240px·700) + 라벨 + 한 줄 설명. circle 플래그로 사인펜 동그라미.
-  - `body_compare` — 좌(약·회색 #D3D1C7)/우(강·블랙) 비교 막대. compare:{left,leftVal,right,rightVal}. 수치 있으면 비율, 없으면 좌 0.4/우 1.0.
+  - `body_compare` — 좌(약·쿨그레이 #D6D7D9)/우(강·블랙) 비교 막대. 트랙 배경=쿨톤 #F7F6F4. compare:{left,leftVal,right,rightVal}. 수치 있으면 비율, 없으면 좌 0.4/우 1.0.
   - `body_steps` — 번호(700·SUB) + 텍스트(300/강조700) 리스트 2~4개. steps:[{n,t}] 또는 body 여러 줄.
 - **질감·제형 본문(필요할 때만)** = `body_closeup`(또는 body_fullimage) 매크로 클로즈업 **생성(인물 아님)**. genCloseupPhoto = 제품 레퍼(PRODUCT_MIST) + closeupSubject(피부 질감/미스트 입자/세럼 제형). "extreme macro, NO face/no person, photoreal, 4:5".
 - **후기** = 실후기 캡처(별도 flow, 이 포맷 범위 아님).
