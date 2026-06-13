@@ -29,7 +29,7 @@ const envTrim = (k, fb = '') => String(process.env[k] ?? fb).replace(/\\[rn]/g, 
 // region → Zernio 프로필 (accounts.js와 동일, Zernio 연결 실측 2026-06-09 일치)
 const PROFILE = {
   kr: envTrim('ZERNIO_MILLIMILLI_PROFILE_ID', '69d08cc1986d57bb8f733102'), // @millimilli.kr (IG+TikTok)
-  us: envTrim('ZERNIO_MILLIMILLI_US_PROFILE_ID', '69fbfcd01fc1fdb66f249aa8'), // @millimilli.us (IG만)
+  us: envTrim('ZERNIO_MILLIMILLI_US_PROFILE_ID', '69fbfd0692b3d8e85f86d882'), // @millimilli.us (Zernio 실측 — 발행 검증됨)
 };
 
 // 채널별 발행 라우팅 (§12 유저 확정 2026-06-09 + Zernio 연결 실측 2026-06-09):
@@ -143,10 +143,12 @@ export async function publishDraftToZernio(draft, { dryRun = false } = {}) {
     draft.status = 'failed'; draft.error = `안전하지 않은 미디어 URL 차단: ${unsafe.url}`;
     return { ok: false, error: draft.error, code: 400 };
   }
+  const pid = (draft.profileId || PROFILE[draft.region] || PROFILE.kr || '').trim();
   const body = {
-    profileId: (draft.profileId || PROFILE[draft.region] || PROFILE.kr || '').trim(),
+    profileId: pid,
     text,
-    platforms: [{ platform: draft.platform, platformSpecificData: { caption: text.substring(0, 2200) } }],
+    // Zernio /posts 는 platforms[].accountId 필수(누락 시 "Invalid input: missing platforms.0.accountId").
+    platforms: [{ platform: draft.platform, accountId: pid, platformSpecificData: { caption: text.substring(0, 2200) } }],
     status: 'published',
     ...(mediaItems.length && { mediaItems }),
   };
@@ -158,7 +160,7 @@ export async function publishDraftToZernio(draft, { dryRun = false } = {}) {
   }
   draft.status = 'published';
   draft.publishedAt = new Date().toISOString();
-  draft.publishResult = { postId: result._id || result.id, via: 'zernio' };
+  draft.publishResult = { postId: result.post?._id || result.post?.id || result._id || result.id, via: 'zernio' };
   return { ok: true, result };
 }
 

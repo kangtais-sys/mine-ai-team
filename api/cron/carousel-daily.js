@@ -176,7 +176,7 @@ const COVER_TYPES = ['cover_fullimage', 'cover_split', 'cover_number', 'cover_te
 const envTrim = (k, fb = '') => String(process.env[k] ?? fb).replace(/\\[rn]/g, '').replace(/^["'\s]+|["'\s]+$/g, '');
 const PROFILE = {
   kr: envTrim('ZERNIO_MILLIMILLI_PROFILE_ID', '69d08cc1986d57bb8f733102'),
-  us: envTrim('ZERNIO_MILLIMILLI_US_PROFILE_ID', '69fbfcd01fc1fdb66f249aa8'),
+  us: envTrim('ZERNIO_MILLIMILLI_US_PROFILE_ID', '69fbfd0692b3d8e85f86d882'), // Zernio 실측(발행 검증)
 };
 const CHANNELS = [
   { key: 'kr_ig', region: 'kr', platform: 'instagram' },
