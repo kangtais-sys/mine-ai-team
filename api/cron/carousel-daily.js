@@ -480,6 +480,32 @@ async function seedDraft(sb, { channel, region, platform, date, mediaUrls, capti
 
 export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) return res.status(401).json({ error: 'Unauthorized' });
+  // ── 임시 진단: nano_banana 경로 단계별 점검(?nanotest=1) ──
+  if (req.query?.nanotest === '1') {
+    const out = { steps: [] };
+    try {
+      const tokmod = await import('../../lib/higgsfield-tokens.js');
+      const FNF = 'https://fnf.higgsfield.ai';
+      const tok = await tokmod.getValidToken('nanotest').catch(e => { throw new Error('TOKEN: ' + e.message); });
+      out.steps.push('token ok ' + String(tok).slice(0, 8));
+      const refUrl = sample(LOOK_POOL, 1).map(mediaUrl)[0];
+      out.refUrl = refUrl;
+      // 업로드 슬롯
+      const slot = await tokmod.fnfFetch(`${FNF}/agents/uploads?type=image`, { method: 'POST', body: JSON.stringify({ url: 'placeholder' }) }, 'nanotest');
+      out.steps.push('uploadSlot ' + slot.status);
+      if (!slot.ok) { out.uploadErr = (await slot.text()).slice(0, 200); return res.status(200).json(out); }
+      const { id: mid, upload_url } = await slot.json();
+      const img = await fetch(refUrl); const buf = Buffer.from(await img.arrayBuffer());
+      const put = await fetch(upload_url, { method: 'PUT', headers: { 'Content-Type': img.headers.get('content-type') || 'image/jpeg' }, body: buf });
+      out.steps.push('s3put ' + put.status);
+      // 잡 제출
+      const jr = await tokmod.fnfFetch(`${FNF}/agents/jobs`, { method: 'POST', body: JSON.stringify({ job_set_type: 'nano_banana_2', params: { prompt: 'candid selfie, photoreal natural skin', aspect_ratio: '3:4', input_images: [{ id: mid, type: 'media_input' }], enhance_prompt: true } }) }, 'nanotest');
+      out.steps.push('jobSubmit ' + jr.status);
+      if (!jr.ok) { out.jobErr = (await jr.text()).slice(0, 300); return res.status(200).json(out); }
+      const ids = await jr.json(); out.jobId = Array.isArray(ids) ? ids[0] : ids.id;
+      return res.status(200).json(out);
+    } catch (e) { out.error = e.message; return res.status(200).json(out); }
+  }
   const dry = req.query?.dry === '1';
   const force = req.query?.force === '1';
   // 콘텐츠는 '내일(D+1)' 것을 미리 생성해 보드에 올림(당일 아님). 아래 today 변수는 타깃=내일 날짜.
