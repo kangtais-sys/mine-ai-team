@@ -23,6 +23,16 @@
 - 인물·실사 = brand-look 레퍼 무드로 생성(또는 핀터레스트 유사무드+출처). photoreal·다양한 사람.
 - 사진 무드를 브랜드로 바꾸려 하지 말 것 — **틀(타이포)이 브랜드, 사진은 일상**.
 
+## 본문 이미지 소싱 = 내용 타입별 (✅ 2026-06-13 갱신)
+- **커버**(cover_fullimage/split/number) = 일상룩 인물 사진(여러 사람·대세감). genDailyPhoto(brand-look 인물 레퍼).
+- **정보성 본문 = 데이터 비주얼(코드 렌더, 사진 X)**. 무관한 인물 사진 금지. 3종:
+  - `body_stat` — 초대형 숫자(stat·240px·700) + 라벨 + 한 줄 설명. circle 플래그로 사인펜 동그라미.
+  - `body_compare` — 좌(약·회색 #D3D1C7)/우(강·블랙) 비교 막대. compare:{left,leftVal,right,rightVal}. 수치 있으면 비율, 없으면 좌 0.4/우 1.0.
+  - `body_steps` — 번호(700·SUB) + 텍스트(300/강조700) 리스트 2~4개. steps:[{n,t}] 또는 body 여러 줄.
+- **질감·제형 본문(필요할 때만)** = `body_closeup`(또는 body_fullimage) 매크로 클로즈업 **생성(인물 아님)**. genCloseupPhoto = 제품 레퍼(PRODUCT_MIST) + closeupSubject(피부 질감/미스트 입자/세럼 제형). "extreme macro, NO face/no person, photoreal, 4:5".
+- **후기** = 실후기 캡처(별도 flow, 이 포맷 범위 아님).
+- LLM(genSlides)이 본문마다 `visual` ∈ [data_stat|data_compare|data_steps|closeup|none] 지정 → data_* 우선, closeup 은 질감 설명에만.
+
 ---
 
 ## 슬라이드 역할 (캐러셀 = 4~7장 흐름)

@@ -42,8 +42,11 @@ const BRAND_LOOK = [
 // 제품(미스트 히어로) — product-assets.md
 const PRODUCT_MIST = '4a56fcd8-478d-4860-b722-03934e6eaf3f';
 const DAILY_PROMPT = '젊은 20s 다양한 한국/글로벌 인물, 자연광 일상 무드, photoreal(모공·질감), 글로시 더운 피부, plastic/올드 금지, 4:5 세로';
-// 사진을 쓰는 슬라이드 타입
-const PHOTO_TYPES = new Set(['cover_fullimage', 'cover_split', 'cover_number', 'body_short', 'body_long', 'body_fullimage']);
+// 클로즈업(매크로) 프롬프트 — 인물 없음. 제품 레퍼 기반 질감·제형·입자.
+const CLOSEUP_PROMPT = 'extreme macro close-up, photoreal, no face, no person, soft natural light, shallow depth of field, 4:5 세로';
+// 인물 사진(일상룩) = 커버 타입에만. 매크로 클로즈업 = 질감 본문에만.
+const PERSON_PHOTO_TYPES = new Set(['cover_fullimage', 'cover_split', 'cover_number']);
+const CLOSEUP_PHOTO_TYPES = new Set(['body_closeup', 'body_fullimage']);
 
 function hfHeaders() {
   const key = (process.env.HIGGSFIELD_API_KEY || '').replace(/^["']|["']$/g, '').trim();
@@ -108,6 +111,33 @@ async function genDailyPhoto(keyword, draftId, idx) {
   } catch (e) { console.warn(`[carousel-daily] photo ${idx} 실패(폴백):`, e.message); return null; }
 }
 
+// 매크로 클로즈업 1장 생성(인물 아님 — 피부 질감/미스트 입자/세럼 제형). 제품 레퍼만 사용.
+//   brand-look 인물 레퍼 쓰지 않음. 실패 시 null(폴백).
+async function genCloseupPhoto(subject, draftId, idx) {
+  try {
+    const refs = [PRODUCT_MIST].map(mediaUrl);
+    let refId = null;
+    try { refId = await hfCreateReference(refs); } catch (e) { console.warn('[carousel-daily] closeup ref skip:', e.message); }
+    const subj = (subject || '피부 질감 매크로').trim();
+    const prompt = `${CLOSEUP_PROMPT}. 주제: ${subj}. NO face, no person, photoreal product/texture macro`;
+    const params = { prompt, width_and_height: '1536x2048' };
+    if (refId) { params.custom_reference_id = refId; params.custom_reference_strength = 0.6; }
+    const submit = (p) => fetch(`${HF_BASE}/v1/text2image/soul`, { method: 'POST', headers: hfHeaders(), body: JSON.stringify({ params: p }) });
+    let sub = await submit(params);
+    if (!sub.ok && refId) { console.warn('[carousel-daily] closeup ref 미적용 폴백'); sub = await submit({ prompt, width_and_height: '1536x2048' }); }
+    if (!sub.ok) throw new Error(`제출 실패(${sub.status})`);
+    const subData = await sub.json();
+    const jobSetId = subData.id || subData.request_id;
+    if (!jobSetId) throw new Error('job-set id 없음');
+    const imageUrl = await hfPoll(jobSetId, Date.now() + 90_000);
+    if (!imageUrl) throw new Error('이미지 URL 없음');
+    const img = await fetch(imageUrl);
+    const buf = Buffer.from(await img.arrayBuffer());
+    const blob = await put(`carousel-closeup/${draftId}-${idx}.png`, buf, { access: 'public', contentType: 'image/png', addRandomSuffix: true });
+    return blob.url;
+  } catch (e) { console.warn(`[carousel-daily] closeup ${idx} 실패(폴백):`, e.message); return null; }
+}
+
 // 커버 레이아웃 로테이션(redis 카운터) — cover_* 4종
 const COVER_TYPES = ['cover_fullimage', 'cover_split', 'cover_number', 'cover_textonly'];
 const envTrim = (k, fb = '') => String(process.env[k] ?? fb).replace(/\\[rn]/g, '').replace(/^["'\s]+|["'\s]+$/g, '');
@@ -165,22 +195,33 @@ async function genSlides(market, keyword, coverType) {
 커버 슬라이드 타입(고정): ${coverType}
 
 감각적 정보성 캐러셀을 아래 JSON으로만 반환(코드블록 없이 순수 JSON). 슬라이드 총 4~6장 = 커버1 + 본문2~4 + 마무리1.
+
+⚠️ 본문 이미지 원칙(매우 중요):
+- 본문은 무관한 인물 사진을 넣지 않는다. 정보성 본문은 "데이터 비주얼"(코드 렌더: 숫자/비교/스텝)을 우선한다.
+- 각 본문 슬라이드에 "visual" 필드를 반드시 지정: "data_stat" | "data_compare" | "data_steps" | "closeup" | "none".
+- 정보성 본문은 data_stat / data_compare / data_steps 를 우선(숫자·비교·스텝). 사진은 질감 설명이 꼭 필요할 때만 closeup.
+- 본문 type 은 visual 에 따라 아래처럼 정한다(둘을 일치시킬 것):
+
 {
   "caption": "인스타 캡션 ${lang}, 일기/구어체, 첫 줄 후킹 + 정보 + 댓글 가르는 질문 + 저장/공유 유도(이모지 포함, 200자 이내)",
   "hashtags": "관련 해시태그 10-15개(${lang}/영문 혼용 가능, 공백 구분)",
   "slides": [
     ${coverGuide[coverType] || coverGuide.cover_textonly},
-    // 본문 2~4장: 내용량에 따라 type 선택
-    //   body_short = 한 줄 핵심+작은 사진(여백). headline+emphasis+(body 짧게)
-    //   body_long  = 소제목+가로 사진+설명 2~3줄. num+headline+body(**강조**)
-    //   body_textonly = 사진 없이 설명만. num+body(**강조**)
-    //   body_fullimage = 풀사진+하단 캡션바 한 줄. headline
+    // 본문 2~4장: 각 본문에 num("01","02"...) 부여. visual 에 맞춰 type·필드 작성:
+    //   visual:"data_stat"   → {"type":"body_stat","visual":"data_stat","num":"01","stat":"숫자/수치 문자열(예 984ppm·24h·4주)","statLabel":"숫자 라벨 한 줄","body":"한 줄 설명(**강조**)","circle":true/false}
+    //   visual:"data_compare"→ {"type":"body_compare","visual":"data_compare","num":"02","headline":"소제목","emphasis":"headline 안 강조 단어 1개","compare":{"left":"항목A","leftVal":"값/표현","right":"항목B","rightVal":"값/표현"}}
+    //   visual:"data_steps"  → {"type":"body_steps","visual":"data_steps","num":"03","headline":"소제목","emphasis":"headline 안 강조 단어 1개","steps":[{"n":"01","t":"한 줄(**강조**)"},{"n":"02","t":"한 줄"}]}
+    //   visual:"closeup"     → {"type":"body_closeup","visual":"closeup","num":"04","headline":"소제목","body":"설명(**강조**)","closeupSubject":"매크로 주제(예 '피부 질감 매크로'·'미스트 분사 입자'·'세럼 제형')"}
+    //   visual:"none"        → {"type":"body_textonly","visual":"none","num":"05","body":"설명만(**강조**)"}
     // 본문 중 정확히 1곳에만 ${heroLine} 를 해결책으로 은근히 녹임(광고 톤 금지).
-    // 각 본문에 num("01","02"...) 부여.
     {"type":"cta_editorial","headline":"마무리 한 줄(저장 유도)","emphasis":"headline 안 강조 단어 1개","body":"한 줄 마무리(선택)","comment":"댓글 가르는 질문(짧게)","share":"공유 트리거(예: ~한 친구에게)"}
   ]
 }
-주의: 본문 type은 위 4종에서만 골라 섞을 것. cover headline은 반드시 궁금증갭. 제품은 본문 단 1곳.`;
+주의:
+- 정보성 본문은 data_* 우선, closeup 은 질감 설명에만, 인물 사진 본문 금지.
+- cover headline·각 본문 headline 은 궁금증갭. emphasis 는 반드시 headline 에 그대로 포함된 단어 1개.
+- 제품은 본문 단 1곳만.
+- ${lang} 맞춤법·띄어쓰기 정확히. 오타 절대 금지(예: '건조'를 '견조'로 쓰지 말 것). 어색한 합성어 금지.`;
 
   const r = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -197,12 +238,31 @@ async function genSlides(market, keyword, coverType) {
   parsed.slides[0].type = coverType;
   const last = parsed.slides[parsed.slides.length - 1];
   if (last.type !== 'cta_editorial') last.type = 'cta_editorial';
+  // emphasis 보정: 동그라미 안정 — emphasis 없거나 headline 에 없으면 headline 최장 토큰으로.
+  for (const s of parsed.slides) {
+    const headText = (typeof s.headline === 'object' && s.headline) ? (s.headline.text || '') : (s.headline || '');
+    if (!headText) continue;
+    const emph = (s.emphasis || '').trim();
+    if (!emph || !headText.includes(emph)) {
+      const tokens = String(headText).split(/\s+/).filter(Boolean);
+      if (tokens.length) s.emphasis = tokens.reduce((a, b) => (b.length > a.length ? b : a), tokens[0]);
+    }
+  }
   return parsed;
 }
 
-// 사진 필요한 슬라이드에 일상룩 인물 사진 주입(슬라이드당 1장, 실패 폴백). 병렬 생성.
+// 사진 주입: 커버=일상룩 인물(genDailyPhoto), 질감 본문(closeup/fullimage)=매크로 클로즈업(genCloseupPhoto).
+//   data_* 본문(stat/compare/steps)은 코드 렌더라 사진 생성 안 함. 슬라이드당 1장·실패 폴백·병렬.
 async function attachPhotos(slides, keyword, draftId) {
-  const jobs = slides.map((s, i) => PHOTO_TYPES.has(s.type) ? genDailyPhoto(keyword, draftId, i + 1).then(url => { if (url) s.image = url; }) : null).filter(Boolean);
+  const jobs = slides.map((s, i) => {
+    if (PERSON_PHOTO_TYPES.has(s.type)) {
+      return genDailyPhoto(keyword, draftId, i + 1).then(url => { if (url) s.image = url; });
+    }
+    if (CLOSEUP_PHOTO_TYPES.has(s.type)) {
+      return genCloseupPhoto(s.closeupSubject || s.headline?.text || s.headline || keyword, draftId, i + 1).then(url => { if (url) s.image = url; });
+    }
+    return null;
+  }).filter(Boolean);
   await Promise.allSettled(jobs);
   return slides;
 }

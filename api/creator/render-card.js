@@ -205,7 +205,7 @@ function headlineWithEmphasis(headline, { fontSize, color = BLACK, lineHeight = 
   const idx = text.indexOf(emph);
   const before = text.slice(0, idx);
   const after = text.slice(idx + emph.length);
-  const mk = (w) => txt(w, { fontFamily: FONT, fontWeight: 700, fontSize, color, lineHeight, letterSpacing, marginRight: Math.round(fontSize * 0.06) });
+  const mk = (w) => txt(w, { fontFamily: FONT, fontWeight: 700, fontSize, color, lineHeight, letterSpacing, marginRight: Math.round(fontSize * 0.24) });
   const parts = [];
   before.split(/\s+/).filter(Boolean).forEach(w => parts.push(mk(w)));
   // 강조어: 글자수 기반 폭 추정(한글/영문 평균). 동그라미는 emphasis 단어 길이에 맞춤.
@@ -351,7 +351,106 @@ function renderBodyFullimage(s) {
   ].filter(Boolean));
 }
 
-// ── 마무리 A: 화이트 에디토리얼 CTA (#F7F6F4) ──
+// ───────────────────────────────────────────────────────────────────────────
+// 데이터-비주얼 본문 (정보성 — 무관한 인물 사진 금지. 코드 렌더 숫자/비교/스텝).
+//   전부 흰 배경, 직각(borderRadius:0), Noto Sans, weight≤700.
+// ───────────────────────────────────────────────────────────────────────────
+
+// ── 본문: 초대형 숫자(스탯) — num(작게) + 거대 숫자 + 라벨 + 한 줄 설명 ──
+function renderBodyStat(s) {
+  const statStr = String(s.stat ?? s.num ?? '');
+  return frame([
+    s.num ? txt(String(s.num), { fontFamily: FONT, fontWeight: 300, fontSize: 40, color: SUB, letterSpacing: 1 }) : null,
+    col({ flex: 1, justifyContent: 'center' }, [
+      // 초대형 숫자 — circle 플래그면 사인펜 동그라미
+      s.circle
+        ? row({}, [circled(
+            txt(statStr, { fontFamily: FONT, fontWeight: 700, fontSize: 240, color: BLACK, lineHeight: 0.95, letterSpacing: -3 }),
+            Math.max(240, Math.round(statStr.length * 240 * 0.6)), 252, { color: BLACK, padX: 24, padY: 18 }
+          )])
+        : txt(statStr, { fontFamily: FONT, fontWeight: 700, fontSize: 240, color: BLACK, lineHeight: 0.95, letterSpacing: -3 }),
+      s.statLabel ? txt(String(s.statLabel), { fontFamily: FONT, fontWeight: 500, fontSize: 48, color: BLACK, marginTop: 16, letterSpacing: -1 }) : null,
+      s.body ? h('div', { display: 'flex', marginTop: 32, maxWidth: 800 }, [richText(s.body, { fontSize: 38, color: '#2A2A2A', lineHeight: 1.5 })]) : null,
+    ].filter(Boolean)),
+    footer(),
+  ].filter(Boolean));
+}
+
+// ── 본문: 비교 — 좌(약·회색)/우(강·블랙) 막대 + 라벨. s.compare={left,leftVal,right,rightVal} ──
+function renderBodyCompare(s) {
+  const head = hl(s);
+  const c = s.compare || {};
+  // 수치 비율 추정: "24h"·"984ppm" 등에서 숫자 추출. 없으면 좌 약(0.4)/우 강(1.0).
+  const numOf = (v) => { const m = String(v ?? '').match(/[\d.]+/); return m ? parseFloat(m[0]) : null; };
+  const ln = numOf(c.leftVal), rn = numOf(c.rightVal);
+  let lr = 0.4, rr = 1.0;
+  if (ln != null && rn != null && Math.max(ln, rn) > 0) { const mx = Math.max(ln, rn); lr = Math.max(0.18, ln / mx); rr = Math.max(0.18, rn / mx); }
+  const bar = (label, val, ratio, strong) => col({ marginBottom: 56 }, [
+    row({ justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 18 }, [
+      txt(String(label || ''), { fontFamily: FONT, fontWeight: strong ? 700 : 300, fontSize: 40, color: strong ? BLACK : SUB, letterSpacing: -1 }),
+      val ? txt(String(val), { fontFamily: FONT, fontWeight: strong ? 700 : 500, fontSize: 36, color: strong ? BLACK : SUB }) : null,
+    ].filter(Boolean)),
+    // 트랙(회색) + 채움 막대(직각)
+    h('div', { display: 'flex', width: '100%', height: 56, backgroundColor: GRAY, borderRadius: 0 }, [
+      h('div', { display: 'flex', width: `${Math.round(ratio * 100)}%`, height: 56, backgroundColor: strong ? BLACK : '#D3D1C7', borderRadius: 0 }, ''),
+    ]),
+  ].filter(Boolean));
+  return frame([
+    row({ alignItems: 'baseline' }, [
+      s.num ? txt(String(s.num), { fontFamily: FONT, fontWeight: 300, fontSize: 40, color: SUB, marginRight: 20, letterSpacing: 1 }) : null,
+      head.text ? (head.emphasis
+        ? headlineWithEmphasis(head, { fontSize: 56, color: BLACK, lineHeight: 1.1, letterSpacing: -1 })
+        : txt(head.text, { fontFamily: FONT, fontWeight: 700, fontSize: 56, color: BLACK, lineHeight: 1.1, letterSpacing: -1 })) : null,
+    ].filter(Boolean)),
+    col({ flex: 1, justifyContent: 'center' }, [
+      bar(c.left, c.leftVal, lr, false),
+      bar(c.right, c.rightVal, rr, true),
+    ]),
+    footer(),
+  ].filter(Boolean));
+}
+
+// ── 본문: 번호 스텝 리스트 — s.steps=[{n,t}...] (또는 s.body 여러 줄) ──
+function renderBodySteps(s) {
+  const head = hl(s);
+  let steps = Array.isArray(s.steps) ? s.steps : null;
+  if (!steps && s.body) {
+    steps = String(s.body).split('\n').map(l => l.trim()).filter(Boolean)
+      .map((t, i) => ({ n: String(i + 1).padStart(2, '0'), t }));
+  }
+  steps = steps || [];
+  const stepRow = (st, i) => row({ alignItems: 'baseline', marginBottom: 40 }, [
+    txt(String(st.n ?? String(i + 1).padStart(2, '0')), { fontFamily: FONT, fontWeight: 700, fontSize: 52, color: SUB, marginRight: 28, letterSpacing: -1 }),
+    h('div', { display: 'flex', flex: 1 }, [richText(String(st.t ?? ''), { fontSize: 42, color: BLACK, lineHeight: 1.35 })]),
+  ]);
+  return frame([
+    row({ alignItems: 'baseline' }, [
+      s.num ? txt(String(s.num), { fontFamily: FONT, fontWeight: 300, fontSize: 40, color: SUB, marginRight: 20, letterSpacing: 1 }) : null,
+      head.text ? (head.emphasis
+        ? headlineWithEmphasis(head, { fontSize: 56, color: BLACK, lineHeight: 1.1, letterSpacing: -1 })
+        : txt(head.text, { fontFamily: FONT, fontWeight: 700, fontSize: 56, color: BLACK, lineHeight: 1.1, letterSpacing: -1 })) : null,
+    ].filter(Boolean)),
+    col({ flex: 1, justifyContent: 'center' }, steps.map((st, i) => stepRow(st, i))),
+    footer(),
+  ].filter(Boolean));
+}
+
+// ── 본문: 매크로 클로즈업 사진(인물 아님 — 질감·제형·입자) + 소제목 + 설명 ──
+function renderBodyCloseup(s) {
+  const head = hl(s);
+  return frame([
+    row({ alignItems: 'baseline' }, [
+      s.num ? txt(String(s.num), { fontFamily: FONT, fontWeight: 300, fontSize: 40, color: SUB, marginRight: 20, letterSpacing: 1 }) : null,
+      head.text ? txt(head.text, { fontFamily: FONT, fontWeight: 700, fontSize: 56, color: BLACK, lineHeight: 1.1, letterSpacing: -1 }) : null,
+    ].filter(Boolean)),
+    // 매크로 클로즈업 가로 스트립(직각)
+    photo(s.image, W - 160, 620, { marginTop: 36 }),
+    s.body ? h('div', { display: 'flex', marginTop: 36 }, [richText(s.body, { fontSize: 38, color: '#2A2A2A', lineHeight: 1.5 })]) : null,
+    footer(),
+  ].filter(Boolean));
+}
+
+// ── 마무리 A: 화이트 에디토리얼 CTA (#FFFFFF) ──
 function renderCtaEditorial(s) {
   const head = hl(s);
   const comment = s.comment || (s.labels && s.labels[0]) || '댓글로 알려주세요';
@@ -377,7 +476,7 @@ function renderCtaEditorial(s) {
         txt(share, { fontFamily: FONT, fontWeight: 500, fontSize: 30, color: BLACK }),
       ]),
     ]),
-  ], { bg: GRAY });
+  ], { bg: WHITE });
 }
 
 export function renderSlide(s, market) {
@@ -396,6 +495,11 @@ export function renderSlide(s, market) {
     case 'body_long': return renderBodyLong(s);
     case 'body_textonly': return renderBodyTextonly(s);
     case 'body_fullimage': return renderBodyFullimage(s);
+    // 데이터-비주얼 본문(정보성) + 매크로 클로즈업 본문
+    case 'body_stat': return renderBodyStat(s);
+    case 'body_compare': return renderBodyCompare(s);
+    case 'body_steps': return renderBodySteps(s);
+    case 'body_closeup': return renderBodyCloseup(s);
     case 'cta_editorial': return renderCtaEditorial(s);
     default: return renderInfo(s);
   }
