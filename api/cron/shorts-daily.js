@@ -5,10 +5,32 @@
 //  검증 부품 전부 재사용: analyzeMedia / soul text2image / kling(/v1/image2video/kling) / overlayShortCore.
 //  컴플라이언스: AI연출·임상 입증 범위·KR 수치만·1+1 24,900. 음악 원곡 금지(원음). KPI: 궁금증 갭 훅 + 대세감.
 // 인증: Bearer CRON_SECRET. ?dry=1 = 대상만. ?only=<id> = 그 드래프트만.
+import Anthropic from '@anthropic-ai/sdk';
 import { Redis } from '@upstash/redis';
 import { getSupabase } from '../../lib/supabase.js';
 import { analyzeShortFrames } from '../video-analyze.js';
 import { overlayShortCore } from '../creator/overlay-short.js';
+
+const anthropic = new Anthropic();
+// 릴스 발행 캡션·해시태그 자동 생성(KR) — 보드에 리뷰레디로 도착(MINE이 매번 안 써도 됨). KPI: 훅+댓글가르기+저장/공유 유도, 제품 은근.
+async function genReelCaption(fmt, hook, region = 'kr') {
+  const us = region === 'us';
+  try {
+    const r = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514', max_tokens: 500,
+      system: us
+        ? 'Caption writer for MILLIMILLI 500 Dalton protein mist reels. English (US market). KPI = comments/saves/shares (no salesy tone). First line = curiosity-gap hook + info value + a comment-splitting question + save/share nudge. Mention product subtly once. Claims only within 24h hydration / barrier / texture range. Disclose AI-generated. No ad copy. Do NOT mix KR prices/numbers.'
+        : 'MILLIMILLI(밀리밀리) 500달톤 단백질 미스트 릴스 캡션 작가. 한국어. KPI=댓글·저장·공유(판매 톤 금지). 궁금증 갭 훅 첫 줄 + 정보가치 + 댓글 가르는 질문 + 저장/공유 유도. 제품 은근 1곳. 클레임은 24h보습·장벽·결정돈 범위 내. AI 연출 명시. 광고 문구 금지.',
+      messages: [{ role: 'user', content: us
+        ? `Reel format: ${fmt.key}. Hook: ${hook || fmt.captionsEn?.[0]?.text || 'mist tip'}.\nReturn pure JSON only: {"caption":"IG/TikTok caption (with emojis, <200 chars, first line hook + comment question + save/share)","hashtags":"#millimilli + 10-15 relevant tags, space-separated"}`
+        : `릴스 포맷: ${fmt.key}. 훅: ${hook || (fmt.captions?.[0]?.text) || '미스트 꿀팁'}.\n순수 JSON만 반환: {"caption":"인스타/틱톡 캡션(이모지 포함 200자내, 첫줄 후킹+댓글질문+저장/공유)","hashtags":"#밀리밀리 외 관련 10-15개 공백구분"}` }],
+    });
+    const m = (r.content[0]?.text || '').match(/\{[\s\S]*\}/);
+    if (!m) return { caption: '', hashtags: '' };
+    const p = JSON.parse(m[0]);
+    return { caption: p.caption || '', hashtags: p.hashtags || '' };
+  } catch { return { caption: '', hashtags: '' }; }
+}
 
 export const config = { maxDuration: 300 };
 
@@ -26,7 +48,7 @@ const hasV2 = () => !!(HF_KEY_ID && HF_KEY_SECRET);
 const hfV2Headers = () => ({ 'Authorization': `Key ${HF_KEY_ID}:${HF_KEY_SECRET}`, 'Content-Type': 'application/json', 'Accept': 'application/json' });
 // 히어로 단백질 미스트 진짜 제품컷(product-assets.md 4a56fcd8). ⚠️ 만료 가능 → 만료 시 재업로드/Blob 미러.
 const HERO_MIST_URL = 'https://d2ol7oe51mr4n9.cloudfront.net/user_38PAdEfRanROtVrNU82Klb8ZOSl/4a56fcd8-478d-4860-b722-03934e6eaf3f.png';
-// 릴스 슬롯 시더 대상 채널(화·금). FORMATS 자막이 한국어라 우선 KR만 — US 릴스는 영문 FORMATS 추가 후(숙제).
+// 릴스 슬롯 시더 대상 채널(화·금). KR=한국어 자막/캡션 · US=영문(captionsEn + EN 캡션).
 const envTrim = (k, fb = '') => String(process.env[k] ?? fb).replace(/\\[rn]/g, '').replace(/^["'\s]+|["'\s]+$/g, '');
 const PROFILE = {
   kr: envTrim('ZERNIO_MILLIMILLI_PROFILE_ID', '69d08cc1986d57bb8f733102'),
@@ -35,6 +57,8 @@ const PROFILE = {
 const REEL_SEED_CHANNELS = [
   { key: 'kr_ig', region: 'kr', platform: 'instagram' },
   { key: 'kr_tt', region: 'kr', platform: 'tiktok' },
+  { key: 'us_ig', region: 'us', platform: 'instagram' },
+  { key: 'us_tt', region: 'us', platform: 'tiktok' },
 ];
 const reelDay = (ds) => [2, 5].includes(new Date(ds + 'T12:00:00Z').getUTCDay()); // 화=2·금=5 (정오UTC+getUTCDay=달력요일, TZ독립)
 const kstToday = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
@@ -58,6 +82,12 @@ const FORMATS = [
       { text: '1+1 · 24,900원', top: 1660, size: 56 },
       { text: 'AI 연출 · 임상 입증 범위 내', top: 1835, size: 26, color: '#D6D6D6' },
     ],
+    captionsEn: [
+      { text: 'Smile lines? Think again.', top: 150, size: 58 },
+      { text: 'It was just dryness 💧', top: 240, size: 48, color: '#FFE9A8' },
+      { text: 'milli² protein mist', top: 1660, size: 52 },
+      { text: 'AI-generated · within clinical claims', top: 1835, size: 24, color: '#D6D6D6' },
+    ],
   },
   {
     key: 'split',
@@ -70,6 +100,12 @@ const FORMATS = [
       { text: 'one mist →', top: 235, size: 52, color: '#FFE9A8' },
       { text: '1+1 · 24,900원', top: 1660, size: 56 },
       { text: 'AI 연출 · 임상 입증 범위 내', top: 1835, size: 26, color: '#D6D6D6' },
+    ],
+    captionsEn: [
+      { text: 'How many seconds after cleansing?', top: 150, size: 50 },
+      { text: 'one mist →', top: 235, size: 52, color: '#FFE9A8' },
+      { text: 'milli² protein mist', top: 1660, size: 52 },
+      { text: 'AI-generated · within clinical claims', top: 1835, size: 24, color: '#D6D6D6' },
     ],
   },
 ];
@@ -144,13 +180,13 @@ export default async function handler(req, res) {
     const sb = getSupabase();
     const { data: rows } = await sb.from('creator_drafts').select('id, data').limit(500);
     const all = (rows || []).map(r => r.data).filter(Boolean);
-    const today = kstToday(); const dmax = dateNDaysAhead(3);
+    const today = kstToday(); const dmax = dateNDaysAhead(1); // 내일(D+1)까지만 — 3일후 아님
     const inWindow = (d) => d.date >= today && d.date <= dmax;
 
     // ── Pass0: 화·금 릴스 슬롯 자동 시드 — 빈 shorts draft 없으면 생성(→ Pass1이 집어 seedance 생성). ──
     //  이게 있어야 릴스가 손 안 대고 매주 화·금 자동 생성됨(캐러셀의 carousel-daily 시더와 동형).
     if (!only) {
-      for (let n = 0; n <= 3; n++) {
+      for (let n = 0; n <= 1; n++) { // 오늘·내일만 — 3일후 아님
         const ds = dateNDaysAhead(n);
         if (!reelDay(ds)) continue;
         for (const ch of REEL_SEED_CHANNELS) {
@@ -207,7 +243,9 @@ export default async function handler(req, res) {
           fmt = FORMATS[n % FORMATS.length];
           if (!dry) await redis.set('creator:shorts:rotation', n + 1).catch(() => {});
         }
-        const captions = JSON.parse(JSON.stringify(fmt.captions));
+        const isUs = target.region === 'us'; // US 채널 = 영문 자막/캡션
+        const baseCaps = (isUs && fmt.captionsEn) ? fmt.captionsEn : fmt.captions;
+        const captions = JSON.parse(JSON.stringify(baseCaps));
         if (hook && captions[0]) captions[0].text = hook; // 분석 훅으로 첫 자막 교체(궁금증 갭)
 
         const useSeedance = hasV2() && !!fmt.productRefUrl; // v2 키 + 제품 레퍼 있으면 진짜 제품 사용장면(seedance)
@@ -225,7 +263,11 @@ export default async function handler(req, res) {
             target.klingJobId = await startKling(startImg, fmt.klingPrompt);
             target.startImage = startImg;
           }
-          target.shortsMeta = { circle_xy: fmt.circle_xy, captions, format: fmt.key, scene: sceneMeta, klingPrompt: fmt.klingPrompt, caption: target.caption || '', hashtags: target.hashtags || '' };
+          // 발행 캡션·해시태그 자동 생성(리뷰레디) — 기존에 입력된 값 있으면 유지.
+          let cap = target.caption || '', tags = target.hashtags || '';
+          if (!cap) { const g = await genReelCaption(fmt, hook, target.region); cap = g.caption; if (!tags) tags = g.hashtags; }
+          target.shortsMeta = { circle_xy: fmt.circle_xy, captions, format: fmt.key, scene: sceneMeta, klingPrompt: fmt.klingPrompt, caption: cap, hashtags: tags };
+          target.caption = cap; target.hashtags = tags;
           target.source = 'shorts-daily';
           target.updatedAt = new Date().toISOString();
           await sb.from('creator_drafts').update({ data: target }).eq('id', target.id);

@@ -39,6 +39,9 @@ const KEYWORDS = [
 
 const kstNow = () => new Date(Date.now() + 9 * 3600000);
 const kstToday = () => kstNow().toISOString().slice(0, 10);
+// 내일(D+1) KST 날짜·요일 — 콘텐츠는 하루 미리 만들어 보드에 올려둠(당일 아님).
+const kstTomorrow = () => new Date(Date.now() + 9 * 3600000 + 86400000).toISOString().slice(0, 10);
+const kstTomorrowDow = () => new Date(Date.now() + 9 * 3600000 + 86400000).getUTCDay();
 // 정보성 캐러셀 요일 = 목(4)·토(6)·일(0). (월·금=실후기[Cowork] / 수=프로모[wed-promo] / 화=정보성[Cowork monday-카루셀 이동] 제외)
 const INFO_DAYS = new Set([4, 6, 0]);
 
@@ -124,9 +127,10 @@ export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) return res.status(401).json({ error: 'Unauthorized' });
   const dry = req.query?.dry === '1';
   const force = req.query?.force === '1';
-  const today = kstToday();
-  const dow = kstNow().getUTCDay(); // +9h 시프트 인스턴트의 UTC요일 = KST요일(런타임 TZ 독립)
-  if (!force && !INFO_DAYS.has(dow)) return res.status(200).json({ ok: true, skip: 'not_info_day', dow, today });
+  // 콘텐츠는 '내일(D+1)' 것을 미리 생성해 보드에 올림(당일 아님). 아래 today 변수는 타깃=내일 날짜.
+  const today = kstTomorrow();
+  const dow = kstTomorrowDow(); // 내일의 KST 요일로 정보성 게이트
+  if (!force && !INFO_DAYS.has(dow)) return res.status(200).json({ ok: true, skip: 'not_info_day(tomorrow)', dow, target: today });
 
   try {
     const sb = getSupabase();
