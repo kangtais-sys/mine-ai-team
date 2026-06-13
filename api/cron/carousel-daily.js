@@ -465,7 +465,9 @@ export default async function handler(req, res) {
   const dry = req.query?.dry === '1';
   const force = req.query?.force === '1';
   // 콘텐츠는 '내일(D+1)' 것을 미리 생성해 보드에 올림(당일 아님). 아래 today 변수는 타깃=내일 날짜.
-  const today = kstTomorrow();
+  //   ?date=YYYY-MM-DD = 특정 날짜 타깃(과거분 재생성용, force 와 함께).
+  const dateOverride = (req.query?.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)) ? req.query.date : null;
+  const today = dateOverride || kstTomorrow();
   const dow = kstTomorrowDow(); // 내일의 KST 요일로 정보성 게이트
   if (!force && !INFO_DAYS.has(dow)) return res.status(200).json({ ok: true, skip: 'not_info_day(tomorrow)', dow, target: today });
 
