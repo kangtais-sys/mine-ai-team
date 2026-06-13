@@ -26,6 +26,17 @@ const hasV2 = () => !!(HF_KEY_ID && HF_KEY_SECRET);
 const hfV2Headers = () => ({ 'Authorization': `Key ${HF_KEY_ID}:${HF_KEY_SECRET}`, 'Content-Type': 'application/json', 'Accept': 'application/json' });
 // 히어로 단백질 미스트 진짜 제품컷(product-assets.md 4a56fcd8). ⚠️ 만료 가능 → 만료 시 재업로드/Blob 미러.
 const HERO_MIST_URL = 'https://d2ol7oe51mr4n9.cloudfront.net/user_38PAdEfRanROtVrNU82Klb8ZOSl/4a56fcd8-478d-4860-b722-03934e6eaf3f.png';
+// 릴스 슬롯 시더 대상 채널(화·금). FORMATS 자막이 한국어라 우선 KR만 — US 릴스는 영문 FORMATS 추가 후(숙제).
+const envTrim = (k, fb = '') => String(process.env[k] ?? fb).replace(/\\[rn]/g, '').replace(/^["'\s]+|["'\s]+$/g, '');
+const PROFILE = {
+  kr: envTrim('ZERNIO_MILLIMILLI_PROFILE_ID', '69d08cc1986d57bb8f733102'),
+  us: envTrim('ZERNIO_MILLIMILLI_US_PROFILE_ID', '69fbfcd01fc1fdb66f249aa8'),
+};
+const REEL_SEED_CHANNELS = [
+  { key: 'kr_ig', region: 'kr', platform: 'instagram' },
+  { key: 'kr_tt', region: 'kr', platform: 'tiktok' },
+];
+const reelDay = (ds) => [2, 5].includes(new Date(ds + 'T12:00:00Z').getUTCDay()); // 화=2·금=5 (정오UTC+getUTCDay=달력요일, TZ독립)
 const kstToday = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
 const dateNDaysAhead = (n) => new Date(Date.now() + 9 * 3600000 + n * 86400000).toISOString().slice(0, 10);
 const isShorts = (d) => d.slotType === 'shorts' || ['reel', 'shorts'].includes(d.format);
@@ -127,7 +138,7 @@ export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) return res.status(401).json({ error: 'Unauthorized' });
   const dry = req.query?.dry === '1';
   const only = req.query?.only || null;
-  const results = { pass2: [], pass1: [] };
+  const results = { pass0: [], pass2: [], pass1: [] };
 
   try {
     const sb = getSupabase();
@@ -135,6 +146,24 @@ export default async function handler(req, res) {
     const all = (rows || []).map(r => r.data).filter(Boolean);
     const today = kstToday(); const dmax = dateNDaysAhead(3);
     const inWindow = (d) => d.date >= today && d.date <= dmax;
+
+    // ── Pass0: 화·금 릴스 슬롯 자동 시드 — 빈 shorts draft 없으면 생성(→ Pass1이 집어 seedance 생성). ──
+    //  이게 있어야 릴스가 손 안 대고 매주 화·금 자동 생성됨(캐러셀의 carousel-daily 시더와 동형).
+    if (!only) {
+      for (let n = 0; n <= 3; n++) {
+        const ds = dateNDaysAhead(n);
+        if (!reelDay(ds)) continue;
+        for (const ch of REEL_SEED_CHANNELS) {
+          if (all.some(d => d.version === 'milli-v1' && isShorts(d) && d.channel === ch.key && d.date === ds)) continue;
+          if (dry) { results.pass0.push({ would: 'seed', channel: ch.key, date: ds }); continue; }
+          const id = `milli_${ch.key}_${ds}_shorts_${Date.now().toString(36)}`;
+          const draft = { id, version: 'milli-v1', channel: ch.key, region: ch.region, platform: ch.platform, date: ds, slotType: 'shorts', status: 'draft', format: 'reel', caption: '', hashtags: '', mediaUrl: null, mediaUrls: [], source: 'shorts-daily-seed', profileId: PROFILE[ch.region], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+          await sb.from('creator_drafts').insert({ id, persona_id: null, data: draft });
+          all.push(draft); // 같은 런 Pass1이 바로 집을 수 있게
+          results.pass0.push({ action: 'seeded', channel: ch.key, date: ds });
+        }
+      }
+    }
 
     // ── Pass2: generating + 영상잡 폴링 → 완료 시 overlay → review ── (seedance=videoReqId / 레거시=klingJobId)
     const gen = all.filter(d => d.version === 'milli-v1' && isShorts(d) && d.status === 'generating' && (d.videoReqId || d.klingJobId) && (!only || d.id === only));
@@ -155,9 +184,7 @@ export default async function handler(req, res) {
       } catch (e) { results.pass2.push({ id: d.id, error: e.message }); }
     }
 
-    // ── Pass1: draft shorts(오늘~D+3) → 1개 시작 ──
-    // 릴스는 주2회(화·금)만 — 그 외 요일 날짜의 shorts 드래프트는 생성 대상에서 제외(2026-06-13 카덴스).
-    const reelDay = (ds) => [2, 5].includes(new Date(ds + 'T12:00:00Z').getUTCDay()); // 화=2·금=5 (정오UTC+getUTCDay=달력요일, TZ독립)
+    // ── Pass1: draft shorts(오늘~D+3) → 1개 시작 ── (릴스는 화·금만 — reelDay 상단 정의)
     const drafts = all.filter(d => d.version === 'milli-v1' && isShorts(d) && d.status === 'draft' && inWindow(d) && (reelDay(d.date) || only === d.id) && (!only || d.id === only));
     const target = drafts[0]; // 런당 1개(타임아웃 방지)
     if (target) {
