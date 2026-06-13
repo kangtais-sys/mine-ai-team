@@ -19,6 +19,97 @@ const redis = new Redis({
 });
 
 const SLOT = 'info_tip'; // 정보성 꿀팁 캐러셀 슬롯
+
+// ── Higgsfield(Soul) 일상룩 인물 사진 생성 ─────────────────────────────────
+//   generate-image-ref.js 검증 패턴 재사용: createReference(urls) → text2image/soul
+//   {prompt, width_and_height, custom_reference_id, custom_reference_strength:0.6} → 폴링 → URL.
+//   헤더: hf-api-key(HIGGSFIELD_API_KEY). 사진 필요한 슬라이드만, 슬라이드당 1장, 실패 시 폴백(이미지 없음).
+const HF_BASE = 'https://platform.higgsfield.ai';
+const CF_BASE = 'https://d2ol7oe51mr4n9.cloudfront.net/user_38PAdEfRanROtVrNU82Klb8ZOSl';
+// brand-look.md 인물 레퍼 media_id 20개
+const BRAND_LOOK = [
+  '7c9d45ca-e56b-4181-ab08-b085bcfea293', '7b9c113c-77b1-4a06-b5b4-2476186e336d',
+  'acdd9122-c7b7-4201-b9ae-c3aafe02dc5a', '2f676ab2-9001-46d2-bf14-76cf04c1e6b5',
+  '0ab6848b-c02e-403c-b515-61e2d7a710b9', 'b43a37b4-d6d1-4a3c-9585-8a5a826d76e0',
+  '261cf9f9-5b4f-4940-a51b-5eb25bb53224', 'e029526a-a7ef-4151-b9d6-8c5364cf76de',
+  '4af2406e-235b-46cb-8a6d-3cf3550a8353', '7a5e6280-fd99-40ca-91e2-9952477a98c7',
+  '0fa3baee-5607-4d18-9ca7-a1e2bd467d6f', '2cf0e8b7-4968-4f90-8efe-41b045a4876d',
+  '16c99547-8b0e-4f37-974a-b83d852a5e30', '5a01dd87-77ff-4600-9735-25cef373c12f',
+  '11bf5fae-0845-4f67-80e4-c78e1d2c3b36', 'a472b60f-241c-49c4-b1f7-e402df194d07',
+  '41f96670-2418-489d-be05-f719d5abe26d', '02918903-84df-470f-b24c-f97e76f7afc1',
+  '26157f42-7f4a-4de9-9246-064f55516894', '73ad242f-8700-44f4-ba03-6bce6159efb8',
+];
+// 제품(미스트 히어로) — product-assets.md
+const PRODUCT_MIST = '4a56fcd8-478d-4860-b722-03934e6eaf3f';
+const DAILY_PROMPT = '젊은 20s 다양한 한국/글로벌 인물, 자연광 일상 무드, photoreal(모공·질감), 글로시 더운 피부, plastic/올드 금지, 4:5 세로';
+// 사진을 쓰는 슬라이드 타입
+const PHOTO_TYPES = new Set(['cover_fullimage', 'cover_split', 'cover_number', 'body_short', 'body_long', 'body_fullimage']);
+
+function hfHeaders() {
+  const key = (process.env.HIGGSFIELD_API_KEY || '').replace(/^["']|["']$/g, '').trim();
+  if (!key) throw new Error('HIGGSFIELD_API_KEY 없음');
+  return { 'hf-api-key': key, 'Content-Type': 'application/json', 'Origin': 'https://cloud.higgsfield.ai', 'Referer': 'https://cloud.higgsfield.ai/' };
+}
+
+const mediaUrl = (id) => `${CF_BASE}/${id}.png`;
+const sample = (arr, k) => [...arr].sort(() => Math.random() - 0.5).slice(0, k);
+
+async function hfCreateReference(urls) {
+  const res = await fetch(`${HF_BASE}/v1/custom-references`, {
+    method: 'POST', headers: hfHeaders(),
+    body: JSON.stringify({ name: `daily-${Date.now()}`, input_images: urls.map(u => ({ type: 'image_url', image_url: u })) }),
+  });
+  if (!res.ok) throw new Error(`custom-reference 실패(${res.status}): ${(await res.text()).slice(0, 120)}`);
+  const d = await res.json();
+  const id = d.id || d.request_id || d.custom_reference_id;
+  if (!id) throw new Error('reference id 없음');
+  return id;
+}
+
+async function hfPoll(jobSetId, deadlineMs) {
+  while (Date.now() < deadlineMs) {
+    await new Promise(r => setTimeout(r, 3000));
+    const r = await fetch(`${HF_BASE}/v1/job-sets/${jobSetId}`, { headers: hfHeaders() });
+    if (!r.ok) continue;
+    const data = await r.json();
+    const job = data.jobs?.[0];
+    const status = job?.status || data.status;
+    if (status === 'completed') {
+      const rr = job?.results || {};
+      return rr.raw?.url || rr.min?.url || rr.image?.url || rr.url || rr.images?.[0]?.url || data.url || null;
+    }
+    if (['failed', 'nsfw', 'canceled'].includes(status)) throw new Error(`생성 ${status}`);
+  }
+  throw new Error('타임아웃');
+}
+
+// 일상룩 인물 1장 생성 → 우리 Blob 미러 → URL. 실패 시 null(폴백).
+async function genDailyPhoto(keyword, draftId, idx) {
+  try {
+    const refs = [...sample(BRAND_LOOK, 2 + Math.floor(Math.random() * 2)), PRODUCT_MIST].map(mediaUrl);
+    let refId = null;
+    try { refId = await hfCreateReference(refs); } catch (e) { console.warn('[carousel-daily] ref skip:', e.message); }
+    const prompt = `${DAILY_PROMPT}. 콘텐츠 키워드 무드: ${keyword}`;
+    const params = { prompt, width_and_height: '1536x2048' };
+    if (refId) { params.custom_reference_id = refId; params.custom_reference_strength = 0.6; }
+    const submit = (p) => fetch(`${HF_BASE}/v1/text2image/soul`, { method: 'POST', headers: hfHeaders(), body: JSON.stringify({ params: p }) });
+    let sub = await submit(params);
+    if (!sub.ok && refId) { console.warn('[carousel-daily] ref 미적용 폴백'); sub = await submit({ prompt, width_and_height: '1536x2048' }); }
+    if (!sub.ok) throw new Error(`제출 실패(${sub.status})`);
+    const subData = await sub.json();
+    const jobSetId = subData.id || subData.request_id;
+    if (!jobSetId) throw new Error('job-set id 없음');
+    const imageUrl = await hfPoll(jobSetId, Date.now() + 90_000);
+    if (!imageUrl) throw new Error('이미지 URL 없음');
+    const img = await fetch(imageUrl);
+    const buf = Buffer.from(await img.arrayBuffer());
+    const blob = await put(`carousel-photo/${draftId}-${idx}.png`, buf, { access: 'public', contentType: 'image/png', addRandomSuffix: true });
+    return blob.url;
+  } catch (e) { console.warn(`[carousel-daily] photo ${idx} 실패(폴백):`, e.message); return null; }
+}
+
+// 커버 레이아웃 로테이션(redis 카운터) — cover_* 4종
+const COVER_TYPES = ['cover_fullimage', 'cover_split', 'cover_number', 'cover_textonly'];
 const envTrim = (k, fb = '') => String(process.env[k] ?? fb).replace(/\\[rn]/g, '').replace(/^["'\s]+|["'\s]+$/g, '');
 const PROFILE = {
   kr: envTrim('ZERNIO_MILLIMILLI_PROFILE_ID', '69d08cc1986d57bb8f733102'),
@@ -45,40 +136,55 @@ const kstTomorrowDow = () => new Date(Date.now() + 9 * 3600000 + 86400000).getUT
 // 정보성 캐러셀 요일 = 목(4)·토(6)·일(0). (월·금=실후기[Cowork] / 수=프로모[wed-promo] / 화=정보성[Cowork monday-카루셀 이동] 제외)
 const INFO_DAYS = new Set([4, 6, 0]);
 
-// 시장별 슬라이드 카피 생성(궁금증갭+대세감, 제품 은근 1곳, 클레임 범위). render-card 네이티브 스키마로 반환.
-async function genSlides(market, keyword) {
+// 시장별 슬라이드 카피 생성(궁금증갭+대세감, 제품 은근 1곳, 클레임 범위).
+//   신규 디자인 포맷 스키마: 커버 타입은 cover(로테이션 주입), 본문은 LLM이 내용량에 맞춰 선택,
+//   마무리는 cta_editorial 고정. emphasis 단어 1개로 두께 위계 표시.
+async function genSlides(market, keyword, coverType) {
   const lang = market === 'kr' ? '한국어' : 'English';
   const heroLine = market === 'kr'
     ? 'MILLIMILLI 500달톤 단백질 미스트 (입증 혜택 범위: 24h 보습·장벽·결 정돈. 그 외 과장 금지)'
     : 'MILLIMILLI 500 Dalton Protein Mist (substantiated claims only: 24h hydration, barrier, texture. no exaggeration)';
-  const system = `당신은 밀리밀리(MILLIMILLI) 브랜드의 정보성 뷰티 카드뉴스 카피라이터입니다.
+  const system = `당신은 밀리밀리(MILLIMILLI) 브랜드의 감각적 에디토리얼 뷰티 캐러셀 카피라이터입니다.
 출력 언어: ${lang}. 시장: ${market.toUpperCase()}.
 절대 규칙:
 - KPI = 댓글·저장·공유. 조회수·판매 아님. 매일 판매 톤 금지.
-- 정보성·꿀팁이 주(主), 제품은 '은근히 1곳'(info 2번 슬라이드에만 자연스럽게). 광고처럼 보이면 실패.
-- 모든 카드: 궁금증 갭(curiosity gap) + 대세감(social proof) 둘 다 필수. 없으면 실패.
+- 정보성·꿀팁이 주(主), 제품은 '은근히 1곳'(본문 한 슬라이드에만 자연스럽게). 광고처럼 보이면 실패.
+- 모든 카드: 궁금증 갭(curiosity gap) + 대세감(social proof) 둘 다 필수.
 - 커버 헤드라인 = 3초 후킹, 정보 다 주지 말고 갭만 연다(반전·"99%가 모르는"·결과 선공개).
-- 제품 클레임은 입증 혜택 범위 내에서만. AI 연출/시장 수치 혼용 금지.
-- 광고 문구("저희 제품은") 금지. 구어체·꿀팁 톤.`;
+- 톤 = 감각적인 한 줄(과한 설명 금지). 카피를 짧고 강하게. 광고 문구("저희 제품은") 금지.
+- 제품 클레임은 입증 혜택 범위 내에서만. AI 연출/시장 수치 혼용 금지.`;
+  // 커버 타입별 필드 가이드
+  const coverGuide = {
+    cover_fullimage: `{"type":"cover_fullimage","headline":"하단 훅 1~2줄(짧고 강하게)","emphasis":"headline 안의 강조 단어 1개(반드시 headline에 포함)","sub":"보조 한 줄(대세감 신호)"}`,
+    cover_split: `{"type":"cover_split","headline":"우측 헤드라인(두 줄 가능)","emphasis":"headline 안 강조 단어 1개","sub":"보조 한 줄"}`,
+    cover_number: `{"type":"cover_number","num":"초대형 숫자/수치(예: 24h, 3, 500)","headline":"숫자 캡션 한 줄","sub":"보조 한 줄(대세감)"}`,
+    cover_textonly: `{"type":"cover_textonly","headline":"흑배경 위 큰 헤드라인","emphasis":"headline 안 강조 단어 1개","sub":"보조 한 줄"}`,
+  };
   const user = `오늘 키워드: ${keyword}
 히어로 제품(은근히 1곳만): ${heroLine}
+커버 슬라이드 타입(고정): ${coverType}
 
-정보성 꿀팁 캐러셀 4장을 아래 JSON으로만 반환(코드블록 없이 순수 JSON):
+감각적 정보성 캐러셀을 아래 JSON으로만 반환(코드블록 없이 순수 JSON). 슬라이드 총 4~6장 = 커버1 + 본문2~4 + 마무리1.
 {
   "caption": "인스타 캡션 ${lang}, 일기/구어체, 첫 줄 후킹 + 정보 + 댓글 가르는 질문 + 저장/공유 유도(이모지 포함, 200자 이내)",
   "hashtags": "관련 해시태그 10-15개(${lang}/영문 혼용 가능, 공백 구분)",
   "slides": [
-    {"type":"cover","headline":"초대형 후킹 제목(궁금증갭, 12자 내외)","body":"서브 1줄(대세감 신호 — '요즘 다들~'/'N만+ 저장')","labels":["짧은 스펙 라벨","짧은 스펙 라벨"]},
-    {"type":"info","headline":"꿀팁 소제목 1","body":"본문 2-3줄. 진짜 유용한 정보. 핵심어는 **강조**로 감쌈"},
-    {"type":"info","headline":"꿀팁 소제목 2","body":"본문 2-3줄. 여기서 ${heroLine} 를 해결책으로 **은근히 1곳** 녹임(광고 톤 금지)"},
-    {"type":"cta","headline":"마무리 한 줄(저장 유도)","body":"댓글 가르는 질문 1줄 + 공유 유도","cta":"저장하고 다음에 써먹기"}
+    ${coverGuide[coverType] || coverGuide.cover_textonly},
+    // 본문 2~4장: 내용량에 따라 type 선택
+    //   body_short = 한 줄 핵심+작은 사진(여백). headline+emphasis+(body 짧게)
+    //   body_long  = 소제목+가로 사진+설명 2~3줄. num+headline+body(**강조**)
+    //   body_textonly = 사진 없이 설명만. num+body(**강조**)
+    //   body_fullimage = 풀사진+하단 캡션바 한 줄. headline
+    // 본문 중 정확히 1곳에만 ${heroLine} 를 해결책으로 은근히 녹임(광고 톤 금지).
+    // 각 본문에 num("01","02"...) 부여.
+    {"type":"cta_editorial","headline":"마무리 한 줄(저장 유도)","emphasis":"headline 안 강조 단어 1개","body":"한 줄 마무리(선택)","comment":"댓글 가르는 질문(짧게)","share":"공유 트리거(예: ~한 친구에게)"}
   ]
 }
-주의: 한 콘텐츠 = 제품 은근히 1곳(슬라이드 3에만). cover headline 은 반드시 궁금증갭.`;
+주의: 본문 type은 위 4종에서만 골라 섞을 것. cover headline은 반드시 궁금증갭. 제품은 본문 단 1곳.`;
 
   const r = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 1500,
+    max_tokens: 1800,
     system,
     messages: [{ role: 'user', content: user }],
   });
@@ -87,7 +193,18 @@ async function genSlides(market, keyword) {
   if (!m) throw new Error('LLM 응답 파싱 실패');
   const parsed = JSON.parse(m[0]);
   if (!Array.isArray(parsed.slides) || parsed.slides.length < 3) throw new Error('slides 부족');
+  // 커버 타입 강제(로테이션 주입값) + 마무리 cta_editorial 보장
+  parsed.slides[0].type = coverType;
+  const last = parsed.slides[parsed.slides.length - 1];
+  if (last.type !== 'cta_editorial') last.type = 'cta_editorial';
   return parsed;
+}
+
+// 사진 필요한 슬라이드에 일상룩 인물 사진 주입(슬라이드당 1장, 실패 폴백). 병렬 생성.
+async function attachPhotos(slides, keyword, draftId) {
+  const jobs = slides.map((s, i) => PHOTO_TYPES.has(s.type) ? genDailyPhoto(keyword, draftId, i + 1).then(url => { if (url) s.image = url; }) : null).filter(Boolean);
+  await Promise.allSettled(jobs);
+  return slides;
 }
 
 // 슬라이드 → render-card 베이킹 → Blob URLs
@@ -134,10 +251,15 @@ export default async function handler(req, res) {
 
   try {
     const sb = getSupabase();
-    // 키워드 로테이션
+    // 키워드 로테이션 + 커버 레이아웃 로테이션
     const n = Number(await redis.get('creator:carousel:rotation').catch(() => 0)) || 0;
     const keyword = KEYWORDS[n % KEYWORDS.length];
-    if (!dry) await redis.set('creator:carousel:rotation', n + 1).catch(() => {});
+    const cn = Number(await redis.get('creator:carousel:cover-rotation').catch(() => 0)) || 0;
+    const coverType = COVER_TYPES[cn % COVER_TYPES.length];
+    if (!dry) {
+      await redis.set('creator:carousel:rotation', n + 1).catch(() => {});
+      await redis.set('creator:carousel:cover-rotation', cn + 1).catch(() => {});
+    }
 
     // 멱등: 오늘 이미 생성됐으면 스킵
     const { data: rows } = await sb.from('creator_drafts').select('id, data').limit(400);
@@ -145,8 +267,8 @@ export default async function handler(req, res) {
     if (done && !force) return res.status(200).json({ ok: true, skip: 'already_done', today, keyword });
 
     if (dry) {
-      const kr = await genSlides('kr', keyword).catch(e => ({ error: e.message }));
-      return res.status(200).json({ ok: true, dry: true, today, keyword, sampleKR: kr });
+      const kr = await genSlides('kr', keyword, coverType).catch(e => ({ error: e.message }));
+      return res.status(200).json({ ok: true, dry: true, today, keyword, coverType, sampleKR: kr });
     }
 
     const fonts = await loadFonts();
@@ -154,8 +276,10 @@ export default async function handler(req, res) {
     // 시장별 1회 생성 → IG·TT 공유
     for (const market of ['kr', 'us']) {
       try {
-        const copy = await genSlides(market, keyword);
+        const copy = await genSlides(market, keyword, coverType);
         const draftId = `${market}_${today}_${Date.now().toString(36)}`;
+        // 사진 필요한 슬라이드에 일상룩 인물 사진 생성·주입(실패 시 폴백)
+        await attachPhotos(copy.slides, keyword, draftId);
         const mediaUrls = await bakeCards(copy.slides, market, draftId, fonts);
         const caption = copy.caption || '';
         const hashtags = copy.hashtags || '';
@@ -165,7 +289,7 @@ export default async function handler(req, res) {
         }
       } catch (e) { results.push({ market, error: e.message }); }
     }
-    const summary = { ok: true, today, keyword, results };
+    const summary = { ok: true, today, keyword, coverType, results };
     try { await redis.set('creator:carousel-daily:latest', { ...summary, at: new Date().toISOString() }, { ex: 86400 * 3 }); } catch {}
     return res.status(200).json(summary);
   } catch (e) {
