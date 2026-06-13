@@ -6,6 +6,51 @@
 
 ---
 
+## ⭐ 최신 세션 (2026-06-13) — 캐러셀 매일 + 릴스 주2 카덴스 배포됨
+> 상세: docs/weekly-content-plan.md · docs/SYSTEM-MAP.md · docs/decisions-2026-06-12.md (제품 라벨 결정).
+
+**확정 주간 카덴스 (캐러셀 7 + 릴스 2):**
+| 요일 | 캐러셀 | 릴스 | 생성 주체 |
+|---|---|---|---|
+| 월·금 | 실후기 후킹 | (금만 릴스) | Cowork `milli-realreview-carousel` (월·금 07시, 신규) |
+| 화 | 정보성 꿀팁 | 릴스(사용장면) | Cowork `monday-kr/us-carousel` (월→화 이동) |
+| 수 | 프로모 3장 | — | `wed-promo` cron + Cowork `wednesday-promo` |
+| 목·토·일 | 정보성 꿀팁 | — | **Vercel `carousel-daily` cron (신규, INFO_DAYS=목·토·일)** |
+| 화·금 | — | 릴스 | `shorts-daily` (화·금 게이트) |
+
+**배포됨 (main 79f9665, cleanup 189fd86):**
+- `api/cron/carousel-daily.js` 신규 — 정보성 꿀팁(목·토·일): 키워드 로테이션→LLM 슬라이드(궁금증갭+대세감, 제품 은근 1곳)→render-card→보드 review.
+- 슬롯맵 재설계(calendar.js SLOTS + CalendarBoard.jsx WEEKDAYS).
+- `creator-generate-daily` = 실후기 앱 자동시드 제거 → **Cowork 전담**(refUrl 수동분석 helper로만).
+- `shorts-daily` 릴스 화·금 게이팅 + **KST 요일 버그(getUTCDay) 수정**(안 잡았으면 릴스가 수·토로 나갈 뻔).
+- repo 정리: tuesday_final.mp4·scripts/.bin/* untrack + .gitignore(*.mp4, scripts/.bin/).
+
+**겹침 0 배선:** 정보성 = 화(Cowork) / 목·토·일(Vercel) 요일 분리. 실후기·프로모 캡처 = 코드가 못 닿아 Cowork 전담(노트북+크롬 상시 ON 전제).
+
+**발행 = 전부 review로만 시드, MINE 승인 후 발행(자동발행 X — 의도).**
+
+### 릴스 제품 라벨 실제품화 — ✅ seedance 배선 완료 (2026-06-13, 푸시 후 검증 대기)
+- shorts-daily 가 제품 사용장면을 **seedance(`bytedance/seedance/v1/pro/image-to-video`)** 로 생성하게 교체. 진짜 제품 이미지(`HERO_MIST_URL`=4a56fcd8)를 image_url 레퍼로 넣어 "인물이 그 제품 쓰는 9:16" → 라벨 충실. 제품은 절대 텍스트 생성 안 함. v2 키 없으면 soul→kling 폴백.
+- **v2 인증**: Vercel env `HF_KEY_ID` + `HF_KEY_SECRET` (Higgsfield cloud → API Keys 에서 발급, MINE 추가 완료). 헤더 `Authorization: Key ID:SECRET`. (기존 `HIGGSFIELD_API_KEY`=v1 hf-api-key 는 soul/kling 용으로 유지.)
+- 검증 방법: 배포 후 `/api/cron/shorts-daily?dry=1`(Bearer CRON_SECRET) → `seedance(real-product)` 선택 확인 → 실제 화/금 릴스 라벨 보드에서 눈검증. `aspect_ratio:'9:16'` 파라미터 raw 거부 시 그 줄만 조정. cloudfront 제품 URL 만료 시 재미러링.
+- 코드: `api/cron/shorts-daily.js` (startSeedance/pollSeedance/hasV2/HERO_MIST_URL). **배포됨(d000192).**
+
+### 릴스 자동화 — 후속 완료 (2026-06-13, 배포됨)
+- **Pass0 릴스 슬롯 시더**: shorts-daily가 화·금에 빈 shorts draft 자동 생성(kr_ig·kr_tt·us_ig·us_tt) → Pass1이 집어 seedance 생성 → 보드 review. (캐러셀 carousel-daily 시더와 동형. 이게 있어야 릴스 무인.)
+- **릴스 캡션·해시태그 자동(genReelCaption)**: 발행 캡션을 KR=한국어/US=영문으로 LLM 생성 → 리뷰레디(MINE이 매번 안 씀).
+- **US 영문 릴스**: FORMATS에 `captionsEn`(영문 번인 자막) 추가, region==='us'면 영문 자막+영문 캡션. us_ig=Zernio 자동발행 / us_tt=드라이브 수동(VPN).
+- **D+1 미리생성**: carousel-daily=내일(kstTomorrow, 목·토·일) 07:00 KST 생성 / shorts-daily 윈도우=오늘~D+1. "3일후" 아님.
+- ⚠️ **Cowork 것(실후기 월·금·정보성 화·프로모 수)은 아직 당일 아침(7~8시), D+1 미당김.** 통일하려면 cron 하루 당기고 프롬프트 타깃=내일로(미결정).
+- 발행 게이트 유지: 전부 status review → MINE 승인 후 발행. 레거시 자동포스터(publish-morning/evening) 제거됨.
+
+### 남은 숙제 (다음 세션)
+1. **트렌드 = 뉴스 아님** — MINE 정의: 유튜브/틱톡 숏츠를 키워드로 검색→고뷰 위너→포맷 복제→우리 제품화+후킹. (video_analysis 방식.) 릴스 자동생성에 이 루프 연결 필요.
+2. **US 발행 레일** — TikTok API 승인·카페24 심사·CDN egress 미해결.
+3. **제품 = 절대 생성 금지, 진짜 에셋만**(라벨 재현 불가, 6/12 검증). 제품 media_id 10종 전부 라이브 확인됨.
+4. **seedance 첫 실행 검증** — 푸시 후 화/금 릴스 라벨 눈검증 + dry-run 으로 seedance 선택 확인(위 섹션).
+
+---
+
 ## 0. MINE 작업 원칙 (절대 — 매 응답 준수)
 - **처음부터 솔직하게.** 그럴싸하게 말하고 나중에 솔직 = 금지. 항상 비교분석 + 검토한 걸 다시 검토·입증해서 말할 것.
 - **추측 금지 · 일시방편 금지 · 모르면서 아는 척 금지.** 조금 알아도 완벽히 아는 게 아니면 모르는 것. 항상 최신 버전 기준.
