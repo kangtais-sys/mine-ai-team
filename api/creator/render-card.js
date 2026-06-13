@@ -84,6 +84,8 @@ function roughEllipseSvg(w, h, color) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}"><path d="${p}" fill="none" stroke="${color}" stroke-width="${Math.max(4, w * .014)}" stroke-linecap="round"/></svg>`;
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
+// 텍스트 렌더 폭 추정(satori measure 불가) — 숫자/영문 ≈0.58em, 한글 등 ≈1.0em. 동그라미 크기 산정용.
+const estTextW = (str, fs) => [...String(str ?? '')].reduce((a, c) => a + fs * (/[0-9A-Za-z.,%$+\-:]/.test(c) ? 0.58 : 1.0), 0);
 // node 를 손그림 원으로 감쌈 (pad: 타원이 텍스트보다 얼마나 클지)
 function circled(node, w, ht, { color = BLACK, padX = 34, padY = 26 } = {}) {
   return h('div', { display: 'flex', position: 'relative', alignItems: 'center', justifyContent: 'center', padding: `${padY}px ${padX}px` }, [
@@ -378,7 +380,7 @@ function renderBodyStat(s) {
       s.circle
         ? row({}, [circled(
             txt(statStr, { fontFamily: FONT, fontWeight: 700, fontSize: 240, color: BLACK, lineHeight: 0.95, letterSpacing: -3 }),
-            Math.max(240, Math.round(statStr.length * 240 * 0.6)), 252, { color: BLACK, padX: 24, padY: 18 }
+            Math.max(240, Math.round(estTextW(statStr, 240))), 252, { color: BLACK, padX: 28, padY: 20 }
           )])
         : txt(statStr, { fontFamily: FONT, fontWeight: 700, fontSize: 240, color: BLACK, lineHeight: 0.95, letterSpacing: -3 }),
       s.statLabel ? txt(String(s.statLabel), { fontFamily: FONT, fontWeight: 500, fontSize: 48, color: BLACK, marginTop: 16, letterSpacing: -1 }) : null,
