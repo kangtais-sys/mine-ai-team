@@ -108,6 +108,10 @@
     {
       "path": "/api/cron/shorts-daily",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/carousel-daily",
+      "schedule": "0 22 * * *"
     }
   ],
   "rewrites": [

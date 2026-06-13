@@ -16,9 +16,11 @@ const redis = new Redis({
 });
 
 const kstToday = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
-// 앱 담당 슬롯 = review_hook / trend_info 만. shorts 는 Cowork 담당이라 제외(충돌 방지).
-const APP_SLOTS = new Set(['review_hook', 'trend_info']);
-const isAppSlot = (d) => APP_SLOTS.has(d.slotType) && d.slotType !== 'shorts' && !['reel', 'shorts'].includes(d.format);
+// 2026-06-13 재설계: 실후기(review_hook)=Cowork 전담 / 정보성=carousel-daily / 프로모=wed-promo / 숏츠=shorts-daily.
+// 앱은 자동 시드 안 함 → 실후기 Cowork 충돌 방지. (아래 isAppSlot = refUrl 수동분석 helper로만 동작)
+// 자동 대상 = refUrl(유튜브) 가 붙은 비(非)숏츠 슬롯만 → "링크 떨구면 캡션·훅 분석" 수동 helper.
+// refUrl 없으면 대상 아님(=실후기/정보성/프로모는 각 전담 cron·Cowork 가 채움, 라이브러리 자동시드 안 함).
+const isAppSlot = (d) => !!d.refUrl && d.slotType !== 'shorts' && !['reel', 'shorts'].includes(d.format);
 
 // 유튜브 링크 → 썸네일 URL (hqdefault 는 항상 존재). shorts/watch/youtu.be 모두 처리.
 function ytThumb(url) {

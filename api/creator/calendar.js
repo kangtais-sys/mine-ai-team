@@ -9,16 +9,17 @@ export const config = { maxDuration: 120 }; // US 승인 시 드라이브 업로
 
 const ZERNIO = 'https://zernio.com/api/v1';
 
-// 요일별 슬롯 정의 (2026-06 재설계). 프론트 WEEKDAYS 와 동일하게 유지.
-//  월/수=후기후킹 · 화/목/금/일=숏츠제품화(refUrl) · 토=뷰티트렌드 정보성
+// 요일별 슬롯 정의 (2026-06-13 재설계 — 캐러셀 매일 + 릴스 주2[화·금]). 프론트 WEEKDAYS 와 동일하게 유지.
+//  캐러셀(매일): 월·금=실후기(Cowork 캡처) · 수=프로모(wed-promo) · 화·목·토·일=정보성꿀팁(carousel-daily)
+//  릴스(화·금만): reel:true → shorts-daily(화·금 게이트)
 const SLOTS = [
-  { key: 'mon', label: '월', slotType: 'review_hook', concept: '후기 후킹' },
-  { key: 'tue', label: '화', slotType: 'shorts', concept: '숏츠 제품화' },
-  { key: 'wed', label: '수', slotType: 'review_hook', concept: '후기 후킹' },
-  { key: 'thu', label: '목', slotType: 'shorts', concept: '숏츠 제품화' },
-  { key: 'fri', label: '금', slotType: 'shorts', concept: '숏츠 제품화' },
-  { key: 'sat', label: '토', slotType: 'trend_info', concept: '뷰티 트렌드 정보성' },
-  { key: 'sun', label: '일', slotType: 'shorts', concept: '숏츠 제품화' },
+  { key: 'mon', label: '월', slotType: 'review_hook', concept: '실후기 후킹' },
+  { key: 'tue', label: '화', slotType: 'info_tip',    concept: '정보성 꿀팁', reel: true },
+  { key: 'wed', label: '수', slotType: 'promo',       concept: '프로모(자사몰/아마존)' },
+  { key: 'thu', label: '목', slotType: 'info_tip',    concept: '정보성 꿀팁' },
+  { key: 'fri', label: '금', slotType: 'review_hook', concept: '실후기 후킹', reel: true },
+  { key: 'sat', label: '토', slotType: 'info_tip',    concept: '정보성 꿀팁' },
+  { key: 'sun', label: '일', slotType: 'info_tip',    concept: '정보성 꿀팁' },
 ];
 
 // env 값 끝 개행/공백 방어 (§2 — Vercel env 의 \n 으로 인한 Zernio 발행 실패 차단).

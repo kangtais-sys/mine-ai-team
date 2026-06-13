@@ -125,7 +125,9 @@ export default async function handler(req, res) {
     }
 
     // ── Pass1: draft shorts(오늘~D+3) → 1개 시작 ──
-    const drafts = all.filter(d => d.version === 'milli-v1' && isShorts(d) && d.status === 'draft' && inWindow(d) && (!only || d.id === only));
+    // 릴스는 주2회(화·금)만 — 그 외 요일 날짜의 shorts 드래프트는 생성 대상에서 제외(2026-06-13 카덴스).
+    const reelDay = (ds) => [2, 5].includes(new Date(ds + 'T12:00:00Z').getUTCDay()); // 화=2·금=5 (정오UTC+getUTCDay=달력요일, TZ독립)
+    const drafts = all.filter(d => d.version === 'milli-v1' && isShorts(d) && d.status === 'draft' && inWindow(d) && (reelDay(d.date) || only === d.id) && (!only || d.id === only));
     const target = drafts[0]; // 런당 1개(타임아웃 방지)
     if (target) {
       try {

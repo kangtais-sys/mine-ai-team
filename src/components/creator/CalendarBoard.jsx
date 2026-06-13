@@ -30,13 +30,13 @@ const STATUS = {
 };
 
 const WEEKDAYS = [
-  { key: 'mon', label: '월', slotType: 'review_hook', concept: '후기 후킹',         hint: '자사몰/아마존 베스트 후기 후킹' },
-  { key: 'tue', label: '화', slotType: 'shorts',      concept: '숏츠 제품화',       hint: '유튜브 레퍼런스 링크 → 제품화' },
-  { key: 'wed', label: '수', slotType: 'review_hook', concept: '후기 후킹',         hint: '자사몰/아마존 베스트 후기 후킹' },
-  { key: 'thu', label: '목', slotType: 'shorts',      concept: '숏츠 제품화',       hint: '유튜브 레퍼런스 링크 → 제품화' },
-  { key: 'fri', label: '금', slotType: 'shorts',      concept: '숏츠 제품화',       hint: '유튜브 레퍼런스 링크 → 제품화' },
-  { key: 'sat', label: '토', slotType: 'trend_info',  concept: '뷰티 트렌드 정보성', hint: '뜨는 성분/시술/트렌드 정보성' },
-  { key: 'sun', label: '일', slotType: 'shorts',      concept: '숏츠 제품화',       hint: '유튜브 레퍼런스 링크 → 제품화' },
+  { key: 'mon', label: '월', slotType: 'review_hook', concept: '실후기 후킹',   hint: '자사몰/아마존 실후기 캡처 (Cowork)' },
+  { key: 'tue', label: '화', slotType: 'info_tip',    concept: '정보성 꿀팁', reel: true, hint: '꿀팁 캐러셀 + 릴스(사용장면)' },
+  { key: 'wed', label: '수', slotType: 'promo',       concept: '프로모',         hint: '자사몰/아마존 진행 프로모 3장' },
+  { key: 'thu', label: '목', slotType: 'info_tip',    concept: '정보성 꿀팁',     hint: '키워드 로테이션 꿀팁 캐러셀' },
+  { key: 'fri', label: '금', slotType: 'review_hook', concept: '실후기 후킹', reel: true, hint: '실후기 캐러셀 + 릴스(팔자 비포애프터)' },
+  { key: 'sat', label: '토', slotType: 'info_tip',    concept: '정보성 꿀팁',     hint: '키워드 로테이션 꿀팁 캐러셀' },
+  { key: 'sun', label: '일', slotType: 'info_tip',    concept: '정보성 꿀팁',     hint: '키워드 로테이션 꿀팁 캐러셀' },
 ];
 
 const CHANNELS = [
