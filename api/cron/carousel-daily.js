@@ -220,7 +220,7 @@ async function genSlides(market, keyword, coverType) {
 
 {
   "caption": "인스타 캡션 ${lang}, 일기/구어체, 첫 줄 후킹 + 정보 + 댓글 가르는 질문 + 저장/공유 유도(이모지 포함, 200자 이내)",
-  "hashtags": "관련 해시태그 10-15개(${lang}/영문 혼용 가능, 공백 구분)",
+  "hashtags": "정확히 5개: #밀리밀리(필수, 맨 앞) + 관련 해시태그 4개. 공백 구분. ${lang}.",
   "slides": [
     ${coverGuide[coverType] || coverGuide.cover_textonly},
     // 본문 2~4장: 각 본문에 num("01","02"...) 부여. visual 에 맞춰 type·필드 작성:
@@ -302,7 +302,7 @@ Korean slides text (translate the text fields, keep array order/length):
 ${JSON.stringify(payload)}
 
 Return JSON exactly:
-{"caption":"EN caption (diary/casual, hook + info + comment-splitting question + save/share trigger, with emoji, <200 chars)","hashtags":"10-15 EN/mixed hashtags space-separated","slides":[ same length as input, each with only the text fields that were present, translated ]}`;
+{"caption":"EN caption (diary/casual, hook + info + comment-splitting question + save/share trigger, with emoji, <200 chars)","hashtags":"EXACTLY 5: #millimilli (mandatory, first) + 4 related tags, space-separated","slides":[ same length as input, each with only the text fields that were present, translated ]}`;
   const r = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 1800,
@@ -386,7 +386,25 @@ async function bakeCards(slides, market, draftId, fonts) {
 }
 
 // 보드 시드(채널×날짜 멱등 — 기존 행 갱신 or 생성)
+// 해시태그 정규화: 브랜드 필수(맨 앞) + 관련 4개 = 정확히 5개. (US=#millimilli / KR=#밀리밀리)
+function normalizeHashtags(str, region) {
+  const brand = region === 'us' ? '#millimilli' : '#밀리밀리';
+  const toks = String(str || '').split(/[\s,]+/).map(t => t.trim()).filter(t => t.startsWith('#') && t.length > 1);
+  const isBrand = (t) => /^#(millimilli|밀리밀리)$/i.test(t);
+  const seen = new Set([brand.toLowerCase()]);
+  const others = [];
+  for (const t of toks) {
+    if (isBrand(t)) continue;
+    const k = t.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k); others.push(t);
+    if (others.length >= 4) break;
+  }
+  return [brand, ...others].join(' ');
+}
+
 async function seedDraft(sb, { channel, region, platform, date, mediaUrls, caption, hashtags }) {
+  hashtags = normalizeHashtags(hashtags, region); // 브랜드 필수 + 4개 = 5개 강제
   const { data: rows } = await sb.from('creator_drafts').select('id, data').limit(400);
   const existing = (rows || []).find(r => r.data && r.data.version === 'milli-v1' && r.data.channel === channel && r.data.date === date && (r.data.slotType || '') === SLOT);
   if (existing) {
