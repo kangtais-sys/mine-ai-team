@@ -25,3 +25,7 @@ dist-ssr
 *.sw?
 .vercel
 .env*.local
+
+# test outputs & local binaries
+*.mp4
+scripts/.bin/
