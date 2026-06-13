@@ -19,6 +19,13 @@ const hfHeaders = () => {
   if (!key) throw new Error('HIGGSFIELD_API_KEY 없음');
   return { 'hf-api-key': key, 'Content-Type': 'application/json', 'Accept': 'application/json', 'Origin': 'https://cloud.higgsfield.ai', 'Referer': 'https://cloud.higgsfield.ai/' };
 };
+// v2 자격증명(seedance 등 제품충실 모델용). Authorization: Key KEY_ID:KEY_SECRET (docs.higgsfield.ai).
+const HF_KEY_ID = (process.env.HF_KEY_ID || '').replace(/^["']|["']$/g, '').trim();
+const HF_KEY_SECRET = (process.env.HF_KEY_SECRET || '').replace(/^["']|["']$/g, '').trim();
+const hasV2 = () => !!(HF_KEY_ID && HF_KEY_SECRET);
+const hfV2Headers = () => ({ 'Authorization': `Key ${HF_KEY_ID}:${HF_KEY_SECRET}`, 'Content-Type': 'application/json', 'Accept': 'application/json' });
+// 히어로 단백질 미스트 진짜 제품컷(product-assets.md 4a56fcd8). ⚠️ 만료 가능 → 만료 시 재업로드/Blob 미러.
+const HERO_MIST_URL = 'https://d2ol7oe51mr4n9.cloudfront.net/user_38PAdEfRanROtVrNU82Klb8ZOSl/4a56fcd8-478d-4860-b722-03934e6eaf3f.png';
 const kstToday = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
 const dateNDaysAhead = (n) => new Date(Date.now() + 9 * 3600000 + n * 86400000).toISOString().slice(0, 10);
 const isShorts = (d) => d.slotType === 'shorts' || ['reel', 'shorts'].includes(d.format);
@@ -32,6 +39,7 @@ const FORMATS = [
     key: 'palja',
     imagePrompt: 'Ultra realistic vertical 9:16 UGC beauty close-up, Korean woman cheek and smile-line area, holding a frosted milky-white milli² protein face mist bottle near her face, soft warm natural light, glass-skin dewy look, authentic phone-camera feel. Skin natural texture, no text.',
     klingPrompt: 'she spritzes a fine cool mist on the smile-line area, the skin looks more hydrated, plumper and softer (moisture, not structural change), satisfying dewy glass-skin glow, gentle ASMR feel. curiosity-gap reveal pacing.',
+    productRefUrl: HERO_MIST_URL, // 진짜 제품(라벨 정확) — seedance 레퍼
     circle_xy: { x: 560, y: 880, w: 380, h: 320 },
     captions: [
       { text: '팔자, 주름인 줄 알았죠?', top: 150, size: 60 },
@@ -44,6 +52,7 @@ const FORMATS = [
     key: 'split',
     imagePrompt: 'Ultra realistic vertical 9:16 split-screen UGC skincare, left side dull dry cakey matte skin closeup, right side dewy glass-skin glow with a frosted milky-white milli² protein mist bottle, bright medical-clean light. No text.',
     klingPrompt: 'left dull matte dry skin, right side a milli² mist spray and the skin blooms into dewy glass-skin water-glow, smooth satisfying before/after, ASMR. curiosity-gap + momentum feel.',
+    productRefUrl: HERO_MIST_URL, // 진짜 제품(라벨 정확) — seedance 레퍼
     circle_xy: null,
     captions: [
       { text: '세수 후 몇 초에 뿌려?', top: 150, size: 58 },
@@ -92,6 +101,28 @@ async function pollKling(jobSetId) {
   return { status: 'processing' };
 }
 
+// ── Higgsfield v2: seedance image2video(진짜 제품 레퍼 유지) → request_id ──
+//  진짜 제품 이미지를 image_url 로 넣고, 프롬프트로 인물이 그 제품을 쓰는 9:16 사용장면 생성 → 라벨 충실.
+const SEEDANCE_URL = 'https://platform.higgsfield.ai/bytedance/seedance/v1/pro/image-to-video';
+async function startSeedance(imageUrl, prompt) {
+  const body = { image_url: imageUrl, prompt, duration: 5, aspect_ratio: '9:16' };
+  const r = await fetch(SEEDANCE_URL, { method: 'POST', headers: hfV2Headers(), body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(`seedance 제출 ${r.status}: ${(await r.text()).slice(0, 150)}`);
+  const d = await r.json();
+  const id = d.request_id || d.id;
+  if (!id) throw new Error(`seedance request_id 없음: ${JSON.stringify(d).slice(0, 120)}`);
+  return id;
+}
+// ── seedance 상태 1회 확인 (Pass2, 비차단). /requests/{id}/status ──
+async function pollSeedance(requestId) {
+  const r = await fetch(`https://platform.higgsfield.ai/requests/${requestId}/status`, { headers: hfV2Headers() });
+  if (!r.ok) return { status: 'processing' };
+  const d = await r.json(); const st = d.status;
+  if (st === 'completed') return { status: 'completed', videoUrl: d.video?.url || d.images?.[0]?.url || null };
+  if (['failed', 'nsfw', 'canceled'].includes(st)) return { status: 'failed', error: st };
+  return { status: 'processing' };
+}
+
 export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) return res.status(401).json({ error: 'Unauthorized' });
   const dry = req.query?.dry === '1';
@@ -105,18 +136,18 @@ export default async function handler(req, res) {
     const today = kstToday(); const dmax = dateNDaysAhead(3);
     const inWindow = (d) => d.date >= today && d.date <= dmax;
 
-    // ── Pass2: generating + kling job 폴링 → 완료 시 overlay → review ──
-    const gen = all.filter(d => d.version === 'milli-v1' && isShorts(d) && d.status === 'generating' && d.klingJobId && (!only || d.id === only));
+    // ── Pass2: generating + 영상잡 폴링 → 완료 시 overlay → review ── (seedance=videoReqId / 레거시=klingJobId)
+    const gen = all.filter(d => d.version === 'milli-v1' && isShorts(d) && d.status === 'generating' && (d.videoReqId || d.klingJobId) && (!only || d.id === only));
     for (const d of gen) {
       try {
-        const j = await pollKling(d.klingJobId);
+        const j = d.videoReqId ? await pollSeedance(d.videoReqId) : await pollKling(d.klingJobId);
         if (j.status === 'completed' && j.videoUrl) {
           if (dry) { results.pass2.push({ id: d.id, would: 'overlay+review' }); continue; }
           const m = d.shortsMeta || {};
           const out = await overlayShortCore({ footage_url: j.videoUrl, circle_xy: m.circle_xy, captions: m.captions || [], channel: d.channel, date: d.date, slotType: 'shorts', caption: m.caption, hashtags: m.hashtags });
           results.pass2.push({ id: d.id, action: 'completed', mediaUrl: out.mediaUrl });
         } else if (j.status === 'failed') {
-          if (!dry) { d.status = 'failed'; d.error = `kling ${j.error}`; d.updatedAt = new Date().toISOString(); await sb.from('creator_drafts').update({ data: d }).eq('id', d.id); }
+          if (!dry) { d.status = 'failed'; d.error = `${d.videoProvider || 'kling'} ${j.error}`; d.updatedAt = new Date().toISOString(); await sb.from('creator_drafts').update({ data: d }).eq('id', d.id); }
           results.pass2.push({ id: d.id, failed: j.error });
         } else {
           results.pass2.push({ id: d.id, status: 'still_generating' });
@@ -152,18 +183,26 @@ export default async function handler(req, res) {
         const captions = JSON.parse(JSON.stringify(fmt.captions));
         if (hook && captions[0]) captions[0].text = hook; // 분석 훅으로 첫 자막 교체(궁금증 갭)
 
-        if (dry) { results.pass1.push({ id: target.id, would: 'gen+kling', format: fmt.key, refUrl: !!target.refUrl }); }
+        const useSeedance = hasV2() && !!fmt.productRefUrl; // v2 키 + 제품 레퍼 있으면 진짜 제품 사용장면(seedance)
+        if (dry) { results.pass1.push({ id: target.id, would: useSeedance ? 'seedance(real-product)' : 'soul+kling', format: fmt.key, refUrl: !!target.refUrl }); }
         else {
-          const startImg = await genStartImage(fmt.imagePrompt);
-          const klingJobId = await startKling(startImg, fmt.klingPrompt);
           target.status = 'generating';
-          target.klingJobId = klingJobId;
-          target.startImage = startImg;
+          if (useSeedance) {
+            // 진짜 제품 이미지 → 인물이 그 제품 쓰는 9:16 사용장면(라벨 충실). 제품은 절대 텍스트로 그리지 않음.
+            const seedPrompt = `A young, fresh, modern Korean woman, photoreal skin with natural texture, soft natural daylight, authentic UGC handheld selfie feel. ${fmt.klingPrompt} She holds and uses THIS exact product shown in the reference image — keep the bottle shape, proportions and label exactly as the reference, label readable and unchanged. Vertical 9:16, no on-screen text, royalty-free/original audio only.`;
+            target.videoReqId = await startSeedance(fmt.productRefUrl, seedPrompt);
+            target.videoProvider = 'seedance';
+            target.productRefUrl = fmt.productRefUrl;
+          } else {
+            const startImg = await genStartImage(fmt.imagePrompt);
+            target.klingJobId = await startKling(startImg, fmt.klingPrompt);
+            target.startImage = startImg;
+          }
           target.shortsMeta = { circle_xy: fmt.circle_xy, captions, format: fmt.key, scene: sceneMeta, klingPrompt: fmt.klingPrompt, caption: target.caption || '', hashtags: target.hashtags || '' };
           target.source = 'shorts-daily';
           target.updatedAt = new Date().toISOString();
           await sb.from('creator_drafts').update({ data: target }).eq('id', target.id);
-          results.pass1.push({ id: target.id, action: 'started', format: fmt.key, klingJobId });
+          results.pass1.push({ id: target.id, action: 'started', format: fmt.key, provider: useSeedance ? 'seedance' : 'kling', jobId: target.videoReqId || target.klingJobId });
         }
       } catch (e) { results.pass1.push({ id: target.id, error: e.message }); }
     }
