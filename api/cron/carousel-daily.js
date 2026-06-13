@@ -42,14 +42,14 @@ const BRAND_LOOK = [
 ];
 // 제품(미스트 히어로) — product-assets.md
 const PRODUCT_MIST = '4a56fcd8-478d-4860-b722-03934e6eaf3f';
-// 내추럴 실사 무드 — 레퍼 거의 복제. 글로시 화보컷 금지(MINE 피드백). 자연광 일상 스냅 느낌.
-const DAILY_PROMPT = 'natural candid real photo, everyday natural background, authentic phone-camera/snapshot feel, NOT studio editorial/model shoot, photoreal skin texture (pores·natural skin), match the reference natural mood, 4:5 세로. plastic/glossy/old 금지';
+// 인물(레퍼 얼굴) — MINE 레퍼 얼굴 identity 유지 + 주제 부위 프레이밍. 자연 실사(글로시 화보 금지).
+const PERSON_PROMPT = 'real photo of a Korean woman, photoreal natural skin texture (visible pores, real skin), soft natural daylight, calm authentic everyday mood, match the reference face identity, NOT glossy studio editorial, NOT model/beauty-ad shoot, 4:5 세로. no plastic skin, no heavy retouch, no harsh flash';
 // 클로즈업(매크로) 프롬프트 — 인물 없음. 제품 레퍼 기반 질감·제형·입자. 자연 실사 매크로.
 const CLOSEUP_PROMPT = 'natural real photo, extreme macro close-up, photoreal, no face, no person, soft natural light, everyday natural context, authentic snapshot feel, NOT studio editorial, shallow depth of field, 4:5 세로. glossy/plastic 금지';
 // 제품 샷 프롬프트 — 일상 맥락(파우치/책상 등) 자연 실사. 단일 제품 레퍼.
 const PRODUCT_PROMPT = 'natural product shot, real photo, everyday context (in a pouch/on a desk/by the sink), authentic snapshot feel, NOT studio editorial/model shoot, soft natural light, photoreal, 4:5 세로. glossy/plastic 금지';
-// 무드 씬 프롬프트 — 인물 비중 X. 키워드에 맞춘 일상 무드(해변/욕실 등). 자연 실사.
-const SCENE_PROMPT = 'natural mood scene, real photo, everyday natural background, authentic snapshot feel, NOT studio editorial, soft natural light, photoreal, 4:5 세로. glossy/plastic 금지';
+// 무드 씬 — 핀터레스트 감성. 날씨/계절/감성 배경. 인물 비중 X. 시네마틱 자연광 실사.
+const SCENE_PROMPT = 'pinterest-aesthetic mood photo, real photo, atmospheric cinematic natural light, evocative everyday scene, soft film-like color grade, no text no logo, photoreal (NOT 3d render/illustration), 4:5 세로. glossy/plastic 금지';
 // 커버 사진 타입(레이아웃). 실제 소재(photoSubject)는 슬라이드 필드로 적응.
 const COVER_PHOTO_TYPES = new Set(['cover_fullimage', 'cover_split', 'cover_number']);
 const CLOSEUP_PHOTO_TYPES = new Set(['body_closeup', 'body_fullimage']);
@@ -60,7 +60,11 @@ function hfHeaders() {
   return { 'hf-api-key': key, 'Content-Type': 'application/json', 'Origin': 'https://cloud.higgsfield.ai', 'Referer': 'https://cloud.higgsfield.ai/' };
 }
 
-const mediaUrl = (id) => `${CF_BASE}/${id}.png`;
+// 레퍼 = Higgsfield media id(→CF png) 또는 풀 URL(http로 시작) 둘 다 허용.
+const mediaUrl = (idOrUrl) => /^https?:\/\//.test(idOrUrl) ? idOrUrl : `${CF_BASE}/${idOrUrl}.png`;
+// 코드 수정 없이 레퍼 추가: 환경변수 BRAND_LOOK_EXTRA_URLS 에 공개 이미지 URL 콤마구분으로 넣으면 풀에 합쳐짐.
+const BRAND_LOOK_EXTRA = String(process.env.BRAND_LOOK_EXTRA_URLS || '').split(',').map(s => s.trim()).filter(Boolean);
+const LOOK_POOL = [...BRAND_LOOK, ...BRAND_LOOK_EXTRA];
 const sample = (arr, k) => [...arr].sort(() => Math.random() - 0.5).slice(0, k);
 
 async function hfCreateReference(urls) {
@@ -106,7 +110,12 @@ async function genHfPhoto({ refUrls = [], prompt, strength = 0.85, blobPrefix, d
     if (refId) { params.custom_reference_id = refId; params.custom_reference_strength = strength; }
     const submit = (p) => fetch(`${HF_BASE}/v1/text2image/soul`, { method: 'POST', headers: hfHeaders(), body: JSON.stringify({ params: p }) });
     let sub = await submit(params);
-    if (!sub.ok && refId) { console.warn(`[carousel-daily] ${tag} ref 미적용 폴백`); sub = await submit(base); }
+    if (!sub.ok && refId) {
+      // transient(character_not_found = 레퍼 전파 지연) 대비 레퍼 1회 재시도, 그래도 실패면 레퍼 없이 폴백
+      await new Promise(r => setTimeout(r, 2500));
+      sub = await submit(params);
+      if (!sub.ok) { console.warn(`[carousel-daily] ${tag} ref 미적용 폴백`); sub = await submit(base); }
+    }
     if (!sub.ok) throw new Error(`제출 실패(${sub.status})`);
     const subData = await sub.json();
     const jobSetId = subData.id || subData.request_id;
@@ -120,14 +129,14 @@ async function genHfPhoto({ refUrls = [], prompt, strength = 0.85, blobPrefix, d
   } catch (e) { console.warn(`[carousel-daily] ${tag} ${idx} 실패(폴백):`, e.message); return null; }
 }
 
-// 인물 일상룩 1장 — 단일 brand-look 레퍼(블렌드 금지) + strength 0.88(거의 복제). 자연 실사 무드.
-//   인물 수 변주(1인/2인/그룹)는 프롬프트로 가끔. 실패 시 null(폴백).
-async function genDailyPhoto(keyword, draftId, idx) {
-  const ref = sample(BRAND_LOOK, 1).map(mediaUrl); // 단일 레퍼 1장만
-  const groupVariants = ['solo (one person)', 'two friends', 'a small group of friends'];
-  const group = groupVariants[Math.floor(Math.random() * groupVariants.length)];
-  const prompt = `${DAILY_PROMPT}. people: ${group}. 콘텐츠 키워드 무드: ${keyword}`;
-  return genHfPhoto({ refUrls: ref, prompt, strength: 0.88, blobPrefix: 'carousel-photo', draftId, idx, tag: 'photo' });
+// 인물 커버 1장 — 단일 brand-look 레퍼(블렌드 금지) + strength 0.8(얼굴 identity 유지 + 주제 프레이밍 반영).
+//   detail = 레퍼 얼굴의 어느 부위/표정이 주제를 보여주는지(예: '하관·볼, 팔자 라인 보이게'). full=true면 상반신/전신.
+async function genDailyPhoto(keyword, draftId, idx, detail = '', full = false) {
+  const ref = sample(LOOK_POOL, 1).map(mediaUrl); // 단일 레퍼 1장만(기존 20 + env 추가분)
+  const framing = (detail || '').trim() || `${keyword} 관련 부위가 자연스럽게 보이는 클로즈업`;
+  const shot = full ? 'half-body waist-up shot in an everyday setting' : 'natural face/area close-up';
+  const prompt = `${PERSON_PROMPT}. framing: ${shot}, ${framing}. content mood: ${keyword}`;
+  return genHfPhoto({ refUrls: ref, prompt, strength: 0.8, blobPrefix: 'carousel-photo', draftId, idx, tag: 'person' });
 }
 
 // 매크로 클로즈업 1장(인물 아님 — 피부 질감/미스트 입자/세럼 제형). 단일 제품 레퍼 + strength 0.85.
@@ -144,10 +153,10 @@ async function genProductPhoto(subject, keyword, draftId, idx) {
   return genHfPhoto({ refUrls: [PRODUCT_MIST].map(mediaUrl), prompt, strength: 0.85, blobPrefix: 'carousel-product', draftId, idx, tag: 'product' });
 }
 
-// 무드 씬 1장(해변/욕실 등, 키워드 맞춤). 레퍼 없이 프롬프트만(또는 제품 레퍼 약하게는 미사용). 자연 실사.
+// 무드 씬 1장(핀터레스트 감성, 날씨/계절/감성). 레퍼 없이 프롬프트만. 자연 실사.
 async function genScenePhoto(subject, keyword, draftId, idx) {
   const subj = (subject || '').trim();
-  const prompt = `${SCENE_PROMPT}. 콘텐츠 키워드 무드: ${keyword}${subj ? `. 씬: ${subj}` : ''}`;
+  const prompt = `${SCENE_PROMPT}. mood/subject: ${subj || keyword}. content theme: ${keyword}`;
   return genHfPhoto({ refUrls: [], prompt, strength: 0.85, blobPrefix: 'carousel-scene', draftId, idx, tag: 'scene' });
 }
 
@@ -190,7 +199,7 @@ const INFO_DAYS = new Set([4, 6, 0]);
 // 시장별 슬라이드 카피 생성(궁금증갭+대세감, 제품 은근 1곳, 클레임 범위).
 //   신규 디자인 포맷 스키마: 커버 타입은 cover(로테이션 주입), 본문은 LLM이 내용량에 맞춰 선택,
 //   마무리는 cta_editorial 고정. emphasis 단어 1개로 두께 위계 표시.
-async function genSlides(market, keyword, coverType, axis = '발견') {
+async function genSlides(market, keyword, coverType, axis = '발견', varietyHint = '') {
   const lang = market === 'kr' ? '한국어' : 'English';
   const heroLine = market === 'kr'
     ? 'MILLIMILLI 500달톤 단백질 미스트 (입증 혜택 범위: 24h 보습·장벽·결 정돈. 그 외 과장 금지)'
@@ -204,10 +213,12 @@ async function genSlides(market, keyword, coverType, axis = '발견') {
 - 커버 헤드라인 = 3초 후킹, 정보 다 주지 말고 갭만 연다(반전·"99%가 모르는"·결과 선공개).
 - 톤 = 감각적인 한 줄(과한 설명 금지). 카피를 짧고 강하게. 광고 문구("저희 제품은") 금지.
 - 제품 클레임은 입증 혜택 범위 내에서만. AI 연출/시장 수치 혼용 금지.`;
-  // 커버 타입별 필드 가이드. 사진 들어가는 커버는 photoSubject(주제 적응 — 항상 인물 X)·photoSubjectDetail 지정.
-  //   photoSubject ∈ ["person","product","texture","scene"]: 주제가 인물 중심 아니면 product/texture/scene 선택.
-  //   예: 제형 얘기=texture, 휴대/파우치=product, 무드(해변/욕실)=scene, 사람 루틴/표정=person.
-  const photoSubjectGuide = `"photoSubject":"person|product|texture|scene 중 1개(주제에 맞게 — 인물 중심 아니면 product/texture/scene)","photoSubjectDetail":"사진 주제 한 줄(예: '파우치 안 미스트'·'세럼 제형 매크로'·'욕실 아침 루틴 무드')"`;
+  // 커버 사진 소재(photoSubject) — 주제에 맞게. 얼굴/스킨 고민이면 person(레퍼 얼굴)이 기본.
+  //   person : 얼굴/스킨 고민(팔자주름·눈가·미간·다크서클·모공·글로잉·탄력·미백·칙칙함·결정돈). 레퍼 얼굴 사용.
+  //            photoSubjectDetail = 레퍼 얼굴의 어느 부위/표정이 주제를 보여주는지(예 '하관·볼, 팔자 라인 보이게'·'눈가 클로즈업'·'광채나는 얼굴 정면'). photoFull=true면 상반신/전신.
+  //   scene  : 날씨·계절·환경·감성(환절기·여름끈적임·겨울당김·속건조 무드). detail = 핀터레스트 무드 한 줄(예 '비 오는 창가 감성'·'여름 햇살 창가'·'겨울 니트와 따뜻한 조명').
+  //   product: 사용법·추천·휴대(미스트 사용법·올영추천·파우치·레이어링). texture: 제형·흡수·입자(매크로).
+  const photoSubjectGuide = `"photoSubject":"person|scene|product|texture 중 1개(주제에 맞게 — 얼굴/스킨 고민이면 person)","photoSubjectDetail":"위 가이드에 맞는 사진 주제 한 줄","photoFull":false`;
   const coverGuide = {
     cover_fullimage: `{"type":"cover_fullimage","headline":"하단 훅 1~2줄(짧고 강하게)","emphasis":"headline 안의 강조 단어 1개(반드시 headline에 포함)","sub":"보조 한 줄(대세감 신호)",${photoSubjectGuide}}`,
     cover_split: `{"type":"cover_split","headline":"우측 헤드라인(두 줄 가능)","emphasis":"headline 안 강조 단어 1개","sub":"보조 한 줄",${photoSubjectGuide}}`,
@@ -216,7 +227,7 @@ async function genSlides(market, keyword, coverType, axis = '발견') {
   };
   const user = `오늘 키워드: ${keyword}
 히어로 제품(은근히 1곳만): ${heroLine}
-커버 슬라이드 타입(고정): ${coverType}
+커버 슬라이드 타입(고정): ${coverType}${varietyHint ? `\n${varietyHint}` : ''}
 시리즈 결(axis): ${axis} — 이 결에 맞춰 톤·앵글을 잡을 것.
   · 발견: 신규 유입용. 트렌드·통념 깨기·"오늘의 발견"·궁금증 갭. 정보성 꿀팁 톤.
   · 신뢰: 전문성·증거. 과학 권위(500달톤·ppm·임상범위)·성분 메커니즘·실측 비교. "광고 같지 않은" 신뢰 톤.
@@ -376,7 +387,7 @@ async function attachPhotos(slides, keyword, draftId) {
       if (subject === 'product') return genProductPhoto(hint, keyword, draftId, i + 1).then(url => { if (url) s.image = url; });
       if (subject === 'texture') return genCloseupPhoto(s.closeupSubject || hint, draftId, i + 1).then(url => { if (url) s.image = url; });
       if (subject === 'scene') return genScenePhoto(hint, keyword, draftId, i + 1).then(url => { if (url) s.image = url; });
-      return genDailyPhoto(keyword, draftId, i + 1).then(url => { if (url) s.image = url; });
+      return genDailyPhoto(keyword, draftId, i + 1, hint, !!s.photoFull).then(url => { if (url) s.image = url; });
     }
     if (CLOSEUP_PHOTO_TYPES.has(s.type)) {
       return genCloseupPhoto(s.closeupSubject || headTextOf(s) || keyword, draftId, i + 1).then(url => { if (url) s.image = url; });
@@ -455,9 +466,15 @@ export default async function handler(req, res) {
     const cn = Number(await redis.get('creator:carousel:cover-rotation').catch(() => 0)) || 0;
     const coverType = COVER_TYPES[cn % COVER_TYPES.length];
     const axis = SERIES_SEQ[n % SERIES_SEQ.length]; // 시리즈 결(발견/신뢰/캐릭터) 로테이션 — 안 지겨움+팬화
+    // 커버 사진 변주(안 지겹게): 5회 중 1회는 환기 — 풀이미지 인물 또는 핀터레스트 무드 우선.
+    const sv = Number(await redis.get('creator:carousel:subject-variety').catch(() => 0)) || 0;
+    const varietyHint = (sv % 5 === 4)
+      ? '사진 변주(중요): 이번 커버는 환기 차원 — person이면 photoFull=true(상반신/전신)로, 또는 주제와 어울리면 scene(핀터레스트 무드 배경)을 우선 선택할 것.'
+      : '';
     if (!dry) {
       await redis.set('creator:carousel:rotation', n + 1).catch(() => {});
       await redis.set('creator:carousel:cover-rotation', cn + 1).catch(() => {});
+      await redis.set('creator:carousel:subject-variety', sv + 1).catch(() => {});
     }
 
     // 멱등: 오늘 이미 생성됐으면 스킵
@@ -466,7 +483,7 @@ export default async function handler(req, res) {
     if (done && !force) return res.status(200).json({ ok: true, skip: 'already_done', today, keyword });
 
     if (dry) {
-      const kr = await genSlides('kr', keyword, coverType, axis).catch(e => ({ error: e.message }));
+      const kr = await genSlides('kr', keyword, coverType, axis, varietyHint).catch(e => ({ error: e.message }));
       return res.status(200).json({ ok: true, dry: true, today, keyword, coverType, axis, sampleKR: kr });
     }
 
@@ -478,7 +495,7 @@ export default async function handler(req, res) {
     //   4) bake: KR slides→KR 카드, US slides→US 카드 (둘 다 같은 image URL)
     //   5) seed: kr_ig·kr_tt=KR mediaUrls, us_ig·us_tt=US mediaUrls
     try {
-      const krCopy = await genSlides('kr', keyword, coverType, axis);
+      const krCopy = await genSlides('kr', keyword, coverType, axis, varietyHint);
       const photoDraftId = `shared_${today}_${Date.now().toString(36)}`;
       // 사진 1세트 생성·주입(공유) — 이후 US 번역본도 동일 image URL 사용
       await attachPhotos(krCopy.slides, keyword, photoDraftId);
