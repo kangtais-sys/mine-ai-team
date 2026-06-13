@@ -46,22 +46,30 @@ export async function loadFonts() {
   return FONTS;
 }
 
+// 폰트 글리프 안전화 — Noto Sans KR woff 서브셋에 화살표(→ ⟶ 등)가 없어 notdef(⊠)로 깨짐.
+//   렌더 가능한 글자로 치환: 가로 화살표 → '›'(쉐브론), 세로/양방향 → '·'. LLM·디자인 리터럴 모두 방어.
+const sx = (s) => (typeof s === 'string')
+  ? s.replace(/[→➔➜➝➞➡➙⇒⇨⟶⟹⮕➝➔➜►▶▸]/g, '›')
+     .replace(/[←↑↓↔↕⇐⇓⟵⬅⬆⬇]/g, '·')
+  : s;
+
 // ── 하이퍼스크립트 (satori VDOM) ──
 const h = (type, style, children) => ({ type, props: { style, ...(children !== undefined ? { children } : {}) } });
 const row = (style, children) => h('div', { display: 'flex', flexDirection: 'row', alignItems: 'center', ...style }, children);
 const col = (style, children) => h('div', { display: 'flex', flexDirection: 'column', ...style }, children);
-const txt = (s, style) => h('div', { display: 'flex', ...style }, s);
+const txt = (s, style) => h('div', { display: 'flex', ...style }, sx(s));
 
 // 블랙 필 라벨
 const pill = (s, inv = false) => h('div', {
   display: 'flex', alignItems: 'center', backgroundColor: inv ? WHITE : BLACK, color: inv ? BLACK : WHITE,
   fontFamily: FONT, fontWeight: 700, fontSize: 30, padding: '12px 26px', borderRadius: 0, lineHeight: 1,
-}, s);
+}, sx(s));
 // 스펙 라벨(모노 폐지 → 단일 폰트 medium + letterSpacing 으로 모노 느낌)
 const mono = (s, style) => txt(s, { fontFamily: FONT, fontWeight: 500, fontSize: 26, color: BLACK, letterSpacing: 1, ...style });
 
 // 리치텍스트 — `**강조**`=볼드(700), 나머지=라이트(300). 단어 단위 flexWrap 으로 흐름.
 function richText(str, { fontSize, color, lineHeight = 1.5, justify = 'flex-start' } = {}) {
+  str = sx(str);
   const segs = []; const re = /\*\*(.+?)\*\*/g; let last = 0, m;
   while ((m = re.exec(str))) { if (m.index > last) segs.push({ t: str.slice(last, m.index), b: false }); segs.push({ t: m[1], b: true }); last = re.lastIndex; }
   if (last < str.length) segs.push({ t: str.slice(last), b: false });
@@ -208,15 +216,19 @@ function headlineWithEmphasis(headline, { fontSize, color = BLACK, lineHeight = 
   const mk = (w) => txt(w, { fontFamily: FONT, fontWeight: 700, fontSize, color, lineHeight, letterSpacing, marginRight: Math.round(fontSize * 0.24) });
   const parts = [];
   before.split(/\s+/).filter(Boolean).forEach(w => parts.push(mk(w)));
-  // 강조어: 글자수 기반 폭 추정(한글/영문 평균). 동그라미는 emphasis 단어 길이에 맞춤.
-  const charW = fontSize * 0.62;
+  // 강조어: 글자수 기반 폭 추정(한글/영문 평균). 타원이 단어를 충분히 감싸도록 0.7 로 넉넉히.
+  const charW = fontSize * 0.7;
   const ew = Math.max(fontSize, Math.round(emph.length * charW));
-  parts.push(circled(
-    txt(emph, { fontFamily: FONT, fontWeight: 700, fontSize, color, lineHeight, letterSpacing }),
-    ew, Math.round(fontSize * 1.05), { color: circleColor, padX: 20, padY: 14 }
-  ));
+  // circled 노드를 div 로 감싸 좌우 여백 확보(인접 단어와 동그라미 겹침 방지).
+  parts.push(h('div', { display: 'flex', marginLeft: Math.round(fontSize * 0.14), marginRight: Math.round(fontSize * 0.32) }, [
+    circled(
+      txt(emph, { fontFamily: FONT, fontWeight: 700, fontSize, color, lineHeight, letterSpacing }),
+      ew, Math.round(fontSize * 1.05), { color: circleColor, padX: 24, padY: 18 }
+    ),
+  ]));
   after.split(/\s+/).filter(Boolean).forEach(w => parts.push(mk(w)));
-  return h('div', { display: 'flex', flexWrap: 'wrap', alignItems: 'center' }, parts);
+  // 줄바꿈 시 동그라미가 위/아래 줄을 침범하지 않도록 줄 간격 확보.
+  return h('div', { display: 'flex', flexWrap: 'wrap', alignItems: 'center', lineHeight, rowGap: Math.round(fontSize * 0.35) }, parts);
 }
 
 // headline 인자 정규화: 문자열 or {text,emphasis} 모두 허용.

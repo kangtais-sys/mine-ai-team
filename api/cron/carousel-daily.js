@@ -169,7 +169,15 @@ const CHANNELS = [
 const KEYWORDS = [
   '미스트', '글래스스킨', '콜라겐', '탄력', '글로잉뷰티',
   '팔자주름', '눈가주름', '진정', '미백', '코리안스킨케어',
+  '속건조', '수분장벽', '환절기 피부', '모공', '베이스 들뜸',
+  '화장 무너짐', '단백질 스킨케어', '흡수율', '결 정돈', '칙칙함',
+  '여름 끈적임', '겨울 당김', '아침 스킨케어 루틴', '저녁 스킨케어 루틴', '올리브영 추천템',
+  '더마 케어', '미스트 사용법', '스킨케어 레이어링', '푸석함', '다크서클·눈가',
+  '500달톤', '시술후기', '볼패임', '미간주름', '목주름',
+  '바디탄력', '코리안메이크업', '글로우스킨', '코리안뷰티', '틱톡뷰티',
 ];
+// 시리즈 아크(sns-strategy): 발견60/신뢰25/캐릭터15 — 20슬롯 인터리브 패턴으로 비중 근사 + 매번 다른 결.
+const SERIES_SEQ = ['발견','신뢰','발견','발견','캐릭터','발견','신뢰','발견','발견','캐릭터','발견','신뢰','발견','발견','발견','신뢰','발견','발견','캐릭터','신뢰'];
 
 const kstNow = () => new Date(Date.now() + 9 * 3600000);
 const kstToday = () => kstNow().toISOString().slice(0, 10);
@@ -182,7 +190,7 @@ const INFO_DAYS = new Set([4, 6, 0]);
 // 시장별 슬라이드 카피 생성(궁금증갭+대세감, 제품 은근 1곳, 클레임 범위).
 //   신규 디자인 포맷 스키마: 커버 타입은 cover(로테이션 주입), 본문은 LLM이 내용량에 맞춰 선택,
 //   마무리는 cta_editorial 고정. emphasis 단어 1개로 두께 위계 표시.
-async function genSlides(market, keyword, coverType) {
+async function genSlides(market, keyword, coverType, axis = '발견') {
   const lang = market === 'kr' ? '한국어' : 'English';
   const heroLine = market === 'kr'
     ? 'MILLIMILLI 500달톤 단백질 미스트 (입증 혜택 범위: 24h 보습·장벽·결 정돈. 그 외 과장 금지)'
@@ -209,6 +217,10 @@ async function genSlides(market, keyword, coverType) {
   const user = `오늘 키워드: ${keyword}
 히어로 제품(은근히 1곳만): ${heroLine}
 커버 슬라이드 타입(고정): ${coverType}
+시리즈 결(axis): ${axis} — 이 결에 맞춰 톤·앵글을 잡을 것.
+  · 발견: 신규 유입용. 트렌드·통념 깨기·"오늘의 발견"·궁금증 갭. 정보성 꿀팁 톤.
+  · 신뢰: 전문성·증거. 과학 권위(500달톤·ppm·임상범위)·성분 메커니즘·실측 비교. "광고 같지 않은" 신뢰 톤.
+  · 캐릭터: 재미·팬화. POV·상황극·밈·유머·공감. 가볍고 위트있게(정보는 한 스푼).
 
 감각적 정보성 캐러셀을 아래 JSON으로만 반환(코드블록 없이 순수 JSON). 슬라이드 총 4~6장 = 커버1 + 본문2~4 + 마무리1.
 
@@ -237,7 +249,8 @@ async function genSlides(market, keyword, coverType) {
 - 정보성 본문은 data_* 우선, closeup 은 질감 설명에만, 인물 사진 본문 금지.
 - cover headline·각 본문 headline 은 궁금증갭. emphasis 는 반드시 headline 에 그대로 포함된 단어 1개.
 - 제품은 본문 단 1곳만.
-- ${lang} 맞춤법·띄어쓰기 정확히. 오타 절대 금지(예: '건조'를 '견조'로 쓰지 말 것). 어색한 합성어 금지.`;
+- ${lang} 맞춤법·띄어쓰기 정확히. 오타 절대 금지(예: '건조'를 '견조'로 쓰지 말 것). 어색한 합성어 금지.
+- 카드 텍스트에 화살표/특수기호(→ ⟶ ⇒ ▶ 등) 절대 쓰지 말 것. 흐름·전환은 우리말 단어로(예: '촉촉했다가 건조', 'A는 B로'). 글머리 기호도 금지.`;
 
   const r = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -441,6 +454,7 @@ export default async function handler(req, res) {
     const keyword = KEYWORDS[n % KEYWORDS.length];
     const cn = Number(await redis.get('creator:carousel:cover-rotation').catch(() => 0)) || 0;
     const coverType = COVER_TYPES[cn % COVER_TYPES.length];
+    const axis = SERIES_SEQ[n % SERIES_SEQ.length]; // 시리즈 결(발견/신뢰/캐릭터) 로테이션 — 안 지겨움+팬화
     if (!dry) {
       await redis.set('creator:carousel:rotation', n + 1).catch(() => {});
       await redis.set('creator:carousel:cover-rotation', cn + 1).catch(() => {});
@@ -452,8 +466,8 @@ export default async function handler(req, res) {
     if (done && !force) return res.status(200).json({ ok: true, skip: 'already_done', today, keyword });
 
     if (dry) {
-      const kr = await genSlides('kr', keyword, coverType).catch(e => ({ error: e.message }));
-      return res.status(200).json({ ok: true, dry: true, today, keyword, coverType, sampleKR: kr });
+      const kr = await genSlides('kr', keyword, coverType, axis).catch(e => ({ error: e.message }));
+      return res.status(200).json({ ok: true, dry: true, today, keyword, coverType, axis, sampleKR: kr });
     }
 
     const fonts = await loadFonts();
@@ -464,7 +478,7 @@ export default async function handler(req, res) {
     //   4) bake: KR slides→KR 카드, US slides→US 카드 (둘 다 같은 image URL)
     //   5) seed: kr_ig·kr_tt=KR mediaUrls, us_ig·us_tt=US mediaUrls
     try {
-      const krCopy = await genSlides('kr', keyword, coverType);
+      const krCopy = await genSlides('kr', keyword, coverType, axis);
       const photoDraftId = `shared_${today}_${Date.now().toString(36)}`;
       // 사진 1세트 생성·주입(공유) — 이후 US 번역본도 동일 image URL 사용
       await attachPhotos(krCopy.slides, keyword, photoDraftId);
@@ -487,7 +501,7 @@ export default async function handler(req, res) {
         results.push(seeded);
       }
     } catch (e) { results.push({ error: e.message }); }
-    const summary = { ok: true, today, keyword, coverType, results };
+    const summary = { ok: true, today, keyword, coverType, axis, results };
     try { await redis.set('creator:carousel-daily:latest', { ...summary, at: new Date().toISOString() }, { ex: 86400 * 3 }); } catch {}
     return res.status(200).json(summary);
   } catch (e) {
