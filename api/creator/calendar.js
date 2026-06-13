@@ -146,12 +146,27 @@ export async function publishDraftToZernio(draft, { dryRun = false } = {}) {
   const pid = (draft.profileId || PROFILE[draft.region] || PROFILE.kr || '').trim();
   // Zernio /v1/posts (검증 2026-06-14): 본문=content(text 아님), platforms[].accountId=소셜 계정 ID 필수,
   //   publishNow:true 없으면 무조건 draft 로 저장됨(게시 안 됨).
-  const body = {
-    content: text,
-    platforms: [{ platform: draft.platform, accountId: pid }],
-    publishNow: true,
-    ...(mediaItems.length && { mediaItems }),
-  };
+  let body;
+  if (draft.platform === 'tiktok') {
+    // 틱톡 포토: content=슬라이드 제목(90자 자동잘림) + platformSpecificData.description=전체 캡션(별도 칸).
+    const coverHead = draft.slides?.[0]?.headline?.text
+      || (typeof draft.slides?.[0]?.headline === 'string' ? draft.slides[0].headline : '')
+      || (draft.caption || '').split('\n')[0] || '';
+    const title = String(coverHead).slice(0, 88);
+    body = {
+      content: title,
+      platforms: [{ platform: 'tiktok', accountId: pid, platformSpecificData: { description: text } }],
+      publishNow: true,
+      ...(mediaItems.length && { mediaItems }),
+    };
+  } else {
+    body = {
+      content: text,
+      platforms: [{ platform: draft.platform, accountId: pid }],
+      publishNow: true,
+      ...(mediaItems.length && { mediaItems }),
+    };
+  }
   if (dryRun) return { ok: true, dryRun: true, body };
   const result = await zPost(body);
   if (result.error || (result.message && /error/i.test(result.message))) {

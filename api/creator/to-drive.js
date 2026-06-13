@@ -105,6 +105,18 @@ async function uploadOneToDrive(drive, folderId, url, { draft, index, total }) {
   return { fileId: file.data.id, webViewLink: file.data.webViewLink };
 }
 
+// 수동 발행용 캡션 .txt (아이폰에서 열림). 틱톡은 제목(90자) + 본문 분리 표기.
+function buildCaptionTxt(draft) {
+  const isTT = draft.platform === 'tiktok';
+  const coverHead = draft.slides?.[0]?.headline?.text
+    || (typeof draft.slides?.[0]?.headline === 'string' ? draft.slides[0].headline : '')
+    || (draft.caption || '').split('\n')[0] || '';
+  const lines = [`채널: ${CH_LABEL[draft.channel] || draft.channel} / 날짜: ${draft.date}`, ''];
+  if (isTT) { lines.push('[제목 / Title — 틱톡 슬라이드 제목(90자 이내)]', String(coverHead).slice(0, 90), ''); }
+  lines.push('[캡션 / Caption]', draft.caption || '', '', '[해시태그 / Hashtags]', draft.hashtags || '');
+  return lines.join('\n');
+}
+
 // 드래프트 미디어를 드라이브에 업로드. 카루셀(mediaUrls[])이면 전부 루프, 아니면 단일 mediaUrl.
 // 반환 { files:[{fileId, webViewLink}], count, folderId, fileId, webViewLink }(첫 장 = 하위호환).
 export async function uploadDraftToDrive(draft) {
@@ -119,6 +131,16 @@ export async function uploadDraftToDrive(draft) {
   for (let i = 0; i < urls.length; i++) {
     files.push(await uploadOneToDrive(drive, folderId, urls[i], { draft, index: i, total: urls.length }));
   }
+  // 캡션/제목/태그 .txt (아이폰 열람·수동 발행용)
+  try {
+    const tname = `[${CH_LABEL[draft.channel] || draft.channel}] ${draft.date} 캡션.txt`;
+    const tf = await drive.files.create({
+      requestBody: { name: tname, parents: [folderId], description: '제목/캡션/해시태그 (수동 발행용)' },
+      media: { mimeType: 'text/plain', body: Readable.from([buildCaptionTxt(draft)]) },
+      fields: 'id, webViewLink',
+    });
+    files.push({ fileId: tf.data.id, webViewLink: tf.data.webViewLink, kind: 'caption-txt' });
+  } catch (e) { console.warn('[to-drive] 캡션 txt 업로드 실패(무시):', e.message); }
   return { files, count: files.length, folderId, fileId: files[0].fileId, webViewLink: files[0].webViewLink };
 }
 

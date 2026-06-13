@@ -465,10 +465,13 @@ function renderBodyCloseup(s) {
 }
 
 // ── 마무리 A: 화이트 에디토리얼 CTA (#FFFFFF) ──
-function renderCtaEditorial(s) {
+function renderCtaEditorial(s, market = 'kr') {
   const head = hl(s);
-  const comment = s.comment || (s.labels && s.labels[0]) || '댓글로 알려주세요';
-  const share = s.share || (s.labels && s.labels[1]) || '친구에게 공유';
+  const us = market === 'us';
+  const comment = s.comment || (s.labels && s.labels[0]) || (us ? 'Tell us in the comments' : '댓글로 알려주세요');
+  const share = s.share || (s.labels && s.labels[1]) || (us ? 'Share with a friend' : '친구에게 공유');
+  const cLabel = us ? '— Comment' : '— 댓글';
+  const sLabel = us ? '— Share' : '— 공유';
   return frame([
     // 상단 로고 + 가는 라인
     logoImg(32),
@@ -482,11 +485,11 @@ function renderCtaEditorial(s) {
     // 댓글/공유 표기 2줄
     col({ gap: 12 }, [
       row({ alignItems: 'baseline' }, [
-        txt('— 댓글', { fontFamily: FONT, fontWeight: 300, fontSize: 30, color: SUB, marginRight: 16 }),
+        txt(cLabel, { fontFamily: FONT, fontWeight: 300, fontSize: 30, color: SUB, marginRight: 16 }),
         txt(comment, { fontFamily: FONT, fontWeight: 500, fontSize: 30, color: BLACK }),
       ]),
       row({ alignItems: 'baseline' }, [
-        txt('— 공유', { fontFamily: FONT, fontWeight: 300, fontSize: 30, color: SUB, marginRight: 16 }),
+        txt(sLabel, { fontFamily: FONT, fontWeight: 300, fontSize: 30, color: SUB, marginRight: 16 }),
         txt(share, { fontFamily: FONT, fontWeight: 500, fontSize: 30, color: BLACK }),
       ]),
     ]),
@@ -514,7 +517,7 @@ export function renderSlide(s, market) {
     case 'body_compare': return renderBodyCompare(s);
     case 'body_steps': return renderBodySteps(s);
     case 'body_closeup': return renderBodyCloseup(s);
-    case 'cta_editorial': return renderCtaEditorial(s);
+    case 'cta_editorial': return renderCtaEditorial(s, market);
     default: return renderInfo(s);
   }
 }
