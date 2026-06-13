@@ -475,7 +475,16 @@ export default async function handler(req, res) {
   const dateOverride = (req.query?.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)) ? req.query.date : null;
   const today = dateOverride || kstTomorrow();
   // ?coverImageUrl= : 커버 이미지를 외부(MCP Marketing Studio 생성분)로 주입 — 잼/만료 우회.
-  const coverImageUrl = req.query?.coverImageUrl ? decodeURIComponent(req.query.coverImageUrl) : null;
+  //   인증(CRON_SECRET)은 위에서 끝났고, SSRF 방어로 https + 신뢰 CDN 호스트만 허용.
+  const COVER_HOSTS = new Set(['d8j0ntlcm91z4.cloudfront.net', 'd2ol7oe51mr4n9.cloudfront.net', 'zre3xstenznneqve.public.blob.vercel-storage.com', 'cdn.higgsfield.ai']);
+  let coverImageUrl = null;
+  if (req.query?.coverImageUrl) {
+    try {
+      const u = new URL(decodeURIComponent(req.query.coverImageUrl));
+      if (u.protocol === 'https:' && COVER_HOSTS.has(u.hostname)) coverImageUrl = u.toString();
+      else return res.status(400).json({ error: 'invalid coverImageUrl (https + 허용 CDN 호스트만)' });
+    } catch { return res.status(400).json({ error: 'malformed coverImageUrl' }); }
+  }
   const dow = kstTomorrowDow(); // 내일의 KST 요일로 정보성 게이트
   if (!force && !INFO_DAYS.has(dow)) return res.status(200).json({ ok: true, skip: 'not_info_day(tomorrow)', dow, target: today });
 
