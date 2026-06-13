@@ -144,12 +144,12 @@ export async function publishDraftToZernio(draft, { dryRun = false } = {}) {
     return { ok: false, error: draft.error, code: 400 };
   }
   const pid = (draft.profileId || PROFILE[draft.region] || PROFILE.kr || '').trim();
+  // Zernio /v1/posts (검증 2026-06-14): 본문=content(text 아님), platforms[].accountId=소셜 계정 ID 필수,
+  //   publishNow:true 없으면 무조건 draft 로 저장됨(게시 안 됨).
   const body = {
-    profileId: pid,
-    text,
-    // Zernio /posts 는 platforms[].accountId 필수(누락 시 "Invalid input: missing platforms.0.accountId").
-    platforms: [{ platform: draft.platform, accountId: pid, platformSpecificData: { caption: text.substring(0, 2200) } }],
-    status: 'published',
+    content: text,
+    platforms: [{ platform: draft.platform, accountId: pid }],
+    publishNow: true,
     ...(mediaItems.length && { mediaItems }),
   };
   if (dryRun) return { ok: true, dryRun: true, body };
