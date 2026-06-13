@@ -10,6 +10,7 @@ import { Redis } from '@upstash/redis';
 import { put } from '@vercel/blob';
 import { getSupabase } from '../../lib/supabase.js';
 import { loadFonts, renderSlide, bakePng } from '../creator/render-card.js';
+import * as refManifest from '../../lib/ref-manifest.js'; // 폴더 기반 레퍼(assets/→Blob, scripts/sync-refs.mjs)
 
 export const config = { maxDuration: 300 };
 
@@ -65,7 +66,11 @@ function hfHeaders() {
 const mediaUrl = (idOrUrl) => /^https?:\/\//.test(idOrUrl) ? idOrUrl : `${CF_BASE}/${idOrUrl}.png`;
 // 코드 수정 없이 레퍼 추가: 환경변수 BRAND_LOOK_EXTRA_URLS 에 공개 이미지 URL 콤마구분으로 넣으면 풀에 합쳐짐.
 const BRAND_LOOK_EXTRA = String(process.env.BRAND_LOOK_EXTRA_URLS || '').split(',').map(s => s.trim()).filter(Boolean);
-const LOOK_POOL = [...BRAND_LOOK, ...BRAND_LOOK_EXTRA];
+// 인물 풀 = 폴더 레퍼(assets/brand-look → Blob) + 기존 CF20 + env 추가분.
+const LOOK_POOL = [...(refManifest.brandLook || []), ...BRAND_LOOK, ...BRAND_LOOK_EXTRA];
+// 제품/씬 풀 = 폴더 레퍼(assets/products·scene). 비면 각각 PRODUCT_MIST / 프롬프트-only 폴백.
+const PRODUCT_POOL = (refManifest.product && refManifest.product.length) ? refManifest.product : null;
+const SCENE_POOL = (refManifest.scene && refManifest.scene.length) ? refManifest.scene : null;
 const sample = (arr, k) => [...arr].sort(() => Math.random() - 0.5).slice(0, k);
 
 async function hfCreateReference(urls) {
@@ -145,21 +150,25 @@ async function genDailyPhoto(keyword, draftId, idx, detail = '', full = false) {
 async function genCloseupPhoto(subject, draftId, idx) {
   const subj = (subject || '피부 질감 매크로').trim();
   const prompt = `${CLOSEUP_PROMPT}. 주제: ${subj}. NO face, no person, photoreal product/texture macro`;
-  return genHfPhoto({ refUrls: [PRODUCT_MIST].map(mediaUrl), prompt, strength: 0.85, blobPrefix: 'carousel-closeup', draftId, idx, tag: 'closeup' });
+  const ref = PRODUCT_POOL ? sample(PRODUCT_POOL, 1) : [mediaUrl(PRODUCT_MIST)];
+  return genHfPhoto({ refUrls: ref, prompt, strength: 0.85, blobPrefix: 'carousel-closeup', draftId, idx, tag: 'closeup' });
 }
 
 // 제품 샷 1장(일상 맥락 — 파우치/책상 등). 단일 제품 레퍼 + strength 0.85. 자연 실사.
 async function genProductPhoto(subject, keyword, draftId, idx) {
   const subj = (subject || '').trim();
   const prompt = `${PRODUCT_PROMPT}. 콘텐츠 키워드 무드: ${keyword}${subj ? `. 주제: ${subj}` : ''}`;
-  return genHfPhoto({ refUrls: [PRODUCT_MIST].map(mediaUrl), prompt, strength: 0.85, blobPrefix: 'carousel-product', draftId, idx, tag: 'product' });
+  const ref = PRODUCT_POOL ? sample(PRODUCT_POOL, 1) : [mediaUrl(PRODUCT_MIST)];
+  return genHfPhoto({ refUrls: ref, prompt, strength: 0.85, blobPrefix: 'carousel-product', draftId, idx, tag: 'product' });
 }
 
 // 무드 씬 1장(핀터레스트 감성, 날씨/계절/감성). 레퍼 없이 프롬프트만. 자연 실사.
 async function genScenePhoto(subject, keyword, draftId, idx) {
   const subj = (subject || '').trim();
   const prompt = `${SCENE_PROMPT}. mood/subject: ${subj || keyword}. content theme: ${keyword}`;
-  return genHfPhoto({ refUrls: [], prompt, strength: 0.85, blobPrefix: 'carousel-scene', draftId, idx, tag: 'scene' });
+  // 씬 레퍼 폴더 있으면 무드 넛지(0.6, 복제 아님), 없으면 프롬프트-only.
+  const ref = SCENE_POOL ? sample(SCENE_POOL, 1) : [];
+  return genHfPhoto({ refUrls: ref, prompt, strength: ref.length ? 0.6 : 0.85, blobPrefix: 'carousel-scene', draftId, idx, tag: 'scene' });
 }
 
 // 커버 레이아웃 로테이션(redis 카운터) — cover_* 4종

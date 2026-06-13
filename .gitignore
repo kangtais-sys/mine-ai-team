@@ -29,3 +29,9 @@ dist-ssr
 # test outputs & local binaries
 *.mp4
 scripts/.bin/
+
+# 레퍼 원본 이미지(런타임은 Vercel Blob 사용 — lib/ref-manifest.js). 폴더 구조(.gitkeep)·매니페스트만 추적.
+assets/**/*.jpg
+assets/**/*.jpeg
+assets/**/*.png
+assets/**/*.webp
