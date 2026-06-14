@@ -51,6 +51,7 @@ export async function loadFonts() {
 const sx = (s) => (typeof s === 'string')
   ? s.replace(/[→➔➜➝➞➡➙⇒⇨⟶⟹⮕➝➔➜►▶▸]/g, '›')
      .replace(/[←↑↓↔↕⇐⇓⟵⬅⬆⬇]/g, '·')
+     .replace(/\*\*/g, '') // 헤드라인/라벨에 새어든 마크다운 볼드 마커 제거(richText 본문은 파싱 후라 영향 없음)
   : s;
 
 // ── 하이퍼스크립트 (satori VDOM) ──
@@ -234,7 +235,12 @@ function headlineWithEmphasis(headline, { fontSize, color = BLACK, lineHeight = 
 }
 
 // headline 인자 정규화: 문자열 or {text,emphasis} 모두 허용.
-const hl = (s) => (typeof s.headline === 'object' && s.headline) ? s.headline : { text: s.headline || '', emphasis: s.emphasis || '' };
+const hl = (s) => {
+  const z = (t) => (typeof t === 'string' ? t.replace(/\*\*/g, '') : t);
+  return (typeof s.headline === 'object' && s.headline)
+    ? { ...s.headline, text: z(s.headline.text), emphasis: z(s.headline.emphasis) }
+    : { text: z(s.headline || ''), emphasis: z(s.emphasis || '') };
+};
 
 // 사진 박스(직각, 라운드 금지)
 const photo = (src, w, ht, extra = {}) =>
