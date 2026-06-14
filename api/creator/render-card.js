@@ -140,8 +140,8 @@ function renderCover(s, market) {
     ]),
     // 헤드라인 지배(초대형) + 짧은 서브 1줄
     col({ marginTop: 64 }, [
-      s.headline ? txt(s.headline, { fontFamily: FONT, fontWeight: 700, fontSize: 100, color: BLACK, lineHeight: 1.04, letterSpacing: -3 }) : null,
-      s.body ? txt(s.body, { fontFamily: FONT, fontWeight: 300, fontSize: 36, color: SUB, marginTop: 30 }) : null,
+      s.headline ? txt(s.headline, { fontFamily: FONT, fontWeight: 700, fontSize: 100, color: BLACK, lineHeight: 1.04, letterSpacing: -3, wordBreak: 'keep-all' }) : null,
+      s.body ? txt(s.body, { fontFamily: FONT, fontWeight: 300, fontSize: 36, color: SUB, marginTop: 30, wordBreak: 'keep-all' }) : null,
       // 아웃라인 박스 라벨 1개 (필❌)
       h('div', { display: 'flex', alignSelf: 'flex-start', marginTop: 44, border: `2px solid ${BLACK}`, borderRadius: 0, padding: '16px 24px' }, [mono(spec, { fontSize: 27 })]),
     ].filter(Boolean)),
@@ -159,13 +159,13 @@ function renderInfo(s) {
   return frame([
     row({ justifyContent: 'space-between', alignItems: 'flex-start' }, [wordmark(), s.source ? mono(s.source, { fontSize: 22, color: SUB }) : null].filter(Boolean)),
     col({ marginTop: 48, flex: 1 }, [
-      s.headline ? txt(s.headline, { fontFamily: FONT, fontWeight: 700, fontSize: 68, color: BLACK, lineHeight: 1.1, letterSpacing: -1 }) : null,
+      s.headline ? txt(s.headline, { fontFamily: FONT, fontWeight: 700, fontSize: 68, color: BLACK, lineHeight: 1.1, letterSpacing: -1, wordBreak: 'keep-all' }) : null,
       h('div', { display: 'flex', width: 120, height: 8, backgroundColor: BLACK, marginTop: 28, marginBottom: 28 }, ''),
       s.body ? richText(s.body, { fontSize: 42, color: '#2A2A2A', lineHeight: 1.5 }) : null, // 리치텍스트(**강조**=볼드)
       (s.labels && s.labels.length) ? col({ marginTop: 36, gap: 16 }, s.labels.map(l => mono(`/ ${l}`, { fontSize: 30 }))) : null,
     ].filter(Boolean)),
-    // §5 info 슬라이드 이미지 지원 (직각)
-    s.image ? h('div', { display: 'flex', width: '100%', height: 460, overflow: 'hidden', backgroundColor: GRAY, marginBottom: 24 }, [slideImage(s.image, { width: W - 160, height: 460 })]) : null,
+    // §5 info 슬라이드 이미지(후기 캡처 등) — 전체 보이게 contain(크롭 금지)
+    s.image ? h('div', { display: 'flex', width: '100%', height: 460, overflow: 'hidden', backgroundColor: GRAY, marginBottom: 24, justifyContent: 'center' }, [slideImage(s.image, { width: W - 160, height: 460, objectFit: 'contain' })]) : null,
     footer(),
   ].filter(Boolean));
 }
@@ -173,7 +173,7 @@ function renderInfo(s) {
 function renderReview(s, market) {
   return frame([
     row({ justifyContent: 'space-between', alignItems: 'flex-start' }, [wordmark(), marketBadge(market)]),
-    s.headline ? txt(s.headline, { fontFamily: FONT, fontWeight: 700, fontSize: 56, color: BLACK, lineHeight: 1.1, marginTop: 40, letterSpacing: -1 }) : null,
+    s.headline ? txt(s.headline, { fontFamily: FONT, fontWeight: 700, fontSize: 56, color: BLACK, lineHeight: 1.1, marginTop: 40, letterSpacing: -1, wordBreak: 'keep-all' }) : null,
     s.image ? h('div', { display: 'flex', marginTop: 36, width: '100%', height: 720, borderRadius: 0, overflow: 'hidden', backgroundColor: GRAY, border: `2px solid ${BLACK}` }, [slideImage(s.image, { width: W - 160, height: 720, objectFit: 'contain' })]) : null,
     s.source ? mono(`출처 · ${s.source}`, { fontSize: 24, color: SUB, marginTop: 24 }) : null,
     footer(),
