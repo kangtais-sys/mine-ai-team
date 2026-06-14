@@ -244,7 +244,12 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
   · 신뢰: 전문성·증거. 과학 권위(500달톤·ppm·임상범위)·성분 메커니즘·실측 비교. "광고 같지 않은" 신뢰 톤.
   · 캐릭터: 재미·팬화. POV·상황극·밈·유머·공감. 가볍고 위트있게(정보는 한 스푼).
 
-감각적 정보성 캐러셀을 아래 JSON으로만 반환(코드블록 없이 순수 JSON). 슬라이드 총 4~6장 = 커버1 + 본문2~4 + 마무리1.
+감각적 정보성 캐러셀을 아래 JSON으로만 반환(코드블록 없이 순수 JSON). 슬라이드 총 7~8장 = 커버1 + 본문5~6 + 마무리1.
+
+⚠️ 본문 밀도(매우 중요 — 빈약 금지):
+- 각 본문은 "저장하고 싶은" 구체 정보로 채울 것: 실제 수치·성분/메커니즘·실전 적용 팁·전후 비교·오해vs사실. 뻔한 일반론 한 줄("수분이 중요해요" 류) 금지.
+- 정보가 진짜 유용해서 캡처해두고 싶은 밀도. 본문 5~6장을 서로 다른 각도(원인→메커니즘→실측수치→실전법→비교→체크리스트 등)로 전개.
+- 제품 클레임은 입증 범위 내, 근거 없는 수치·인원("N만명이 확인"·"전문가 N명") 단정 금지.
 
 ⚠️ 본문 이미지 원칙(매우 중요):
 - 본문은 무관한 인물 사진을 넣지 않는다. 정보성 본문은 "데이터 비주얼"(코드 렌더: 숫자/비교/스텝)을 우선한다.
@@ -258,7 +263,7 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
   "hashtags": "정확히 5개: #밀리밀리(필수, 맨 앞) + 관련 해시태그 4개. 공백 구분. ${lang}.",
   "slides": [
     ${coverGuide[coverType] || coverGuide.cover_textonly},
-    // 본문 2~4장: 각 본문에 num("01","02"...) 부여. visual 에 맞춰 type·필드 작성:
+    // 본문 5~6장(밀도 높게·서로 다른 visual 섞어): 각 본문에 num("01","02"...) 부여. visual 에 맞춰 type·필드 작성:
     //   visual:"data_stat"   → {"type":"body_stat","visual":"data_stat","num":"01","stat":"숫자/수치 문자열(예 984ppm·24h·4주)","statLabel":"숫자 라벨 한 줄","body":"한 줄 설명(**강조**)","circle":true/false}
     //   visual:"data_compare"→ {"type":"body_compare","visual":"data_compare","num":"02","headline":"소제목","emphasis":"headline 안 강조 단어 1개","compare":{"left":"항목A","leftVal":"값/표현","right":"항목B","rightVal":"값/표현"}}
     //   visual:"data_steps"  → {"type":"body_steps","visual":"data_steps","num":"03","headline":"소제목","emphasis":"headline 안 강조 단어 1개","steps":[{"n":"01","t":"한 줄(**강조**)"},{"n":"02","t":"한 줄"}]}
