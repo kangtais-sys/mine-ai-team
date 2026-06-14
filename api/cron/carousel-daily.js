@@ -250,6 +250,7 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
 - 본문은 무관한 인물 사진을 넣지 않는다. 정보성 본문은 "데이터 비주얼"(코드 렌더: 숫자/비교/스텝)을 우선한다.
 - 각 본문 슬라이드에 "visual" 필드를 반드시 지정: "data_stat" | "data_compare" | "data_steps" | "closeup" | "none".
 - 정보성 본문은 data_stat / data_compare / data_steps 를 우선(숫자·비교·스텝). 사진은 질감 설명이 꼭 필요할 때만 closeup.
+- ⚠️ 본문 변주(중요): 본문 슬라이드끼리 visual 을 **서로 다르게** 섞을 것(예: data_stat→data_steps→data_compare). 같은 visual 2장 연속·매 콘텐츠 똑같은 패턴 반복 금지. 이번 콘텐츠는 ${['data_stat 시작','data_compare 시작','data_steps 시작'][Math.abs(keyword.length) % 3]} 권장.
 - 본문 type 은 visual 에 따라 아래처럼 정한다(둘을 일치시킬 것):
 
 {
@@ -444,7 +445,7 @@ function normalizeHashtags(str, region) {
   return [brand, ...others].join(' ');
 }
 
-async function seedDraft(sb, { channel, region, platform, date, mediaUrls, caption, hashtags }) {
+async function seedDraft(sb, { channel, region, platform, date, mediaUrls, caption, hashtags, slides }) {
   hashtags = normalizeHashtags(hashtags, region); // 브랜드 필수 + 4개 = 5개 강제
   const { data: rows } = await sb.from('creator_drafts').select('id, data').limit(400);
   const existing = (rows || []).find(r => r.data && r.data.version === 'milli-v1' && r.data.channel === channel && r.data.date === date && (r.data.slotType || '') === SLOT);
@@ -452,6 +453,7 @@ async function seedDraft(sb, { channel, region, platform, date, mediaUrls, capti
     const d = existing.data;
     d.mediaUrls = mediaUrls; d.format = 'cardnews'; d.status = 'review';
     d.caption = caption; d.hashtags = hashtags; d.source = 'carousel-daily'; d.updatedAt = new Date().toISOString();
+    if (slides) d.slides = slides; // 재베이킹·수정 재생성용 슬라이드 원문 저장
     await sb.from('creator_drafts').update({ data: d }).eq('id', existing.id);
     return { channel, id: existing.id, action: 'updated' };
   }
@@ -459,6 +461,7 @@ async function seedDraft(sb, { channel, region, platform, date, mediaUrls, capti
   const draft = {
     id, version: 'milli-v1', channel, region, platform, date, slotType: SLOT,
     status: 'review', format: 'cardnews', caption, hashtags, mediaUrl: null, mediaUrls,
+    slides: slides || null, // 슬라이드 원문(커버 재베이킹·텍스트 수정 재생성용)
     source: 'carousel-daily', profileId: PROFILE[region],
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
@@ -539,12 +542,12 @@ export default async function handler(req, res) {
       const krMediaUrls = await bakeCards(krCopy.slides, 'kr', krDraftId, fonts);
       const usMediaUrls = await bakeCards(usCopy.slides, 'us', usDraftId, fonts);
       const byMarket = {
-        kr: { mediaUrls: krMediaUrls, caption: krCopy.caption || '', hashtags: krCopy.hashtags || '' },
-        us: { mediaUrls: usMediaUrls, caption: usCopy.caption || '', hashtags: usCopy.hashtags || '' },
+        kr: { mediaUrls: krMediaUrls, caption: krCopy.caption || '', hashtags: krCopy.hashtags || '', slides: krCopy.slides },
+        us: { mediaUrls: usMediaUrls, caption: usCopy.caption || '', hashtags: usCopy.hashtags || '', slides: usCopy.slides },
       };
       for (const ch of CHANNELS) {
         const mk = byMarket[ch.region];
-        const seeded = await seedDraft(sb, { channel: ch.key, region: ch.region, platform: ch.platform, date: today, mediaUrls: mk.mediaUrls, caption: mk.caption, hashtags: mk.hashtags });
+        const seeded = await seedDraft(sb, { channel: ch.key, region: ch.region, platform: ch.platform, date: today, mediaUrls: mk.mediaUrls, caption: mk.caption, hashtags: mk.hashtags, slides: mk.slides });
         results.push(seeded);
       }
     } catch (e) { results.push({ error: e.message }); }
