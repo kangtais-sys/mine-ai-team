@@ -80,6 +80,16 @@
 ## 규격
 - 1080×1350 (4:5). 슬라이드 4~7장. 첫장 강함, 마지막 CTA.
 
+## 렌더 보정 (✅ 2026-06-15 — 캐러셀 렌더 8개 수정)
+- **장수: 7~8장** = 커버1 + 본문5~6 + 마무리1(cta_editorial). 저장각 정보 밀도로 채움.
+- **한글 줄바꿈**: txt 헬퍼 기본 스타일에 `wordBreak:'keep-all'` 적용(한글 단어가 음절 단위로 안 쪼개짐, satori 지원). 헤드라인·라벨 등 전역.
+- **마크다운 `**` 노출 제거**: txt 가 호출하는 sx() 가 화살표 글리프와 함께 `**` 마커 제거(헤드라인/라벨). richText 는 sx 전체 적용 대신 원문에서 `**강조**` 먼저 파싱 후 세그먼트별 sx 적용 → 볼드 위계 유지(파싱이 깨지지 않게).
+- **후기 캡처 contain**: 후기는 `review`(+alias `reviewshot`) 타입에만. 이미지 `objectFit:'contain'`(세로 비율 잘림 금지). 후기 캡처를 cover/info(크롭=cover) 슬라이드에 넣지 말 것.
+- **커버 변주 4종 로테이션**(carousel-daily): cover_fullimage→split→number→textonly redis 카운터 로테이션(기존 유지).
+- **본문 도표 변주**: genSlides 프롬프트가 data_stat·data_compare·data_steps 를 섞고 텍스트 강조형(body_textonly)도 1장 섞도록 강화. **직전 본문과 다른 visual·같은 막대도표 2장 연속 금지**.
+- **클레임 가드**: 입증 혜택 범위(24h 보습·장벽·결 정돈) 밖 수치/효능 단정 금지(프롬프트 명시).
+- **slidesRaw 저장**: seedDraft 가 draft 에 `slidesRaw`(생성 slides JSON 사본) + `market`/`keyword`/`axis`/`coverType` 메타 저장 → 앱에서 재베이킹 가능. (mediaUrls·caption·hashtags·slides 기존 필드 유지에 추가.)
+
 ## 구현 TODO (render-card.js)
 1. 폰트 로더 Pretendard → Noto Sans KR(woff/otf).
 2. 슬라이드 타입 확장: cover(풀이미지/텍스트만) · body_short · body_long · cta. (현재 cover/info/review/cta → 매핑·추가.)
