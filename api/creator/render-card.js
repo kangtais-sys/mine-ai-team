@@ -61,6 +61,14 @@ const col = (style, children) => h('div', { display: 'flex', flexDirection: 'col
 // txt: 문자열은 sx()로 화살표·마크다운(**) 정화. wordBreak:'keep-all'로 한글 단어가 음절 단위로 안 쪼개짐(satori 지원).
 //   richText 는 직접 segment 를 만들어 txt 를 호출하므로 keep-all 동일 적용(단어 단위 wrap 유지).
 const txt = (s, style) => h('div', { display: 'flex', wordBreak: 'keep-all', ...style }, sx(s));
+// 한글 헤드라인 줄바꿈 안전 — satori는 keep-all을 CJK에 안 먹여 음절 중간('건조'→'건/조')에서 쪼갬.
+//   → 어절(공백) 단위 노드로 쪼개 flexWrap 컨테이너에 넣으면 '단어 통째로' 줄바꿈됨(richText/headlineWithEmphasis와 동일 방식).
+//   구 렌더러(renderCover/Info/Review/Cta)가 단일 문자열을 txt에 넘겨 깨지던 문제 해결.
+const headlineText = (s, { fontFamily = FONT, fontWeight = 700, fontSize, color = BLACK, lineHeight = 1.1, letterSpacing = -1, align = 'flex-start', marginTop } = {}) =>
+  h('div', { display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: align, ...(marginTop !== undefined ? { marginTop } : {}) },
+    String(s ?? '').split(/\s+/).filter(Boolean).map(w =>
+      txt(w, { fontFamily, fontWeight, fontSize, color, lineHeight, letterSpacing,
+        marginRight: Math.round(fontSize * 0.24), marginBottom: Math.round(fontSize * 0.12) })));
 
 // 블랙 필 라벨
 const pill = (s, inv = false) => h('div', {
@@ -145,7 +153,7 @@ function renderCover(s, market) {
     ]),
     // 헤드라인 지배(초대형) + 짧은 서브 1줄
     col({ marginTop: 64 }, [
-      s.headline ? txt(s.headline, { fontFamily: FONT, fontWeight: 700, fontSize: 100, color: BLACK, lineHeight: 1.04, letterSpacing: -3, wordBreak: 'keep-all' }) : null,
+      s.headline ? headlineText(s.headline, { fontSize: 100, lineHeight: 1.04, letterSpacing: -3 }) : null,
       s.body ? txt(s.body, { fontFamily: FONT, fontWeight: 300, fontSize: 36, color: SUB, marginTop: 30, wordBreak: 'keep-all' }) : null,
       // 아웃라인 박스 라벨 1개 (필❌)
       h('div', { display: 'flex', alignSelf: 'flex-start', marginTop: 44, border: `2px solid ${BLACK}`, borderRadius: 0, padding: '16px 24px' }, [mono(spec, { fontSize: 27 })]),
@@ -164,7 +172,7 @@ function renderInfo(s) {
   return frame([
     row({ justifyContent: 'space-between', alignItems: 'flex-start' }, [wordmark(), s.source ? mono(s.source, { fontSize: 22, color: SUB }) : null].filter(Boolean)),
     col({ marginTop: 48, flex: 1 }, [
-      s.headline ? txt(s.headline, { fontFamily: FONT, fontWeight: 700, fontSize: 68, color: BLACK, lineHeight: 1.1, letterSpacing: -1, wordBreak: 'keep-all' }) : null,
+      s.headline ? headlineText(s.headline, { fontSize: 68, lineHeight: 1.1, letterSpacing: -1 }) : null,
       h('div', { display: 'flex', width: 120, height: 8, backgroundColor: BLACK, marginTop: 28, marginBottom: 28 }, ''),
       s.body ? richText(s.body, { fontSize: 42, color: '#2A2A2A', lineHeight: 1.5 }) : null, // 리치텍스트(**강조**=볼드)
       (s.labels && s.labels.length) ? col({ marginTop: 36, gap: 16 }, s.labels.map(l => mono(`/ ${l}`, { fontSize: 30 }))) : null,
@@ -180,7 +188,7 @@ function renderInfo(s) {
 function renderReview(s, market) {
   return frame([
     row({ justifyContent: 'space-between', alignItems: 'flex-start' }, [wordmark(), marketBadge(market)]),
-    s.headline ? txt(s.headline, { fontFamily: FONT, fontWeight: 700, fontSize: 56, color: BLACK, lineHeight: 1.1, marginTop: 40, letterSpacing: -1, wordBreak: 'keep-all' }) : null,
+    s.headline ? headlineText(s.headline, { fontSize: 56, lineHeight: 1.1, letterSpacing: -1, marginTop: 40 }) : null,
     s.image ? h('div', { display: 'flex', marginTop: 36, width: '100%', height: 720, borderRadius: 0, overflow: 'hidden', backgroundColor: GRAY, border: `2px solid ${BLACK}` }, [slideImage(s.image, { width: W - 160, height: 720, objectFit: 'contain' })]) : null,
     s.source ? mono(`출처 · ${s.source}`, { fontSize: 24, color: SUB, marginTop: 24 }) : null,
     footer(),
@@ -192,7 +200,7 @@ function renderCta(s) {
   return frame([
     col({ flex: 1, justifyContent: 'center', alignItems: 'center' }, [
       h('div', { display: 'flex', transform: 'scale(2)', marginBottom: 60 }, [wordmark(WHITE)]),
-      s.headline ? txt(s.headline, { fontFamily: FONT, fontWeight: 700, fontSize: 64, color: WHITE, textAlign: 'center', lineHeight: 1.15, letterSpacing: -1 }) : null,
+      s.headline ? headlineText(s.headline, { fontSize: 64, color: WHITE, lineHeight: 1.15, letterSpacing: -1, align: 'center' }) : null,
       s.body ? h('div', { display: 'flex', marginTop: 24, maxWidth: 800 }, [richText(s.body, { fontSize: 36, color: '#D6D6D6', lineHeight: 1.4, justify: 'center' })]) : null,
       row({ marginTop: 48 }, [pill(`${s.cta || '최다판매구성 추천받기'}  →`, true)]), // 반전 필(흰 배경·검정 글씨)
     ].filter(Boolean)),
@@ -216,7 +224,7 @@ function headlineWithEmphasis(headline, { fontSize, color = BLACK, lineHeight = 
   const emph = (headline.emphasis || '').trim();
   const text = (headline.text || '').trim();
   if (!emph || !text.includes(emph)) {
-    return txt(text || headline, { fontFamily: FONT, fontWeight: 700, fontSize, color, lineHeight, letterSpacing });
+    return headlineText(text || headline, { fontSize, color, lineHeight, letterSpacing });
   }
   // emphasis 기준 분할(앞/강조/뒤) → 단어 흐름. 강조어만 circled.
   const idx = text.indexOf(emph);
