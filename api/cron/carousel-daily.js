@@ -248,14 +248,18 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
 
 ⚠️ 본문 밀도(매우 중요 — 빈약 금지):
 - 각 본문은 "저장하고 싶은" 구체 정보로 채울 것: 실제 수치·성분/메커니즘·실전 적용 팁·전후 비교·오해vs사실. 뻔한 일반론 한 줄("수분이 중요해요" 류) 금지.
-- 정보가 진짜 유용해서 캡처해두고 싶은 밀도. 본문 5~6장을 서로 다른 각도(원인→메커니즘→실측수치→실전법→비교→체크리스트 등)로 전개.
+- 정보가 진짜 유용해서 저장각(저장하고 두고두고 볼) 밀도. 본문 5~6장을 서로 다른 각도(원인·메커니즘·실측수치·실전법·비교·체크리스트 등)로 전개.
+- ⚠️ 근거 없는 수치·효능 단정 금지 — 입증 혜택 범위(24h 보습·장벽·결 정돈) 밖의 수치/효능을 단정하지 말 것(과장 방지).
 - 제품 클레임은 입증 범위 내, 근거 없는 수치·인원("N만명이 확인"·"전문가 N명") 단정 금지.
 
 ⚠️ 본문 이미지 원칙(매우 중요):
 - 본문은 무관한 인물 사진을 넣지 않는다. 정보성 본문은 "데이터 비주얼"(코드 렌더: 숫자/비교/스텝)을 우선한다.
-- 각 본문 슬라이드에 "visual" 필드를 반드시 지정: "data_stat" | "data_compare" | "data_steps" | "closeup" | "none".
-- 정보성 본문은 data_stat / data_compare / data_steps 를 우선(숫자·비교·스텝). 사진은 질감 설명이 꼭 필요할 때만 closeup.
-- ⚠️ 본문 변주(중요): 본문 슬라이드끼리 visual 을 **서로 다르게** 섞을 것(예: data_stat→data_steps→data_compare). 같은 visual 2장 연속·매 콘텐츠 똑같은 패턴 반복 금지. 이번 콘텐츠는 ${['data_stat 시작','data_compare 시작','data_steps 시작'][Math.abs(keyword.length) % 3]} 권장.
+- 각 본문 슬라이드에 "visual" 필드를 반드시 지정: "data_stat" | "data_donut" | "data_compare" | "data_steps" | "closeup" | "none".
+- 정보성 본문은 data_stat / data_donut / data_compare / data_steps 를 우선(숫자·링·비교·스텝). 사진은 질감 설명이 꼭 필요할 때만 closeup.
+- data_donut = 단일 퍼센트(예 72%·40%) 도넛 링. 퍼센트 강조 슬라이드는 data_stat 대신 data_donut 으로 변주(같은 큰숫자 반복 방지).
+- ⚠️ 본문 변주(매우 중요): 본문 슬라이드끼리 visual 을 **서로 다르게** 섞을 것. data_stat·data_compare·data_steps 를 모두 한 번씩은 쓰고, 텍스트 강조형(body_textonly=visual:none, 큰 문장 강조)도 1장 섞어 리듬을 줄 것(도표만 연속 금지).
+  · **직전 본문과 반드시 다른 visual**: 바로 앞 본문이 data_compare 면 다음은 data_compare 금지(stat·steps·none 중 다른 것). 같은 막대도표(data_compare) 2장 연속 절대 금지.
+  · 매 콘텐츠 똑같은 visual 순서 반복 금지. 이번 콘텐츠는 ${['data_stat 시작','data_compare 시작','data_steps 시작'][Math.abs(keyword.length) % 3]} 권장(이후는 위 규칙대로 섞어 전개).
 - 본문 type 은 visual 에 따라 아래처럼 정한다(둘을 일치시킬 것):
 
 {
@@ -265,6 +269,7 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
     ${coverGuide[coverType] || coverGuide.cover_textonly},
     // 본문 5~6장(밀도 높게·서로 다른 visual 섞어): 각 본문에 num("01","02"...) 부여. visual 에 맞춰 type·필드 작성:
     //   visual:"data_stat"   → {"type":"body_stat","visual":"data_stat","num":"01","stat":"숫자/수치 문자열(예 984ppm·24h·4주)","statLabel":"숫자 라벨 한 줄","body":"한 줄 설명(**강조**)","circle":true/false}
+    //   visual:"data_donut"  → {"type":"body_donut","visual":"data_donut","num":"02","stat":"단일 퍼센트(예 72%)","statLabel":"라벨 한 줄","body":"한 줄 설명(**강조**)"}
     //   visual:"data_compare"→ {"type":"body_compare","visual":"data_compare","num":"02","headline":"소제목","emphasis":"headline 안 강조 단어 1개","compare":{"left":"항목A","leftVal":"값/표현","right":"항목B","rightVal":"값/표현"}}
     //   visual:"data_steps"  → {"type":"body_steps","visual":"data_steps","num":"03","headline":"소제목","emphasis":"headline 안 강조 단어 1개","steps":[{"n":"01","t":"한 줄(**강조**)"},{"n":"02","t":"한 줄"}]}
     //   visual:"closeup"     → {"type":"body_closeup","visual":"closeup","num":"04","headline":"소제목","body":"설명(**강조**)","closeupSubject":"매크로 주제(예 '피부 질감 매크로'·'미스트 분사 입자'·'세럼 제형')"}
@@ -450,8 +455,10 @@ function normalizeHashtags(str, region) {
   return [brand, ...others].join(' ');
 }
 
-async function seedDraft(sb, { channel, region, platform, date, mediaUrls, caption, hashtags, slides }) {
+async function seedDraft(sb, { channel, region, platform, date, mediaUrls, caption, hashtags, slides, market, keyword, axis, coverType }) {
   hashtags = normalizeHashtags(hashtags, region); // 브랜드 필수 + 4개 = 5개 강제
+  // 재베이킹 메타(앱에서 슬라이드 원문으로 카드 다시 굽기) — slidesRaw=생성된 slides JSON + 생성 컨텍스트.
+  const slidesRaw = slides ? JSON.parse(JSON.stringify(slides)) : null;
   const { data: rows } = await sb.from('creator_drafts').select('id, data').limit(400);
   const existing = (rows || []).find(r => r.data && r.data.version === 'milli-v1' && r.data.channel === channel && r.data.date === date && (r.data.slotType || '') === SLOT);
   if (existing) {
@@ -459,6 +466,11 @@ async function seedDraft(sb, { channel, region, platform, date, mediaUrls, capti
     d.mediaUrls = mediaUrls; d.format = 'cardnews'; d.status = 'review';
     d.caption = caption; d.hashtags = hashtags; d.source = 'carousel-daily'; d.updatedAt = new Date().toISOString();
     if (slides) d.slides = slides; // 재베이킹·수정 재생성용 슬라이드 원문 저장
+    if (slidesRaw) d.slidesRaw = slidesRaw; // 앱 재베이킹용 슬라이드 원문 사본
+    if (market != null) d.market = market;
+    if (keyword != null) d.keyword = keyword;
+    if (axis != null) d.axis = axis;
+    if (coverType != null) d.coverType = coverType;
     await sb.from('creator_drafts').update({ data: d }).eq('id', existing.id);
     return { channel, id: existing.id, action: 'updated' };
   }
@@ -467,6 +479,8 @@ async function seedDraft(sb, { channel, region, platform, date, mediaUrls, capti
     id, version: 'milli-v1', channel, region, platform, date, slotType: SLOT,
     status: 'review', format: 'cardnews', caption, hashtags, mediaUrl: null, mediaUrls,
     slides: slides || null, // 슬라이드 원문(커버 재베이킹·텍스트 수정 재생성용)
+    slidesRaw, // 앱 재베이킹용 슬라이드 원문(생성 JSON 사본)
+    market: market ?? null, keyword: keyword ?? null, axis: axis ?? null, coverType: coverType ?? null, // 재베이킹 메타
     source: 'carousel-daily', profileId: PROFILE[region],
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
@@ -552,7 +566,11 @@ export default async function handler(req, res) {
       };
       for (const ch of CHANNELS) {
         const mk = byMarket[ch.region];
-        const seeded = await seedDraft(sb, { channel: ch.key, region: ch.region, platform: ch.platform, date: today, mediaUrls: mk.mediaUrls, caption: mk.caption, hashtags: mk.hashtags, slides: mk.slides });
+        const seeded = await seedDraft(sb, {
+          channel: ch.key, region: ch.region, platform: ch.platform, date: today,
+          mediaUrls: mk.mediaUrls, caption: mk.caption, hashtags: mk.hashtags, slides: mk.slides,
+          market: ch.region, keyword, axis, coverType, // 재베이킹 메타(slidesRaw 와 함께 저장)
+        });
         results.push(seeded);
       }
     } catch (e) { results.push({ error: e.message }); }

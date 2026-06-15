@@ -51,14 +51,16 @@ export async function loadFonts() {
 const sx = (s) => (typeof s === 'string')
   ? s.replace(/[→➔➜➝➞➡➙⇒⇨⟶⟹⮕➝➔➜►▶▸]/g, '›')
      .replace(/[←↑↓↔↕⇐⇓⟵⬅⬆⬇]/g, '·')
-     .replace(/\*\*/g, '') // 헤드라인/라벨에 새어든 마크다운 볼드 마커 제거(richText 본문은 파싱 후라 영향 없음)
+     .replace(/\*\*/g, '') // 헤드라인/라벨에 새어든 마크다운 볼드 마커 제거. (richText 는 sx(str) 전체 적용 대신 ** 를 먼저 파싱 후 세그먼트별 sx 호출 → 볼드 위계 유지)
   : s;
 
 // ── 하이퍼스크립트 (satori VDOM) ──
 const h = (type, style, children) => ({ type, props: { style, ...(children !== undefined ? { children } : {}) } });
 const row = (style, children) => h('div', { display: 'flex', flexDirection: 'row', alignItems: 'center', ...style }, children);
 const col = (style, children) => h('div', { display: 'flex', flexDirection: 'column', ...style }, children);
-const txt = (s, style) => h('div', { display: 'flex', ...style }, sx(s));
+// txt: 문자열은 sx()로 화살표·마크다운(**) 정화. wordBreak:'keep-all'로 한글 단어가 음절 단위로 안 쪼개짐(satori 지원).
+//   richText 는 직접 segment 를 만들어 txt 를 호출하므로 keep-all 동일 적용(단어 단위 wrap 유지).
+const txt = (s, style) => h('div', { display: 'flex', wordBreak: 'keep-all', ...style }, sx(s));
 
 // 블랙 필 라벨
 const pill = (s, inv = false) => h('div', {
@@ -69,8 +71,10 @@ const pill = (s, inv = false) => h('div', {
 const mono = (s, style) => txt(s, { fontFamily: FONT, fontWeight: 500, fontSize: 26, color: BLACK, letterSpacing: 1, ...style });
 
 // 리치텍스트 — `**강조**`=볼드(700), 나머지=라이트(300). 단어 단위 flexWrap 으로 흐름.
+//   ⚠️ sx()는 **를 제거하므로 여기서 sx(str) 전체 적용 금지(볼드 파싱이 깨짐).
+//   → 원문(str)에서 ** 를 먼저 파싱한 뒤, 세그먼트 텍스트에만 sx 적용(화살표·notdef 글리프 방어. ** 는 이미 분리됨).
 function richText(str, { fontSize, color, lineHeight = 1.5, justify = 'flex-start' } = {}) {
-  str = sx(str);
+  str = String(str ?? '');
   const segs = []; const re = /\*\*(.+?)\*\*/g; let last = 0, m;
   while ((m = re.exec(str))) { if (m.index > last) segs.push({ t: str.slice(last, m.index), b: false }); segs.push({ t: m[1], b: true }); last = re.lastIndex; }
   if (last < str.length) segs.push({ t: str.slice(last), b: false });
@@ -171,6 +175,8 @@ function renderInfo(s) {
   ].filter(Boolean));
 }
 
+// 후기 캡처 슬라이드(review / reviewshot). ⚠️ 후기 이미지는 반드시 objectFit:'contain'(세로 비율 잘림 금지).
+//   후기 캡처를 cover/info 같은 cover-크롭 슬라이드에 넣지 말 것 — 후기는 이 타입에만.
 function renderReview(s, market) {
   return frame([
     row({ justifyContent: 'space-between', alignItems: 'flex-start' }, [wordmark(), marketBadge(market)]),
@@ -396,6 +402,40 @@ function renderBodyStat(s) {
   ].filter(Boolean));
 }
 
+// ── 도넛 링 SVG(퍼센트 게이지) — 트랙(쿨그레이) + 블랙 아크. 차트 변주용. ──
+function donutSvg(pct, { size = 480, stroke = 64, color = BLACK, track = '#E7E7E4' } = {}) {
+  const r = (size - stroke) / 2, c = size / 2, circ = 2 * Math.PI * r;
+  const arc = Math.max(0, Math.min(1, (Number(pct) || 0) / 100)) * circ;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}">`
+    + `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${track}" stroke-width="${stroke}"/>`
+    + `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${arc} ${circ - arc}" transform="rotate(-90 ${c} ${c})"/></svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+
+// ── 본문: 도넛 링(%) — 단일 퍼센트 강조. s.stat="72%" + statLabel + body. (막대/숫자와 다른 차트 변주) ──
+function renderBodyDonut(s) {
+  const head = hl(s);
+  const m = String(s.stat ?? s.donutValue ?? '').match(/[\d.]+/);
+  const pct = m ? parseFloat(m[0]) : 0;
+  const center = String(s.stat ?? `${pct}%`);
+  const size = 480;
+  return frame([
+    row({ alignItems: 'baseline' }, [
+      s.num ? txt(String(s.num), { fontFamily: FONT, fontWeight: 300, fontSize: 40, color: SUB, marginRight: 20, letterSpacing: 1 }) : null,
+      head.text ? txt(head.text, { fontFamily: FONT, fontWeight: 700, fontSize: 56, color: BLACK, lineHeight: 1.1, letterSpacing: -1 }) : null,
+    ].filter(Boolean)),
+    col({ flex: 1, justifyContent: 'center', alignItems: 'center' }, [
+      h('div', { display: 'flex', position: 'relative', width: size, height: size, alignItems: 'center', justifyContent: 'center' }, [
+        { type: 'img', props: { src: donutSvg(pct), style: { position: 'absolute', left: 0, top: 0, width: size, height: size } } },
+        txt(center, { fontFamily: FONT, fontWeight: 700, fontSize: 132, color: BLACK, letterSpacing: -4 }),
+      ]),
+      s.statLabel ? txt(String(s.statLabel), { fontFamily: FONT, fontWeight: 500, fontSize: 44, color: BLACK, marginTop: 32, letterSpacing: -1 }) : null,
+      s.body ? h('div', { display: 'flex', marginTop: 24, maxWidth: 820, justifyContent: 'center' }, [richText(s.body, { fontSize: 36, color: '#2A2A2A', lineHeight: 1.5, justify: 'center' })]) : null,
+    ].filter(Boolean)),
+    footer(),
+  ].filter(Boolean));
+}
+
 // ── 본문: 비교 — 좌(약·회색)/우(강·블랙) 막대 + 라벨. s.compare={left,leftVal,right,rightVal} ──
 function renderBodyCompare(s) {
   const head = hl(s);
@@ -508,6 +548,7 @@ export function renderSlide(s, market) {
     case 'cover': return renderCover(s, market);
     case 'info': return renderInfo(s);
     case 'review': return renderReview(s, market);
+    case 'reviewshot': return renderReview(s, market); // 후기 캡처 alias — review 와 동일 contain 렌더(세로 비율 잘림 금지)
     case 'cta': return renderCta(s);
     // 신규 디자인 포맷
     case 'cover_fullimage': return renderCoverFullimage(s);
@@ -520,6 +561,7 @@ export function renderSlide(s, market) {
     case 'body_fullimage': return renderBodyFullimage(s);
     // 데이터-비주얼 본문(정보성) + 매크로 클로즈업 본문
     case 'body_stat': return renderBodyStat(s);
+    case 'body_donut': return renderBodyDonut(s);
     case 'body_compare': return renderBodyCompare(s);
     case 'body_steps': return renderBodySteps(s);
     case 'body_closeup': return renderBodyCloseup(s);
