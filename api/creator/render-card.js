@@ -125,7 +125,7 @@ const wordmark = (color = BLACK) => row({ alignItems: 'flex-start' }, [
 
 const marketBadge = (market) =>
   market === 'us'
-    ? pill(['AMAZON  4.8', starIcon(28, WHITE), ' (27)']) // ★는 SVG 별 아이콘(흰색, 검정 pill 위)
+    ? pill(['AMAZON  4.8', starIcon(28, WHITE)]) // ★는 SVG 별 아이콘(흰색, 검정 pill 위)
     : pill('OLIVE YOUNG 1위');
 
 const footer = () => row({ justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }, [
