@@ -43,6 +43,13 @@ const BRAND_LOOK = [
 ];
 // 제품(미스트 히어로) — product-assets.md
 const PRODUCT_MIST = '4a56fcd8-478d-4860-b722-03934e6eaf3f';
+// 제품 라인업 — claims-substantiation.md / product-assets.md. 주제→제품→클레임→에셋 매핑(제품마다 입증 범위 내에서만).
+const PRODUCTS = {
+  mist:  { name: '밀리밀리 500달톤 단백질 미스트', nameEn: 'MILLIMILLI 500 Dalton Protein Mist', claim: '24시간 보습 + 팔자·눈가 주름·볼 꺼짐 개선(4주 인체적용시험)', claimEn: '24h hydration + nasolabial/eye-area wrinkle & volume-loss improvement (4-week clinical)', media: PRODUCT_MIST },
+  ample: { name: '밀리밀리 앰플', nameEn: 'MILLIMILLI Ample', claim: '피부 리프팅 + 모공 부위 탄력 개선(4주 인체적용시험)', claimEn: 'skin lifting + pore-area firmness improvement (4-week clinical)', media: 'bb221889-17b5-4866-a0f2-0070247c6623' },
+  vita:  { name: '밀리밀리 비타미스트', nameEn: 'MILLIMILLI Vita Mist', claim: '윤기 + 톤·색소침착 개선(미백)', claimEn: 'radiance + tone & pigmentation (brightening) improvement', media: 'a6e71e46-d815-482d-ab07-dfdf2dcb56ab' },
+  cica:  { name: '밀리밀리 시카미스트', nameEn: 'MILLIMILLI Cica Mist', claim: '진정(붉은기) + 피부 장벽·자극 개선(4주)', claimEn: 'soothing (redness) + barrier & irritation improvement (4-week)', media: '68a0a7c2-71b1-4ea6-84d6-99137fa17577' },
+};
 // 인물(레퍼 얼굴) — 레퍼 무드에 강의존(strength 0.9). 프롬프트는 가볍게(셀카 감성만) — 과한 묘사는 레퍼를 덮으니 금지.
 //   포즈 강제 X. 주제는 카드 텍스트가 전달하고, 사진은 레퍼 셀카 무드를 그대로 가져온다(주제 부위는 가볍게 노출만).
 const PERSON_PROMPT = 'candid selfie, phone-camera photo, intimate close-up, match the reference face and overall mood very closely (rednote/pinterest selfie aesthetic), photoreal dewy natural skin, real person everyday vibe, soft tone, 4:5 세로. no glossy studio, no model pose, no heavy retouch';
@@ -147,18 +154,18 @@ async function genDailyPhoto(keyword, draftId, idx, detail = '', full = false) {
 }
 
 // 매크로 클로즈업 1장(인물 아님 — 피부 질감/미스트 입자/세럼 제형). 단일 제품 레퍼 + strength 0.85.
-async function genCloseupPhoto(subject, draftId, idx) {
+async function genCloseupPhoto(subject, draftId, idx, productMedia = null) {
   const subj = (subject || '피부 질감 매크로').trim();
   const prompt = `${CLOSEUP_PROMPT}. 주제: ${subj}. NO face, no person, photoreal product/texture macro`;
-  const ref = PRODUCT_POOL ? sample(PRODUCT_POOL, 1) : [mediaUrl(PRODUCT_MIST)];
+  const ref = productMedia ? [mediaUrl(productMedia)] : (PRODUCT_POOL ? sample(PRODUCT_POOL, 1) : [mediaUrl(PRODUCT_MIST)]);
   return genHfPhoto({ refUrls: ref, prompt, strength: 0.85, blobPrefix: 'carousel-closeup', draftId, idx, tag: 'closeup' });
 }
 
-// 제품 샷 1장(일상 맥락 — 파우치/책상 등). 단일 제품 레퍼 + strength 0.85. 자연 실사.
-async function genProductPhoto(subject, keyword, draftId, idx) {
+// 제품 샷 1장(일상 맥락 — 파우치/책상 등). 매핑된 제품 레퍼(라벨 정확) + strength 0.85. 자연 실사.
+async function genProductPhoto(subject, keyword, draftId, idx, productMedia = null) {
   const subj = (subject || '').trim();
   const prompt = `${PRODUCT_PROMPT}. 콘텐츠 키워드 무드: ${keyword}${subj ? `. 주제: ${subj}` : ''}`;
-  const ref = PRODUCT_POOL ? sample(PRODUCT_POOL, 1) : [mediaUrl(PRODUCT_MIST)];
+  const ref = productMedia ? [mediaUrl(productMedia)] : (PRODUCT_POOL ? sample(PRODUCT_POOL, 1) : [mediaUrl(PRODUCT_MIST)]);
   return genHfPhoto({ refUrls: ref, prompt, strength: 0.85, blobPrefix: 'carousel-product', draftId, idx, tag: 'product' });
 }
 
@@ -185,16 +192,16 @@ const CHANNELS = [
   { key: 'us_tt', region: 'us', platform: 'tiktok' },
 ];
 
-// 키워드 풀(정보성 앵글 로테이션) — content-engine-system.md.
+// 주제→제품 풀 — 제품을 번갈아 인터리브(주제도 돌고 제품도 돈다). 각 주제는 그 제품의 입증 클레임 범위 안에서만.
+//   p: mist|ample|vita|cica (PRODUCTS). 컴플라이언스: 미간/목주름·다크서클·시술후기 등 미입증/효능단정은 제외.
 const KEYWORDS = [
-  '미스트', '글래스스킨', '콜라겐', '탄력', '글로잉뷰티',
-  '팔자주름', '눈가주름', '진정', '미백', '코리안스킨케어',
-  '속건조', '수분장벽', '환절기 피부', '모공', '베이스 들뜸',
-  '화장 무너짐', '단백질 스킨케어', '흡수율', '결 정돈', '칙칙함',
-  '여름 끈적임', '겨울 당김', '아침 스킨케어 루틴', '저녁 스킨케어 루틴', '올리브영 추천템',
-  '더마 케어', '미스트 사용법', '스킨케어 레이어링', '푸석함', '다크서클·눈가',
-  '500달톤', '시술후기', '볼패임', '미간주름', '목주름',
-  '바디탄력', '코리안메이크업', '글로우스킨', '코리안뷰티', '틱톡뷰티',
+  { kw: '속건조', p: 'mist' },          { kw: '콜라겐·탄력', p: 'ample' },   { kw: '미백·톤', p: 'vita' },        { kw: '진정·붉은기', p: 'cica' },
+  { kw: '푸석함', p: 'mist' },          { kw: '모공 탄력', p: 'ample' },     { kw: '칙칙함·색소', p: 'vita' },    { kw: '피부장벽 케어', p: 'cica' },
+  { kw: '수분장벽', p: 'mist' },        { kw: '피부 리프팅', p: 'ample' },   { kw: '윤기·광채', p: 'vita' },      { kw: '자극·트러블', p: 'cica' },
+  { kw: '환절기 건조', p: 'mist' },     { kw: '바디 탄력', p: 'ample' },     { kw: '글로우·물광', p: 'vita' },    { kw: '민감·붉은기', p: 'cica' },
+  { kw: '팔자·눈가 주름', p: 'mist' },  { kw: '모공·블랙헤드', p: 'ample' }, { kw: '여름 끈적임', p: 'mist' },    { kw: '겨울 당김', p: 'mist' },
+  { kw: '결 정돈·흡수', p: 'mist' },    { kw: '베이스 들뜸·화장 무너짐', p: 'mist' }, { kw: '미스트 사용법', p: 'mist' }, { kw: '스킨케어 레이어링', p: 'ample' },
+  { kw: '코리안 스킨케어 루틴', p: 'mist' }, { kw: '올리브영 추천템', p: 'vita' }, { kw: '아침 스킨케어 루틴', p: 'mist' }, { kw: '저녁 스킨케어 루틴', p: 'cica' },
 ];
 // 시리즈 아크(sns-strategy): 발견60/신뢰25/캐릭터15 — 20슬롯 인터리브 패턴으로 비중 근사 + 매번 다른 결.
 const SERIES_SEQ = ['발견','신뢰','발견','발견','캐릭터','발견','신뢰','발견','발견','캐릭터','발견','신뢰','발견','발견','발견','신뢰','발견','발견','캐릭터','신뢰'];
@@ -210,11 +217,11 @@ const INFO_DAYS = new Set([0, 1, 2, 3, 4, 5, 6]);
 // 시장별 슬라이드 카피 생성(궁금증갭+대세감, 제품 은근 1곳, 클레임 범위).
 //   신규 디자인 포맷 스키마: 커버 타입은 cover(로테이션 주입), 본문은 LLM이 내용량에 맞춰 선택,
 //   마무리는 cta_editorial 고정. emphasis 단어 1개로 두께 위계 표시.
-async function genSlides(market, keyword, coverType, axis = '발견', varietyHint = '') {
+async function genSlides(market, keyword, coverType, axis = '발견', varietyHint = '', product = PRODUCTS.mist) {
   const lang = market === 'kr' ? '한국어' : 'English';
   const heroLine = market === 'kr'
-    ? 'MILLIMILLI 500달톤 단백질 미스트 (입증 혜택 범위: 24h 보습·장벽·결 정돈. 그 외 과장 금지)'
-    : 'MILLIMILLI 500 Dalton Protein Mist (substantiated claims only: 24h hydration, barrier, texture. no exaggeration)';
+    ? `${product.name} (입증 혜택 범위: ${product.claim}. 이 범위 밖 효능·부위·수치 단정 금지)`
+    : `${product.nameEn} (substantiated claims only: ${product.claimEn}. no claims outside this range)`;
   const system = `당신은 밀리밀리(MILLIMILLI) 브랜드의 감각적 에디토리얼 뷰티 캐러셀 카피라이터입니다.
 출력 언어: ${lang}. 시장: ${market.toUpperCase()}.
 절대 규칙:
@@ -241,7 +248,7 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
 커버 슬라이드 타입(고정): ${coverType}${varietyHint ? `\n${varietyHint}` : ''}
 시리즈 결(axis): ${axis} — 이 결에 맞춰 톤·앵글을 잡을 것.
   · 발견: 신규 유입용. 트렌드·통념 깨기·"오늘의 발견"·궁금증 갭. 정보성 꿀팁 톤.
-  · 신뢰: 전문성·증거. 과학 권위(500달톤·ppm·임상범위)·성분 메커니즘·실측 비교. "광고 같지 않은" 신뢰 톤.
+  · 신뢰: 전문성·증거. 과학 권위(성분·메커니즘·4주 임상 입증 범위)·실측 비교. "광고 같지 않은" 신뢰 톤. (수치는 위 입증 범위 내에서만)
   · 캐릭터: 재미·팬화. POV·상황극·밈·유머·공감. 가볍고 위트있게(정보는 한 스푼).
 
 감각적 정보성 캐러셀을 아래 JSON으로만 반환(코드블록 없이 순수 JSON). 슬라이드 총 7~8장 = 커버1 + 본문5~6 + 마무리1.
@@ -400,7 +407,8 @@ Return JSON exactly:
 //   질감 본문(closeup/fullimage)=매크로 클로즈업. data_* 본문(stat/compare/steps)은 코드 렌더라 사진 생성 안 함.
 //   슬라이드당 1장·실패 폴백·병렬.
 const headTextOf = (s) => (typeof s.headline === 'object' && s.headline) ? (s.headline.text || '') : (s.headline || '');
-async function attachPhotos(slides, keyword, draftId, coverImageUrl = null) {
+async function attachPhotos(slides, keyword, draftId, coverImageUrl = null, product = PRODUCTS.mist) {
+  const pMedia = product && product.media;
   // 커버 이미지 수동 주입(MCP Marketing Studio 검증 컷) — 잼/만료 우회. 주입되면 커버 생성 스킵.
   if (coverImageUrl) {
     const cov = slides.find(s => COVER_PHOTO_TYPES.has(s.type));
@@ -412,13 +420,13 @@ async function attachPhotos(slides, keyword, draftId, coverImageUrl = null) {
       // 커버 소재 주제 적응(항상 인물 X). 기본 person.
       const subject = (s.photoSubject || 'person').trim();
       const hint = s.photoSubjectDetail || headTextOf(s) || keyword;
-      if (subject === 'product') return genProductPhoto(hint, keyword, draftId, i + 1).then(url => { if (url) s.image = url; });
-      if (subject === 'texture') return genCloseupPhoto(s.closeupSubject || hint, draftId, i + 1).then(url => { if (url) s.image = url; });
+      if (subject === 'product') return genProductPhoto(hint, keyword, draftId, i + 1, pMedia).then(url => { if (url) s.image = url; });
+      if (subject === 'texture') return genCloseupPhoto(s.closeupSubject || hint, draftId, i + 1, pMedia).then(url => { if (url) s.image = url; });
       if (subject === 'scene') return genScenePhoto(hint, keyword, draftId, i + 1).then(url => { if (url) s.image = url; });
       return genDailyPhoto(keyword, draftId, i + 1, hint, !!s.photoFull).then(url => { if (url) s.image = url; });
     }
     if (CLOSEUP_PHOTO_TYPES.has(s.type)) {
-      return genCloseupPhoto(s.closeupSubject || headTextOf(s) || keyword, draftId, i + 1).then(url => { if (url) s.image = url; });
+      return genCloseupPhoto(s.closeupSubject || headTextOf(s) || keyword, draftId, i + 1, pMedia).then(url => { if (url) s.image = url; });
     }
     return null;
   }).filter(Boolean);
@@ -514,7 +522,9 @@ export default async function handler(req, res) {
     const sb = getSupabase();
     // 키워드 로테이션 + 커버 레이아웃 로테이션
     const n = Number(await redis.get('creator:carousel:rotation').catch(() => 0)) || 0;
-    const keyword = KEYWORDS[n % KEYWORDS.length];
+    const kwObj = KEYWORDS[n % KEYWORDS.length];
+    const keyword = typeof kwObj === 'string' ? kwObj : kwObj.kw;       // 하위호환
+    const product = PRODUCTS[(kwObj && kwObj.p) || 'mist'] || PRODUCTS.mist; // 주제→제품
     const cn = Number(await redis.get('creator:carousel:cover-rotation').catch(() => 0)) || 0;
     const coverType = COVER_TYPES[cn % COVER_TYPES.length];
     const axis = SERIES_SEQ[n % SERIES_SEQ.length]; // 시리즈 결(발견/신뢰/캐릭터) 로테이션 — 안 지겨움+팬화
@@ -535,8 +545,8 @@ export default async function handler(req, res) {
     if (done && !force) return res.status(200).json({ ok: true, skip: 'already_done', today, keyword });
 
     if (dry) {
-      const kr = await genSlides('kr', keyword, coverType, axis, varietyHint).catch(e => ({ error: e.message }));
-      return res.status(200).json({ ok: true, dry: true, today, keyword, coverType, axis, sampleKR: kr });
+      const kr = await genSlides('kr', keyword, coverType, axis, varietyHint, product).catch(e => ({ error: e.message }));
+      return res.status(200).json({ ok: true, dry: true, today, keyword, product: product.name, coverType, axis, sampleKR: kr });
     }
 
     const fonts = await loadFonts();
@@ -547,10 +557,10 @@ export default async function handler(req, res) {
     //   4) bake: KR slides→KR 카드, US slides→US 카드 (둘 다 같은 image URL)
     //   5) seed: kr_ig·kr_tt=KR mediaUrls, us_ig·us_tt=US mediaUrls
     try {
-      const krCopy = await genSlides('kr', keyword, coverType, axis, varietyHint);
+      const krCopy = await genSlides('kr', keyword, coverType, axis, varietyHint, product);
       const photoDraftId = `shared_${today}_${Date.now().toString(36)}`;
-      // 사진 1세트 생성·주입(공유) — 이후 US 번역본도 동일 image URL 사용
-      await attachPhotos(krCopy.slides, keyword, photoDraftId, coverImageUrl);
+      // 사진 1세트 생성·주입(공유) — 제품컷은 매핑된 제품 에셋 사용. US 번역본도 동일 image URL 사용
+      await attachPhotos(krCopy.slides, keyword, photoDraftId, coverImageUrl, product);
       // US = KR 번역본(텍스트만). 실패 시 KR 카피로 폴백(영어 미적용이라도 발행은 유지).
       let usCopy;
       try { usCopy = await translateSlidesToEn(krCopy); }
