@@ -64,24 +64,66 @@ export async function renderOverlayPng({ circle_xy, captions = [] }) {
   return new Resvg(svg, { fitTo: { mode: 'width', value: W }, background: 'rgba(0,0,0,0)' }).render().asPng();
 }
 
-// footage + overlay PNG → 단일 ffmpeg overlay 합성
-export async function composeOverlay(footagePath, overlayPath, outPath, { mute }) {
+// 엔드카드 PNG (하이브리드 마지막 비트) — 진짜 제품 이미지(라벨 정확) + 스펙 1줄 + CTA.
+//   라벨은 실제 이미지라 100% 정확(AI 영상은 글자를 뭉갬 → 라벨은 여기에만). 블랙 배경 프리미엄.
+export async function renderEndcardPng({ endcardDataUri, endcard_text = '', endcard_sub = '' }) {
+  const fonts = await loadFonts();
+  const children = [
+    // 제품 이미지 (상단 ~62%, contain)
+    { type: 'div', props: { style: { display: 'flex', width: W, height: Math.round(H * 0.6), justifyContent: 'center', alignItems: 'center', marginTop: 120 },
+      children: endcardDataUri ? [{ type: 'img', props: { src: endcardDataUri, style: { width: 680, height: Math.round(H * 0.56), objectFit: 'contain' } } }] : [] } },
+    // 텍스트 블록 (하단)
+    { type: 'div', props: { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', width: W, marginTop: 24 }, children: [
+      endcard_text ? { type: 'div', props: { style: { display: 'flex', fontFamily: 'Pretendard', fontWeight: 900, fontSize: 76, color: '#FFFFFF', letterSpacing: -1, textAlign: 'center' }, children: endcard_text } } : null,
+      endcard_sub ? { type: 'div', props: { style: { display: 'flex', fontFamily: 'Pretendard', fontWeight: 600, fontSize: 42, color: '#C7C7C7', marginTop: 20, textAlign: 'center' }, children: endcard_sub } } : null,
+      { type: 'div', props: { style: { display: 'flex', fontFamily: 'Pretendard', fontWeight: 700, fontSize: 30, color: '#8A8A8A', marginTop: 40, letterSpacing: 1 }, children: 'milli²' } },
+      { type: 'div', props: { style: { display: 'flex', fontFamily: 'Pretendard', fontWeight: 400, fontSize: 22, color: '#6A6A6A', marginTop: 10 }, children: '*AI 연출 · 입증 범위 내' } },
+    ].filter(Boolean) } },
+  ];
+  const vdom = { type: 'div', props: { style: { width: W, height: H, display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: '#0A0A0A' }, children } };
+  const svg = await satori(vdom, { width: W, height: H, fonts });
+  return new Resvg(svg, { fitTo: { mode: 'width', value: W } }).render().asPng();
+}
+
+// footage + overlay PNG (+ 선택: 엔드카드) → ffmpeg 합성.
+//   endcardPath 있으면 모션클립 끝에 라벨정확 엔드카드를 endcardSec 만큼 concat(단일 재인코딩).
+//   주의: 비(非)mute 일 때 footage 에 오디오 스트림이 있다고 가정(seedance/kling sound:on 은 항상 있음).
+export async function composeOverlay(footagePath, overlayPath, outPath, { mute, endcardPath = null, endcardSec = 1.8 }) {
   const ffmpeg = (await import('fluent-ffmpeg')).default;
   const { path: ffmpegPath } = await import('@ffmpeg-installer/ffmpeg');
   ffmpeg.setFfmpegPath(ffmpegPath);
+  const SC = 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1';
   return new Promise((resolve, reject) => {
-    ffmpeg()
-      .input(footagePath)
-      .input(overlayPath)
-      .complexFilter('[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1[bg];[bg][1:v]overlay=0:0:format=auto[v]')
+    const cmd = ffmpeg().input(footagePath).input(overlayPath);
+    let filter, outOpts;
+    if (!endcardPath) {
+      // 기존: 단일 클립 오버레이
+      filter = `[0:v]${SC}[bg];[bg][1:v]overlay=0:0:format=auto[v]`;
+      outOpts = ['-map [v]', mute ? '-an' : '-map 0:a?'];
+    } else {
+      // 하이브리드: [모션+오버레이] + [엔드카드] concat
+      cmd.input(endcardPath).inputOptions(['-loop 1', `-t ${endcardSec}`]);
+      const vGraph =
+        `[0:v]${SC},fps=30[bg];[bg][1:v]overlay=0:0:format=auto[va];` +
+        `[2:v]${SC},fps=30,format=yuv420p[vb];[va][vb]concat=n=2:v=1:a=0[v]`;
+      if (mute) {
+        filter = vGraph;
+        outOpts = ['-map [v]', '-an'];
+      } else {
+        cmd.input('anullsrc=channel_layout=stereo:sample_rate=44100').inputOptions(['-f lavfi', `-t ${endcardSec}`]);
+        filter = vGraph + `;[0:a]aresample=44100[a0];[a0][3:a]concat=n=2:v=0:a=1[a]`;
+        outOpts = ['-map [v]', '-map [a]'];
+      }
+    }
+    cmd
+      .complexFilter(filter)
       .outputOptions([
-        '-map [v]',
-        mute ? '-an' : '-map 0:a?',
+        ...outOpts,
         '-c:v libx264', '-preset veryfast', '-crf 20', '-pix_fmt yuv420p',
         '-c:a aac', '-movflags +faststart', '-y',
       ])
       .output(outPath)
-      .on('start', c => console.log('[overlay-short] ffmpeg:', c.slice(0, 140)))
+      .on('start', c => console.log('[overlay-short] ffmpeg:', c.slice(0, 160)))
       .on('end', resolve)
       .on('error', e => reject(e))
       .run();
@@ -117,20 +159,35 @@ async function seedDraft(sb, { channel, date, mediaUrl, caption, hashtags, slotT
 }
 
 // 코어(엔드포인트·cron 공용): 오버레이 PNG → ffmpeg 합성 → (returnBuffer면 버퍼, 아니면 Blob+보드시드)
-export async function overlayShortCore({ footage_url, circle_xy, captions = [], channel, date, slotType = 'shorts', sound, caption, hashtags }, { returnBuffer = false } = {}) {
+export async function overlayShortCore({ footage_url, circle_xy, captions = [], channel, date, slotType = 'shorts', sound, caption, hashtags, endcard_url, endcard_text, endcard_sub }, { returnBuffer = false } = {}) {
   if (!footage_url) throw new Error('footage_url 필수');
   const sid = (channel || 'short') + '_' + Date.now().toString(36);
   const footagePath = `/tmp/${sid}_src.mp4`;
   const overlayPath = `/tmp/${sid}_ovl.png`;
+  const endcardPath = `/tmp/${sid}_ec.png`;
   const outPath = `/tmp/${sid}_out.mp4`;
-  const cleanup = async () => { for (const p of [footagePath, overlayPath, outPath]) await fs.unlink(p).catch(() => {}); };
+  const cleanup = async () => { for (const p of [footagePath, overlayPath, endcardPath, outPath]) await fs.unlink(p).catch(() => {}); };
   try {
     const png = await renderOverlayPng({ circle_xy, captions });
     await fs.writeFile(overlayPath, png);
+    // 엔드카드(라벨 정확) — endcard_url 있으면 제품 이미지를 data URI 로 받아 카드 렌더.
+    let useEndcard = false;
+    if (endcard_url) {
+      try {
+        const er = await fetch(endcard_url, { signal: AbortSignal.timeout(20000) });
+        if (er.ok) {
+          const ct = er.headers.get('content-type') || 'image/png';
+          const dataUri = `data:${ct};base64,${Buffer.from(await er.arrayBuffer()).toString('base64')}`;
+          const ecPng = await renderEndcardPng({ endcardDataUri: dataUri, endcard_text, endcard_sub });
+          await fs.writeFile(endcardPath, ecPng);
+          useEndcard = true;
+        }
+      } catch (e) { console.error('[overlay-short] endcard skip:', e.message); }
+    }
     const r = await fetch(footage_url, { signal: AbortSignal.timeout(25000) });
     if (!r.ok) throw new Error(`footage 다운로드 실패 ${r.status}`);
     await fs.writeFile(footagePath, Buffer.from(await r.arrayBuffer()));
-    await composeOverlay(footagePath, overlayPath, outPath, { mute: sound === 'mute' });
+    await composeOverlay(footagePath, overlayPath, outPath, { mute: sound === 'mute', endcardPath: useEndcard ? endcardPath : null });
     const buf = await fs.readFile(outPath);
     if (returnBuffer) { await cleanup(); return { buffer: buf }; }
     const blob = await put(`shorts/${channel || 'short'}-${date || 'x'}-${Date.now()}.mp4`, buf, { access: 'public', contentType: 'video/mp4', addRandomSuffix: true });

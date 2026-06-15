@@ -68,45 +68,118 @@ function ytId(url) { const m = String(url || '').match(/(?:youtu\.be\/|youtube\.
 // 스토리보드 프레임(시작1·중간2·끝3) + hqdefault → 씬 다중분석용
 function ytFrames(url) { const id = ytId(url); return id ? ['1', '2', '3', 'hqdefault'].map(f => `https://img.youtube.com/vi/${id}/${f}.jpg`) : []; }
 
-// shorts-format-library.md 폴백 포맷(로테이션). 컴플라이언스·KPI 내장.
+// shorts-format-library.md 바이럴 포맷 라이브러리(로테이션). 컴플라이언스·KPI 내장.
+//   ⚠️ #6 실후기는 실제 캡처 필요(가짜 후기 금지) → 자동 로테이션 제외, Cowork 실캡처 경로로 별도.
+//   엔드카드(라벨 정확)는 전 포맷 공통 표준 마지막 비트 → endcard/endcardEn.
+const DISC_KR = { text: 'AI 연출 · 임상 입증 범위 내', top: 1835, size: 26, color: '#D6D6D6' };
+const DISC_EN = { text: 'AI-generated · within clinical claims', top: 1835, size: 24, color: '#D6D6D6' };
+const EC_KR = { text: '500 DALTON 단백질 미스트', sub: '프로필 링크 · 1+1 24,900' };
+const EC_EN = { text: '500 Dalton Protein Mist', sub: 'link in bio · 1+1' };
 const FORMATS = [
-  {
+  { // #1 반전 토킹 — 궁금증 갭(최강)
+    key: 'talking',
+    imagePrompt: 'Ultra realistic vertical 9:16 UGC selfie, fresh modern Korean woman talking to camera in a cozy bright room, holding a frosted milky-white milli² protein mist loosely in one hand (NOT raised to camera), natural glass skin, authentic phone-camera feel. No text.',
+    klingPrompt: 'she talks to camera with a friendly expressive face as if revealing a surprising tip, then lightly spritzes a fine cool mist over her face at the end, dewy glow. curiosity-gap reveal pacing.',
+    productRefUrl: HERO_MIST_URL, circle_xy: null,
+    captions: [
+      { text: '미스트 뿌릴수록 더 당겨요?', top: 150, size: 56 },
+      { text: '순서를 거꾸로 쓴 거예요', top: 235, size: 50, color: '#FFE9A8' }, DISC_KR,
+    ],
+    captionsEn: [
+      { text: 'Mist making skin drier?', top: 150, size: 56 },
+      { text: "You're using it backwards", top: 235, size: 48, color: '#FFE9A8' }, DISC_EN,
+    ],
+    endcard: { ...EC_KR, sub: '댓글: 넌 세수 후 몇 초에 뿌려?' }, endcardEn: { ...EC_EN, sub: 'comment: when do you mist?' },
+  },
+  { // #2 팔자/속건조 Before·After — 만족 변신 + 시그니처 동그라미(오버레이)
     key: 'palja',
-    imagePrompt: 'Ultra realistic vertical 9:16 UGC beauty close-up, Korean woman cheek and smile-line area, holding a frosted milky-white milli² protein face mist bottle near her face, soft warm natural light, glass-skin dewy look, authentic phone-camera feel. Skin natural texture, no text.',
-    klingPrompt: 'she spritzes a fine cool mist on the smile-line area, the skin looks more hydrated, plumper and softer (moisture, not structural change), satisfying dewy glass-skin glow, gentle ASMR feel. curiosity-gap reveal pacing.',
-    productRefUrl: HERO_MIST_URL, // 진짜 제품(라벨 정확) — seedance 레퍼
-    circle_xy: { x: 560, y: 880, w: 380, h: 320 },
+    imagePrompt: 'Ultra realistic vertical 9:16 UGC beauty close-up, Korean woman cheek and smile-line area, a frosted milky-white milli² protein mist loosely in hand, soft warm natural light, glass-skin dewy look, authentic phone-camera feel. No text.',
+    klingPrompt: 'she spritzes a fine cool mist on the smile-line area, the skin looks more hydrated, plumper and softer (moisture, not structural change), satisfying dewy glass-skin glow, gentle ASMR. curiosity-gap reveal.',
+    productRefUrl: HERO_MIST_URL, circle_xy: { x: 560, y: 880, w: 380, h: 320 },
     captions: [
       { text: '팔자, 주름인 줄 알았죠?', top: 150, size: 60 },
-      { text: "사실 '건조'였어요", top: 240, size: 50, color: '#FFE9A8' },
-      { text: '1+1 · 24,900원', top: 1660, size: 56 },
-      { text: 'AI 연출 · 임상 입증 범위 내', top: 1835, size: 26, color: '#D6D6D6' },
+      { text: "사실 '건조'였어요", top: 240, size: 50, color: '#FFE9A8' }, DISC_KR,
     ],
     captionsEn: [
       { text: 'Smile lines? Think again.', top: 150, size: 58 },
-      { text: 'It was just dryness 💧', top: 240, size: 48, color: '#FFE9A8' },
-      { text: 'milli² protein mist', top: 1660, size: 52 },
-      { text: 'AI-generated · within clinical claims', top: 1835, size: 24, color: '#D6D6D6' },
+      { text: 'It was just dryness 💧', top: 240, size: 48, color: '#FFE9A8' }, DISC_EN,
     ],
+    endcard: { ...EC_KR, sub: '저장해두고 팔자 건조할 때' }, endcardEn: { ...EC_EN, sub: 'save for dry days' },
   },
-  {
+  { // #3 Split 동시대비 — 3초 즉시 대비
     key: 'split',
-    imagePrompt: 'Ultra realistic vertical 9:16 split-screen UGC skincare, left side dull dry cakey matte skin closeup, right side dewy glass-skin glow with a frosted milky-white milli² protein mist bottle, bright medical-clean light. No text.',
-    klingPrompt: 'left dull matte dry skin, right side a milli² mist spray and the skin blooms into dewy glass-skin water-glow, smooth satisfying before/after, ASMR. curiosity-gap + momentum feel.',
-    productRefUrl: HERO_MIST_URL, // 진짜 제품(라벨 정확) — seedance 레퍼
-    circle_xy: null,
+    imagePrompt: 'Ultra realistic vertical 9:16 split-screen UGC skincare, left side dull dry cakey matte skin closeup, right side dewy glass-skin glow with a frosted milky-white milli² protein mist, bright medical-clean light. No text.',
+    klingPrompt: 'left dull matte dry skin, right side a milli² mist spray and the skin blooms into dewy glass-skin water-glow, smooth satisfying before/after, ASMR. curiosity-gap + momentum.',
+    productRefUrl: HERO_MIST_URL, circle_xy: null,
     captions: [
-      { text: '세수 후 몇 초에 뿌려?', top: 150, size: 58 },
-      { text: 'one mist →', top: 235, size: 52, color: '#FFE9A8' },
-      { text: '1+1 · 24,900원', top: 1660, size: 56 },
-      { text: 'AI 연출 · 임상 입증 범위 내', top: 1835, size: 26, color: '#D6D6D6' },
+      { text: '왼쪽 나, 오른쪽 나', top: 150, size: 58 },
+      { text: '차이는 미스트 한 번', top: 235, size: 50, color: '#FFE9A8' }, DISC_KR,
     ],
     captionsEn: [
-      { text: 'How many seconds after cleansing?', top: 150, size: 50 },
-      { text: 'one mist →', top: 235, size: 52, color: '#FFE9A8' },
-      { text: 'milli² protein mist', top: 1660, size: 52 },
-      { text: 'AI-generated · within clinical claims', top: 1835, size: 24, color: '#D6D6D6' },
+      { text: 'Same face.', top: 150, size: 58 },
+      { text: 'One side got the mist', top: 235, size: 50, color: '#FFE9A8' }, DISC_EN,
     ],
+    endcard: { ...EC_KR, sub: '댓글: 세수 후 몇 초에 뿌려?' }, endcardEn: { ...EC_EN, sub: 'comment: when do you mist?' },
+  },
+  { // #4 ASMR 30초 결과(매크로) — retention + 만족
+    key: 'asmr',
+    imagePrompt: 'Extreme macro vertical 9:16 of fresh dewy skin texture and fine mist droplets, no face no person, soft natural light, photoreal, glass-skin glow. No text.',
+    klingPrompt: 'fine cool mist particles settle on skin and absorb into a dewy glass-skin glow, satisfying slow macro ASMR, result-first reveal.',
+    productRefUrl: HERO_MIST_URL, circle_xy: null,
+    captions: [
+      { text: '30초 만에 물광, 실화?', top: 150, size: 58 },
+      { text: '입자가 흡수되는 순간 🫧', top: 235, size: 48, color: '#FFE9A8' }, DISC_KR,
+    ],
+    captionsEn: [
+      { text: 'Glass skin in 30s — real?', top: 150, size: 54 },
+      { text: 'watch it absorb 🫧', top: 235, size: 48, color: '#FFE9A8' }, DISC_EN,
+    ],
+    endcard: { ...EC_KR, sub: '저장 · 30초 물광 루틴' }, endcardEn: { ...EC_EN, sub: 'save · 30s glow' },
+  },
+  { // #5 꿀팁 N(저장각) — 저장(최강)
+    key: 'tips',
+    imagePrompt: 'Ultra realistic vertical 9:16 UGC, Korean woman doing a quick skincare routine in a bright bathroom, a frosted milky-white milli² protein mist among the items, clean modern, authentic phone-camera feel. No text.',
+    klingPrompt: 'quick snappy cuts of three skincare steps, the last step a milli² mist spritz sealing a dewy glow, energetic save-worthy pacing.',
+    productRefUrl: HERO_MIST_URL, circle_xy: null,
+    captions: [
+      { text: '물광 24시간 가는 3가지', top: 150, size: 56 },
+      { text: '마지막이 진짜 핵심', top: 235, size: 50, color: '#FFE9A8' }, DISC_KR,
+    ],
+    captionsEn: [
+      { text: '3 ways to lock in glow', top: 150, size: 54 },
+      { text: '#3 is the one', top: 235, size: 50, color: '#FFE9A8' }, DISC_EN,
+    ],
+    endcard: { ...EC_KR, sub: '저장 필수 · 물광 24h' }, endcardEn: { ...EC_EN, sub: 'save this · 24h glow' },
+  },
+  { // #7 POV 상황극 — 공유(최강)
+    key: 'pov',
+    imagePrompt: 'Ultra realistic vertical 9:16 POV UGC, a young Korean woman with tired dehydrated skin after a long day in an air-conditioned office, a frosted milky-white milli² protein mist on the desk, relatable cozy. No text.',
+    klingPrompt: 'POV: skin looks tired and dry after hours in AC, she spritzes a milli² mist and the skin resets to a dewy fresh glow, relatable transformation.',
+    productRefUrl: HERO_MIST_URL, circle_xy: null,
+    captions: [
+      { text: '에어컨방 6시간 버틴', top: 150, size: 56 },
+      { text: '내 피부 POV', top: 235, size: 52, color: '#FFE9A8' }, DISC_KR,
+    ],
+    captionsEn: [
+      { text: 'POV: 6 hours in AC air', top: 150, size: 54 },
+      { text: 'my skin be like', top: 235, size: 50, color: '#FFE9A8' }, DISC_EN,
+    ],
+    endcard: { ...EC_KR, sub: '공유 · 에어컨방 동료 태그' }, endcardEn: { ...EC_EN, sub: 'tag your AC-office friend' },
+  },
+  { // #8 트렌드 편승 — 대세감 + 알고리즘 (트렌드는 분기 갱신)
+    key: 'trend',
+    imagePrompt: 'Ultra realistic vertical 9:16 trendy UGC skincare transition, modern Korean woman, a frosted milky-white milli² protein mist, dynamic on-trend look. No text.',
+    klingPrompt: 'a trendy quick transition: dull skin flips to glass-skin glow on a milli² mist spritz, momentum, on-trend pacing.',
+    productRefUrl: HERO_MIST_URL, circle_xy: null,
+    captions: [
+      { text: '요즘 다들 한다는', top: 150, size: 56 },
+      { text: '미스트 물광 전환 ✨', top: 235, size: 50, color: '#FFE9A8' }, DISC_KR,
+    ],
+    captionsEn: [
+      { text: 'everyone’s doing the', top: 150, size: 54 },
+      { text: 'mist glow transition ✨', top: 235, size: 50, color: '#FFE9A8' }, DISC_EN,
+    ],
+    endcard: { ...EC_KR, sub: '댓글로 알려줘' }, endcardEn: { ...EC_EN, sub: 'tell me in comments' },
   },
 ];
 
@@ -209,7 +282,8 @@ export default async function handler(req, res) {
         if (j.status === 'completed' && j.videoUrl) {
           if (dry) { results.pass2.push({ id: d.id, would: 'overlay+review' }); continue; }
           const m = d.shortsMeta || {};
-          const out = await overlayShortCore({ footage_url: j.videoUrl, circle_xy: m.circle_xy, captions: m.captions || [], channel: d.channel, date: d.date, slotType: 'shorts', caption: m.caption, hashtags: m.hashtags });
+          const out = await overlayShortCore({ footage_url: j.videoUrl, circle_xy: m.circle_xy, captions: m.captions || [], channel: d.channel, date: d.date, slotType: 'shorts', caption: m.caption, hashtags: m.hashtags,
+            endcard_url: m.endcard_url, endcard_text: m.endcard_text, endcard_sub: m.endcard_sub });
           results.pass2.push({ id: d.id, action: 'completed', mediaUrl: out.mediaUrl });
         } else if (j.status === 'failed') {
           if (!dry) { d.status = 'failed'; d.error = `${d.videoProvider || 'kling'} ${j.error}`; d.updatedAt = new Date().toISOString(); await sb.from('creator_drafts').update({ data: d }).eq('id', d.id); }
@@ -254,7 +328,11 @@ export default async function handler(req, res) {
           target.status = 'generating';
           if (useSeedance) {
             // 진짜 제품 이미지 → 인물이 그 제품 쓰는 9:16 사용장면(라벨 충실). 제품은 절대 텍스트로 그리지 않음.
-            const seedPrompt = `A young, fresh, modern Korean woman, photoreal skin with natural texture, soft natural daylight, authentic UGC handheld selfie feel. ${fmt.klingPrompt} She holds and uses THIS exact product shown in the reference image — keep the bottle shape, proportions and label exactly as the reference, label readable and unchanged. Vertical 9:16, no on-screen text, royalty-free/original audio only.`;
+            // 하이브리드: 모션 비트에선 병 클로즈업 금지(라벨은 엔드카드의 실제 이미지가 담당 → AI 글자 뭉갬 회피).
+            const personPrefix = fmt.key === 'asmr'
+              ? 'Photoreal extreme macro skincare footage, no face no person, soft natural daylight.'
+              : 'A young, fresh, modern Korean woman, photoreal skin with natural texture, soft natural daylight, authentic UGC handheld selfie feel.';
+            const seedPrompt = `${personPrefix} ${fmt.klingPrompt} The product (from the reference image) appears only loosely in hand and is NOT raised toward the camera — do not feature the bottle label up close. Vertical 9:16, no on-screen text, royalty-free/original audio only.`;
             target.videoReqId = await startSeedance(fmt.productRefUrl, seedPrompt);
             target.videoProvider = 'seedance';
             target.productRefUrl = fmt.productRefUrl;
@@ -266,7 +344,9 @@ export default async function handler(req, res) {
           // 발행 캡션·해시태그 자동 생성(리뷰레디) — 기존에 입력된 값 있으면 유지.
           let cap = target.caption || '', tags = target.hashtags || '';
           if (!cap) { const g = await genReelCaption(fmt, hook, target.region); cap = g.caption; if (!tags) tags = g.hashtags; }
-          target.shortsMeta = { circle_xy: fmt.circle_xy, captions, format: fmt.key, scene: sceneMeta, klingPrompt: fmt.klingPrompt, caption: cap, hashtags: tags };
+          const ec = (isUs && fmt.endcardEn) ? fmt.endcardEn : (fmt.endcard || {});
+          target.shortsMeta = { circle_xy: fmt.circle_xy, captions, format: fmt.key, scene: sceneMeta, klingPrompt: fmt.klingPrompt, caption: cap, hashtags: tags,
+            endcard_url: fmt.productRefUrl, endcard_text: ec.text || '', endcard_sub: ec.sub || '' };
           target.caption = cap; target.hashtags = tags;
           target.source = 'shorts-daily';
           target.updatedAt = new Date().toISOString();
