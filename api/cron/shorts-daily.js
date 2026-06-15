@@ -326,19 +326,26 @@ export default async function handler(req, res) {
         if (dry) { results.pass1.push({ id: target.id, would: useSeedance ? 'seedance(real-product)' : 'soul+kling', format: fmt.key, refUrl: !!target.refUrl }); }
         else {
           target.status = 'generating';
+          // 하이브리드: 모션 비트에선 병 클로즈업 금지(라벨은 엔드카드의 실제 이미지가 담당 → AI 글자 뭉갬 회피).
+          let started = false;
           if (useSeedance) {
-            // 진짜 제품 이미지 → 인물이 그 제품 쓰는 9:16 사용장면(라벨 충실). 제품은 절대 텍스트로 그리지 않음.
-            // 하이브리드: 모션 비트에선 병 클로즈업 금지(라벨은 엔드카드의 실제 이미지가 담당 → AI 글자 뭉갬 회피).
-            const personPrefix = fmt.key === 'asmr'
-              ? 'Photoreal extreme macro skincare footage, no face no person, soft natural daylight.'
-              : 'A young, fresh, modern Korean woman, photoreal skin with natural texture, soft natural daylight, authentic UGC handheld selfie feel.';
-            const seedPrompt = `${personPrefix} ${fmt.klingPrompt} The product (from the reference image) appears only loosely in hand and is NOT raised toward the camera — do not feature the bottle label up close. Vertical 9:16, no on-screen text, royalty-free/original audio only.`;
-            target.videoReqId = await startSeedance(fmt.productRefUrl, seedPrompt);
-            target.videoProvider = 'seedance';
-            target.productRefUrl = fmt.productRefUrl;
-          } else {
+            // seedance(진짜 제품 레퍼) 우선 시도. ⚠️ platform seedance REST 가 404 나면 kling 으로 폴백(검증된 경로).
+            try {
+              const personPrefix = fmt.key === 'asmr'
+                ? 'Photoreal extreme macro skincare footage, no face no person, soft natural daylight.'
+                : 'A young, fresh, modern Korean woman, photoreal skin with natural texture, soft natural daylight, authentic UGC handheld selfie feel.';
+              const seedPrompt = `${personPrefix} ${fmt.klingPrompt} The product (from the reference image) appears only loosely in hand and is NOT raised toward the camera — do not feature the bottle label up close. Vertical 9:16, no on-screen text, royalty-free/original audio only.`;
+              target.videoReqId = await startSeedance(fmt.productRefUrl, seedPrompt);
+              target.videoProvider = 'seedance';
+              target.productRefUrl = fmt.productRefUrl;
+              started = true;
+            } catch (e) { console.error('[shorts-daily] seedance 실패 → kling 폴백:', e.message); }
+          }
+          if (!started) {
+            // kling 폴백/기본: soul 시작이미지 → kling image2video. 제품 정확도는 엔드카드가 보장.
             const startImg = await genStartImage(fmt.imagePrompt);
             target.klingJobId = await startKling(startImg, fmt.klingPrompt);
+            target.videoProvider = 'kling';
             target.startImage = startImg;
           }
           // 발행 캡션·해시태그 자동 생성(리뷰레디) — 기존에 입력된 값 있으면 유지.
