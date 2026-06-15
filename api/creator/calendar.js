@@ -31,6 +31,19 @@ const PROFILE = {
   kr: envTrim('ZERNIO_MILLIMILLI_PROFILE_ID', '69d08cc1986d57bb8f733102'), // @millimilli.kr (IG+TikTok)
   us: envTrim('ZERNIO_MILLIMILLI_US_PROFILE_ID', '69fbfd0692b3d8e85f86d882'), // @millimilli.us (Zernio 실측 — 발행 검증됨)
 };
+// ⚠️ Zernio 발행 platforms[].accountId = '소셜 계정(account) _id' (프로필 id 아님!).
+//   /v1/accounts 실측(2026-06-15): 프로필 id 를 보내면 "accounts do not belong to this user" 거부됨.
+//   region+platform 별 정확한 account _id 로 매핑.
+const ACCOUNTS = {
+  kr: {
+    instagram: envTrim('ZERNIO_MILLI_KR_IG_ACCOUNT_ID', '69fbfc1992b3d8e85f86d277'),
+    tiktok:    envTrim('ZERNIO_MILLI_KR_TT_ACCOUNT_ID', '69d08d11bf4d9161df546260'),
+  },
+  us: {
+    instagram: envTrim('ZERNIO_MILLI_US_IG_ACCOUNT_ID', '69fbfd0692b3d8e85f86d882'),
+    // millimilli.us TikTok 계정 없음 → Zernio 자동발행 불가(드라이브 수동발행 경로).
+  },
+};
 
 // 채널별 발행 라우팅 (§12 유저 확정 2026-06-09 + Zernio 연결 실측 2026-06-09):
 //  kr_ig/kr_tt → @millimilli.kr Zernio 자동
@@ -143,7 +156,13 @@ export async function publishDraftToZernio(draft, { dryRun = false } = {}) {
     draft.status = 'failed'; draft.error = `안전하지 않은 미디어 URL 차단: ${unsafe.url}`;
     return { ok: false, error: draft.error, code: 400 };
   }
-  const pid = (draft.profileId || PROFILE[draft.region] || PROFILE.kr || '').trim();
+  // accountId = region+platform 별 소셜 계정 _id (draft.accountId 명시값 우선). 프로필 id 폴백 금지(거부됨).
+  const pid = (draft.accountId || ACCOUNTS[draft.region]?.[draft.platform] || '').trim();
+  if (!pid) {
+    draft.status = 'failed';
+    draft.error = `Zernio 발행 계정 없음 (${draft.region}/${draft.platform}) — 수동 발행 대상이거나 계정 미연결`;
+    return { ok: false, error: draft.error, code: 400 };
+  }
   // Zernio /v1/posts (검증 2026-06-14): 본문=content(text 아님), platforms[].accountId=소셜 계정 ID 필수,
   //   publishNow:true 없으면 무조건 draft 로 저장됨(게시 안 됨).
   let body;
