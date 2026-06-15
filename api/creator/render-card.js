@@ -97,6 +97,14 @@ function roughEllipseSvg(w, h, color) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}"><path d="${p}" fill="none" stroke="${color}" stroke-width="${Math.max(4, w * .014)}" stroke-linecap="round"/></svg>`;
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
+// 별 아이콘(★) — Noto Sans KR 서브셋에 ★/☆/✦ 등 별 글리프가 없어 ⊠(notdef)로 깨짐(실측 확인).
+//   → SVG 5각별 이미지로 대체(폰트 무관, 항상 렌더). AMAZON 평점 배지 등에 사용.
+function starSvg(color = BLACK) {
+  const pts = '12,2 14.47,8.6 21.51,8.91 15.99,13.3 17.88,20.09 12,16.2 6.12,20.09 8.01,13.3 2.49,8.91 9.53,8.6';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polygon points="${pts}" fill="${color}"/></svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+const starIcon = (size = 26, color = BLACK) => ({ type: 'img', props: { src: starSvg(color), style: { width: size, height: size, marginLeft: 4, marginRight: 2 } } });
 // 텍스트 렌더 폭 추정(satori measure 불가) — 숫자/영문 ≈0.58em, 한글 등 ≈1.0em. 동그라미 크기 산정용.
 const estTextW = (str, fs) => [...String(str ?? '')].reduce((a, c) => a + fs * (/[0-9A-Za-z.,%$+\-:]/.test(c) ? 0.58 : 1.0), 0);
 // node 를 손그림 원으로 감쌈 (pad: 타원이 텍스트보다 얼마나 클지)
@@ -116,7 +124,9 @@ const wordmark = (color = BLACK) => row({ alignItems: 'flex-start' }, [
 ]);
 
 const marketBadge = (market) =>
-  pill(market === 'us' ? 'AMAZON  4.8★ (27)' : 'OLIVE YOUNG 1위');
+  market === 'us'
+    ? pill(['AMAZON  4.8', starIcon(28, WHITE), ' (27)']) // ★는 SVG 별 아이콘(흰색, 검정 pill 위)
+    : pill('OLIVE YOUNG 1위');
 
 const footer = () => row({ justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }, [
   mono('500 DALTON PROTEIN SERIES', { fontSize: 20, color: SUB }),
@@ -139,7 +149,14 @@ function slideImage(src, style) {
 // ── 슬라이드 타입별 ──
 // 미니멀 에디토리얼 리디자인 (첫 PIL 시안 기준): 실제 로고 + 모노 평점 + 헤드라인 지배 + 아웃라인 라벨 1개 + 작은 제품 액센트 + swipe
 function renderCover(s, market) {
-  const rating = market === 'us' ? '4.8★  AMAZON US' : 'OLIVE YOUNG 1위';
+  // 평점 노드 — US 는 ★를 SVG 별 아이콘으로(폰트 글리프 없음). KR 은 텍스트.
+  const ratingNode = market === 'us'
+    ? row({}, [
+        mono('4.8', { fontSize: 27, color: BLACK, letterSpacing: 1 }),
+        starIcon(26, BLACK),
+        mono('AMAZON US', { fontSize: 27, color: BLACK, letterSpacing: 1, marginLeft: 4 }),
+      ])
+    : mono('OLIVE YOUNG 1위', { fontSize: 27, color: BLACK, letterSpacing: 1 });
   const spec = (s.labels && s.labels.length) ? s.labels.join('   /   ') : (market === 'us' ? '500 DALTON   /   30+ PROTEIN' : '500 DALTON   /   단백질 29가지');
   return frame([
     // 상단: 실제 milli² 로고 + 모노 평점(필❌) + 얇은 구분선
@@ -147,7 +164,7 @@ function renderCover(s, market) {
       row({ justifyContent: 'space-between', alignItems: 'center' }, [
         logoImg(40),
         // 손그림 원 포인트(핵심 수치) — 평점에 거친 타원 오버레이
-        circled(mono(rating, { fontSize: 27, color: BLACK, letterSpacing: 1 }), 250, 34, { padX: 18, padY: 12 }),
+        circled(ratingNode, 250, 34, { padX: 18, padY: 12 }),
       ]),
       h('div', { display: 'flex', height: 1, backgroundColor: '#E3E3E3', marginTop: 20 }, ''),
     ]),
