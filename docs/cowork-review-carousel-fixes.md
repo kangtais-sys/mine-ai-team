@@ -3,12 +3,15 @@
 > 배경: 실후기 카루셀은 Cowork 샌드박스가 **render-card 로직을 복사한 로컬 스크립트**(예: render_monday_kr.mjs)로 렌더 → 로컬 PNG → 업로드. 앱 egress 차단이라 배포 render-card 를 못 부름. **그래서 앱(render-card.js)에 적용한 수정이 Cowork 로컬 스크립트엔 자동 반영 안 됨.** 아래를 Cowork 로컬 렌더 스크립트에 직접 반영하고 **06-15부터 다시 렌더**할 것.
 
 ## 1. 한글 줄바꿈 ('건조'→'건' 쪼개짐) 수정 — 필수
-`txt` 헬퍼(및 모든 헤드라인 div)에 `wordBreak: 'keep-all'` 추가:
+⚠️ **`wordBreak:'keep-all'`만으론 안 됨** — satori 렌더 엔진이 CJK에 keep-all을 안 먹여 음절 중간에서 쪼갬(검증됨). **단일 문자열 헤드라인을 어절(공백) 단위 노드로 쪼개 flexWrap 컨테이너에 흘려야** 단어 통째로 줄바꿈됨. (앱 render-card.js 에 `headlineText` 헬퍼로 반영 완료 — commit b933aba.)
 ```js
-const txt = (s, style) => h('div', { display: 'flex', wordBreak: 'keep-all', ...style },
-  typeof s === 'string' ? s.replace(/\*\*/g, '') : s);
+const headlineText = (s, { fontFamily = FONT, fontWeight = 700, fontSize, color = BLACK, lineHeight = 1.1, letterSpacing = -1, align = 'flex-start', marginTop } = {}) =>
+  h('div', { display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: align, ...(marginTop !== undefined ? { marginTop } : {}) },
+    String(s ?? '').split(/\s+/).filter(Boolean).map(w =>
+      txt(w, { fontFamily, fontWeight, fontSize, color, lineHeight, letterSpacing,
+        marginRight: Math.round(fontSize * 0.24), marginBottom: Math.round(fontSize * 0.12) })));
 ```
-→ 한글 단어가 줄 끝에서 중간이 잘리지 않음.
+→ 구 렌더러(renderCover/Info/Review/Cta)의 `txt(s.headline, …)` 5곳을 `headlineText(s.headline, …)`로 교체. 신규 포맷 렌더러는 이미 어절 분할이라 OK. (Cowork 로컬 복사본을 쓰면 거기에도 동일 적용.)
 
 ## 2. 마크다운 `**` 마커 노출 제거 — 필수
 헤드라인에 `**진짜**` 같은 볼드 마커가 글자로 그대로 나옴. 위 `txt` 의 `.replace(/\*\*/g,'')` 로 제거(본문 richText 는 파싱 후라 영향 없음). 헤드라인엔 `**` 쓰지 말 것.
