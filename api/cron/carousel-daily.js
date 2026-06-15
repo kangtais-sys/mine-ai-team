@@ -204,8 +204,9 @@ const kstToday = () => kstNow().toISOString().slice(0, 10);
 // 내일(D+1) KST 날짜·요일 — 콘텐츠는 하루 미리 만들어 보드에 올려둠(당일 아님).
 const kstTomorrow = () => new Date(Date.now() + 9 * 3600000 + 86400000).toISOString().slice(0, 10);
 const kstTomorrowDow = () => new Date(Date.now() + 9 * 3600000 + 86400000).getUTCDay();
-// 정보성 캐러셀 요일 = 목(4)·토(6)·일(0). (월·금=실후기[Cowork] / 수=프로모[wed-promo] / 화=정보성[Cowork monday-카루셀 이동] 제외)
-const INFO_DAYS = new Set([4, 6, 0]);
+// 정보성 캐러셀 요일 = 일·월·화·목·금·토 (6일). 수(3)만 제외 = wed-promo(프로모 캐러셀)가 담당 → 7일 모두 캐러셀.
+//   2026-06-15 개편: 실후기(review_hook)·릴스(shorts) 폐지 → 전 요일 캐러셀 통일.
+const INFO_DAYS = new Set([0, 1, 2, 4, 5, 6]);
 
 // 시장별 슬라이드 카피 생성(궁금증갭+대세감, 제품 은근 1곳, 클레임 범위).
 //   신규 디자인 포맷 스키마: 커버 타입은 cover(로테이션 주입), 본문은 LLM이 내용량에 맞춰 선택,

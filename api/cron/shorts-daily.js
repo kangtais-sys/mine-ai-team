@@ -60,7 +60,8 @@ const REEL_SEED_CHANNELS = [
   { key: 'us_ig', region: 'us', platform: 'instagram' },
   { key: 'us_tt', region: 'us', platform: 'tiktok' },
 ];
-const reelDay = (ds) => [2, 4].includes(new Date(ds + 'T12:00:00Z').getUTCDay()); // 화=2·목=4 (정오UTC+getUTCDay=달력요일, TZ독립)
+// ⚠️ 2026-06-15: 릴스 일시 중단 — 품질 재설계(Cowork)로 자동 시드/생성 OFF. 재개 시 [2,4](화·목) 복원.
+const reelDay = (ds) => false; // eslint-disable-line no-unused-vars
 const kstToday = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
 const dateNDaysAhead = (n) => new Date(Date.now() + 9 * 3600000 + n * 86400000).toISOString().slice(0, 10);
 const isShorts = (d) => d.slotType === 'shorts' || ['reel', 'shorts'].includes(d.format);
