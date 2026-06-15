@@ -93,6 +93,15 @@ export async function composeOverlay(footagePath, overlayPath, outPath, { mute, 
   const { path: ffmpegPath } = await import('@ffmpeg-installer/ffmpeg');
   ffmpeg.setFfmpegPath(ffmpegPath);
   const SC = 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1';
+  // footage 오디오 스트림 유무 판정 (seedance=유음 / kling=무음) — 엔드카드 합성 시 오디오 분기에 사용.
+  let hasAudio = false;
+  if (!mute && endcardPath) {
+    try {
+      const { spawnSync } = await import('child_process');
+      const probe = spawnSync(ffmpegPath, ['-hide_banner', '-i', footagePath], { encoding: 'utf8' });
+      hasAudio = /Stream #\d+:\d+.*: Audio:/.test(`${probe.stderr || ''}${probe.stdout || ''}`);
+    } catch { /* 판정 실패 → 무음 취급 */ }
+  }
   return new Promise((resolve, reject) => {
     const cmd = ffmpeg().input(footagePath).input(overlayPath);
     let filter, outOpts;
@@ -109,10 +118,16 @@ export async function composeOverlay(footagePath, overlayPath, outPath, { mute, 
       if (mute) {
         filter = vGraph;
         outOpts = ['-map [v]', '-an'];
-      } else {
+      } else if (hasAudio) {
+        // footage 유음(seedance) → footage 오디오 + 엔드카드 무음 concat
         cmd.input('anullsrc=channel_layout=stereo:sample_rate=44100').inputOptions(['-f lavfi', `-t ${endcardSec}`]);
         filter = vGraph + `;[0:a]aresample=44100[a0];[a0][3:a]concat=n=2:v=0:a=1[a]`;
         outOpts = ['-map [v]', '-map [a]'];
+      } else {
+        // footage 무음(kling) → 전체 무음 트랙 합성(-shortest 로 영상 길이에 맞춤). 발행 시 트렌딩 사운드 입힘.
+        cmd.input('anullsrc=channel_layout=stereo:sample_rate=44100').inputOptions(['-f lavfi']);
+        filter = vGraph;
+        outOpts = ['-map [v]', '-map 3:a', '-shortest'];
       }
     }
     cmd

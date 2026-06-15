@@ -358,7 +358,7 @@ export default async function handler(req, res) {
           target.source = 'shorts-daily';
           target.updatedAt = new Date().toISOString();
           await sb.from('creator_drafts').update({ data: target }).eq('id', target.id);
-          results.pass1.push({ id: target.id, action: 'started', format: fmt.key, provider: useSeedance ? 'seedance' : 'kling', jobId: target.videoReqId || target.klingJobId });
+          results.pass1.push({ id: target.id, action: 'started', format: fmt.key, provider: target.videoProvider, jobId: target.videoReqId || target.klingJobId });
         }
       } catch (e) { results.pass1.push({ id: target.id, error: e.message }); }
     }
