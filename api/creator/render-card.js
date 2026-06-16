@@ -544,29 +544,29 @@ function renderBodyInfo(s) {
   let points = Array.isArray(s.points) && s.points.length
     ? s.points
     : (s.body ? String(s.body).split('\n').map(l => l.trim()).filter(Boolean).map(t => ({ k: '', t })) : []);
-  points = points.slice(0, 4);
+  points = points.slice(0, 3); // 한 카드 넘침 방지(최대 3포인트)
   const n = points.length;
-  // 포인트 수에 따라 폰트 살짝 조절(많으면 약간 작게) — 한 카드 안에 안정적으로.
-  const kSize = n >= 4 ? 40 : 44;
-  const tSize = n >= 4 ? 35 : 38;
-  const gap = n >= 4 ? 30 : 40;
+  // 포인트 수에 따라 폰트·간격 조절 — 한 카드(1080×1350) 안에 안정적으로.
+  const kSize = n >= 3 ? 40 : 44;
+  const tSize = n >= 3 ? 35 : 38;
+  const gap = n >= 3 ? 30 : 40;
+  const hasTake = !!s.takeaway && n <= 3;
   const pointRow = (p, i) => row({ alignItems: 'flex-start', marginBottom: i === n - 1 ? 0 : gap }, [
-    checkIcon(n >= 4 ? 34 : 38, BLACK),
+    checkIcon(36, BLACK),
     col({ flex: 1 }, [
       p.k ? txt(p.k, { fontFamily: FONT, fontWeight: 700, fontSize: kSize, color: BLACK, lineHeight: 1.25, letterSpacing: -0.5, marginBottom: 6, wordBreak: 'keep-all' }) : null,
-      p.t ? h('div', { display: 'flex' }, [richText(String(p.t), { fontSize: tSize, color: '#3A3A3A', lineHeight: 1.5 })]) : null,
+      p.t ? h('div', { display: 'flex' }, [richText(String(p.t), { fontSize: tSize, color: '#3A3A3A', lineHeight: 1.45 })]) : null,
     ].filter(Boolean)),
   ]);
   return frame([
-    row({ alignItems: 'baseline' }, [
-      s.num ? txt(String(s.num), { fontFamily: FONT, fontWeight: 300, fontSize: 40, color: SUB, marginRight: 20, letterSpacing: 1 }) : null,
-      head.text ? (head.emphasis
-        ? headlineWithEmphasis(head, { fontSize: 54, color: BLACK, lineHeight: 1.14, letterSpacing: -1 })
-        : headlineText(head.text, { fontSize: 54, lineHeight: 1.14, letterSpacing: -1 })) : null,
-    ].filter(Boolean)),
-    h('div', { display: 'flex', width: 110, height: 6, backgroundColor: BLACK, marginTop: 24, marginBottom: 40 }, ''),
+    // num 은 헤드라인 위 별도 줄(겹침 방지)
+    s.num ? txt(String(s.num), { fontFamily: FONT, fontWeight: 300, fontSize: 34, color: SUB, letterSpacing: 1, marginBottom: 10 }) : null,
+    head.text ? (head.emphasis
+      ? headlineWithEmphasis(head, { fontSize: 50, color: BLACK, lineHeight: 1.14, letterSpacing: -1 })
+      : headlineText(head.text, { fontSize: 50, lineHeight: 1.14, letterSpacing: -1 })) : null,
+    h('div', { display: 'flex', width: 110, height: 6, backgroundColor: BLACK, marginTop: 22, marginBottom: 36 }, ''),
     col({ flex: 1, justifyContent: 'flex-start' }, points.map(pointRow)),
-    s.takeaway ? h('div', { display: 'flex', backgroundColor: '#F1F1EE', padding: '26px 30px', marginTop: 28 }, [richText(String(s.takeaway), { fontSize: 38, color: BLACK, lineHeight: 1.4 })]) : null,
+    hasTake ? h('div', { display: 'flex', backgroundColor: '#F1F1EE', padding: '24px 28px', marginTop: 20 }, [richText(String(s.takeaway), { fontSize: 36, color: BLACK, lineHeight: 1.4 })]) : null,
     footer(),
   ].filter(Boolean));
 }

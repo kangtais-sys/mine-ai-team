@@ -230,7 +230,7 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
 시리즈 결(axis): ${axis}
 본문 5장만 생성(커버·마무리 없음). 각 장 = body_info. 순수 JSON만(코드블록 없이):
 {"slides":[{"type":"body_info","num":"01","headline":"소제목(궁금증갭)","emphasis":"headline 안 강조어 1개(headline에 그대로 포함)","points":[{"k":"핵심 키워드(짧고 굵게)","t":"1~2문장 구체 설명, 핵심단어만 **강조**"}],"takeaway":"이 슬라이드 핵심 한 줄(선택)"} ... 5개]}
-규칙: points 장당 2~4개. t는 길고 유익하게(원인·메커니즘·실전팁·오해vs사실), 뻔한 일반론 한 줄 금지. 근거 없는 수치·효능 단정 금지(입증 범위 밖 금지, "N만명"류 금지). 제품은 5장 중 정확히 1곳 포인트에만. 화살표/특수기호/글머리기호 금지. ${lang} 맞춤법 정확(오타 금지).`;
+규칙: points 장당 2~3개(많아도 3개). t는 1~2문장 — 한 포인트 합쳐 최대 2줄(한국어 약 45자/영어 약 90자) 이내로 간결하고 유익하게(원인·메커니즘·실전팁). 길게 늘어진 한 문단 금지(카드 넘침 방지). 뻔한 일반론 금지. takeaway 는 약 20자 이내 짧게(선택). 근거 없는 수치·효능 단정 금지(입증 범위 밖 금지, "N만명"류 금지). 제품은 5장 중 정확히 1곳 포인트에만. 화살표/특수기호/글머리기호 금지. ${lang} 맞춤법 정확(오타 금지).`;
     const br = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 3000, system: bSys, messages: [{ role: 'user', content: bUsr }] });
     const bm = (br.content[0]?.text || '').match(/\{[\s\S]*\}/);
     if (!bm) throw new Error('bodyOnly 파싱 실패');
@@ -275,8 +275,8 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
 감각적 정보성 캐러셀을 아래 JSON으로만 반환(코드블록 없이 순수 JSON). 슬라이드 총 7~8장 = 커버1 + 본문5~6 + 마무리1.
 
 ⚠️ 본문 = 전부 동일 템플릿(body_info)으로 통일 — 도표·사진 혼합 금지(정신없음 방지). 진짜 정보성 + 가독성 최우선:
-- 본문 5~6장, 각 장 = body_info. 구조: 소제목(궁금증갭) + 체크리스트 포인트 2~4개.
-- 각 포인트 = {"k":"핵심 키워드(짧고 굵게)","t":"1~2문장 구체 설명(길고 유익하게)"}. t 는 원인·메커니즘·실측·실전팁·오해vs사실 등 "저장각" 정보로. 뻔한 일반론 한 줄 금지.
+- 본문 5~6장, 각 장 = body_info. 구조: 소제목(궁금증갭) + 체크리스트 포인트 2~3개(많아도 3개).
+- 각 포인트 = {"k":"핵심 키워드(짧고 굵게)","t":"1~2문장 구체 설명"}. t 는 한 포인트 합쳐 최대 2줄(한국어 약 45자) 이내로 간결+유익(원인·메커니즘·실전팁). 길게 늘어진 한 문단 금지(카드 넘침 방지). 뻔한 일반론 금지.
 - 가독성 규칙: t 안에서 핵심 단어만 **강조**(굵게). 한 포인트 1~2문장(한 문단 통째 금지). 줄바꿈은 포인트 단위로 자연히 나뉨.
 - "takeaway"(이 슬라이드 핵심 한 줄)는 선택 — 넣으면 하단 강조박스로 렌더됨.
 - ⚠️ 근거 없는 수치·효능 단정 금지(입증 범위 24h 보습·장벽·결 밖 금지). "N만명 확인"·"전문가 N명"류 금지.
@@ -289,7 +289,7 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
   "slides": [
     ${coverGuide[coverType] || coverGuide.cover_textonly},
     // 본문 5~6장 — 전부 아래 body_info 한 형식으로 통일. 각 본문 num("01","02"...) 부여:
-    //   {"type":"body_info","num":"01","headline":"소제목(궁금증갭)","emphasis":"headline 안 강조어 1개(선택)","points":[{"k":"핵심 키워드","t":"1~2문장 구체 설명(**핵심단어 강조**)"}, ...2~4개],"takeaway":"이 슬라이드 핵심 한 줄(선택)"}
+    //   {"type":"body_info","num":"01","headline":"소제목(궁금증갭)","emphasis":"headline 안 강조어 1개(선택)","points":[{"k":"핵심 키워드","t":"1~2문장 간결 설명(최대 2줄·약45자, **핵심단어 강조**)"}, ...2~3개],"takeaway":"핵심 한 줄(약20자, 선택)"}
     // 본문 중 정확히 1곳 포인트에만 ${heroLine} 를 해결책으로 은근히 녹임(광고 톤 금지).
     {"type":"cta_editorial","headline":"마무리 한 줄(저장 유도)","emphasis":"headline 안 강조 단어 1개","body":"한 줄 마무리(선택)","comment":"댓글 가르는 질문(짧게)","share":"공유 트리거(예: ~한 친구에게)"}
   ]
