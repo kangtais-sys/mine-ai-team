@@ -9,7 +9,7 @@ import { getSupabase } from '../../lib/supabase.js';
 export const config = { maxDuration: 120 };
 
 const anthropic = new Anthropic();
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = 'claude-sonnet-4-6';
 
 const TAG_SCHEMA_PROMPT = `이미지를 K-뷰티 숏폼 콘텐츠 자산 관점에서 분석해서 JSON으로만 응답해.
 스키마:

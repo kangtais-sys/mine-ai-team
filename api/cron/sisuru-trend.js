@@ -16,7 +16,7 @@ export default async function handler(req, res) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514', max_tokens: 2000, temperature: 1.0,
+        model: 'claude-sonnet-4-6', max_tokens: 2000, temperature: 1.0,
         messages: [{ role: 'user', content: `오늘(${today}) 인스타그램 카드뉴스 주제 5개.
 
 채널: 시수르더쿠 — 1년에 1억 쓰는 시술/화장품 중독자의 솔직 후기

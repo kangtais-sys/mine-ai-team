@@ -113,7 +113,7 @@ JSON으로 응답:
   try {
     console.log(`[Research] 웹 리서치 시작: "${title}"`);
     const data = await callClaude({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2000,
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }],
       messages: [{ role: 'user', content: prompt }],
@@ -172,7 +172,7 @@ async function planSlides(topic, researchData, retryFeedback) {
     : '';
 
   const d = await callClaude({
-    model: 'claude-sonnet-4-20250514', max_tokens: 8000, temperature: 0.9,
+    model: 'claude-sonnet-4-6', max_tokens: 8000, temperature: 0.9,
     messages: [{ role: 'user', content: `시수르더쿠 7장 카드뉴스. 주제: "${topic.title}"
 ${retryNote}
 

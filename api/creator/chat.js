@@ -296,7 +296,7 @@ async function executeTool(name, input) {
       : `주제: "${input.topic}"\n계정: @${input.account}\n플랫폼: ${input.platform}\n\n${platformInstructions[input.platform]}\n\n결과만 출력 (설명 없이).`;
 
     const r = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 512,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -358,7 +358,7 @@ export default async function handler(req, res) {
     // Agentic loop: max 5 tool rounds
     for (let i = 0; i < 5; i++) {
       const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 4096,
         system: SYSTEM,
         tools: TOOLS,

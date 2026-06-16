@@ -17,7 +17,7 @@ async function genReelCaption(fmt, hook, region = 'kr') {
   const us = region === 'us';
   try {
     const r = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514', max_tokens: 500,
+      model: 'claude-sonnet-4-6', max_tokens: 500,
       system: us
         ? 'Caption writer for MILLIMILLI 500 Dalton protein mist reels. English (US market). KPI = comments/saves/shares (no salesy tone). First line = curiosity-gap hook + info value + a comment-splitting question + save/share nudge. Mention product subtly once. Claims only within 24h hydration / barrier / texture range. Disclose AI-generated. No ad copy. Do NOT mix KR prices/numbers.'
         : 'MILLIMILLI(밀리밀리) 500달톤 단백질 미스트 릴스 캡션 작가. 한국어. KPI=댓글·저장·공유(판매 톤 금지). 궁금증 갭 훅 첫 줄 + 정보가치 + 댓글 가르는 질문 + 저장/공유 유도. 제품 은근 1곳. 클레임은 24h보습·장벽·결정돈 범위 내. AI 연출 명시. 광고 문구 금지.',

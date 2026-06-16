@@ -36,7 +36,7 @@ export default async function handler(req, res) {
 
     // Step 2: Claude 캡션 생성
     const captionRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 300,
       system: MILLI_PERSONA,
       messages: [{ role: 'user', content: `"${topic}" 주제로 인스타그램 포스트 캡션을 작성해주세요.` }],

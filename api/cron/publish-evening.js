@@ -21,7 +21,7 @@ export default async function handler(req, res) {
 
   try {
     const captionRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 300,
       system: `당신은 밀리밀리 브랜드 콘텐츠 담당자입니다. 500달톤 초저분자 단백질 화장품 전문가.
 저녁 스킨케어 루틴 포스트를 작성하세요.

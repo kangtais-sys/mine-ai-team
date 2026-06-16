@@ -111,7 +111,7 @@ export default async function handler(req, res) {
 
     // Generate AI response
     const aiResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       system: CS_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
@@ -131,7 +131,7 @@ export default async function handler(req, res) {
     let action = '상담완료';
     try {
       const summaryRes = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 200,
         messages: [{ role: 'user', content: `다음 상담 내용을 한 줄로 요약하고, 마무리액션을 정해주세요.\n고객: ${userMessage}\n상담원: ${reply}\nJSON으로 응답: {"summary": "...", "action": "상담완료|재상담안내|적립금지급|교환처리|환불처리|기타"}` }],
       });

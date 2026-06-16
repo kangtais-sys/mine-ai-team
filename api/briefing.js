@@ -12,7 +12,7 @@ export default async function handler(req, res) {
     const chiefAgent = agents.find(a => a.id === 'chief');
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: chiefAgent.systemPrompt,
       messages: [{

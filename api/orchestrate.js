@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     const chiefAgent = agents.find(a => a.id === 'chief');
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2048,
       system: `${chiefAgent.systemPrompt}\n\n추가 지시: 사용자의 요청을 분석하여 어떤 에이전트에게 위임해야 하는지 JSON으로 응답하세요.
 응답 형식: { "delegations": [{ "agentId": "creator", "task": "인스타 릴스 기획" }], "summary": "전체 요약" }

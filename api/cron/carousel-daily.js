@@ -293,7 +293,7 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
 - 카드 텍스트에 화살표/특수기호(→ ⟶ ⇒ ▶ 등) 절대 쓰지 말 것. 흐름·전환은 우리말 단어로(예: '촉촉했다가 건조', 'A는 B로'). 글머리 기호도 금지.`;
 
   const r = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     max_tokens: 1800,
     system,
     messages: [{ role: 'user', content: user }],
@@ -357,7 +357,7 @@ ${JSON.stringify(payload)}
 Return JSON exactly:
 {"caption":"EN caption (diary/casual, hook + info + comment-splitting question + save/share trigger, with emoji, <200 chars)","hashtags":"EXACTLY 5: #millimilli (mandatory, first) + 4 related tags, space-separated","slides":[ same length as input, each with only the text fields that were present, translated ]}`;
   const r = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     max_tokens: 1800,
     system,
     messages: [{ role: 'user', content: user }],

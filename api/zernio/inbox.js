@@ -113,7 +113,7 @@ ${purchaseGuide}${learnedText}${rulesText}`;
 async function generateReply(account, text, extraRules, learned) {
   const systemPrompt = buildPrompt(account, text, extraRules, learned);
   const res = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     max_tokens: 150,
     system: systemPrompt,
     messages: [{ role: 'user', content: `댓글: "${text}"` }],

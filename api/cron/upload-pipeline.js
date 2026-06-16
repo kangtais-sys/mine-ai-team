@@ -165,7 +165,7 @@ JSON만 응답:
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 1024,
         messages: [{
           role: 'user',
@@ -194,7 +194,7 @@ JSON만 응답:
 // Fallback: 파일명 기반 캡션 생성
 async function generateContentFallback(fileName, platform) {
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     messages: [{ role: 'user', content: platform === 'tiktok'
       ? `파일명 "${fileName}" 기반 틱톡 캡션. JSON: {"caption":"...","hashtags":["#밀리밀리","#kbeauty",...]}`

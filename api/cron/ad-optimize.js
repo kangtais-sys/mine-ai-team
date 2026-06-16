@@ -49,7 +49,7 @@ export default async function handler(req, res) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
           body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
+            model: 'claude-sonnet-4-6',
             max_tokens: 300,
             messages: [{ role: 'user', content: `아래 Meta 광고 캠페인들의 ROAS가 2.0 미만입니다. 각 캠페인에 대해 1줄씩 개선 제안을 해주세요.\n\n${lowRoas.map(c => `${c.account} > ${c.campaign}: 광고비 ${c.spend}원, ROAS ${c.roas}`).join('\n')}` }],
           }),

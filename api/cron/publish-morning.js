@@ -23,7 +23,7 @@ export default async function handler(req, res) {
   try {
     // === 밀리밀리 트랙B: AI 콘텐츠 생성 + 발행 ===
     const captionRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 300,
       system: `당신은 MILLIMILLI 밀리밀리 K뷰티 브랜드의 인스타그램 담당자입니다. 500달톤 프로틴 스킨케어 브랜드.
 톤: 친근한 언니, 전문적이면서 쉽게. 이모지 2-3개.

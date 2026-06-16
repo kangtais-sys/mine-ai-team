@@ -256,7 +256,7 @@ async function handleV3BeforeAfter(req, res) {
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 5500,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
@@ -379,7 +379,7 @@ JSON 객체 1개만 출력 (배열·코드블록 금지):
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2200,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
@@ -644,7 +644,7 @@ ${pillarInfo.label}: ${pillarInfo.desc}
       : userPrompt;
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: isStoryboard ? 2500 : 1800,
       system: systemPrompt,
       messages: [{ role: 'user', content: userContent }],
