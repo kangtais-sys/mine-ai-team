@@ -231,7 +231,7 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
 본문 5장만 생성(커버·마무리 없음). 각 장 = body_info. 순수 JSON만(코드블록 없이):
 {"slides":[{"type":"body_info","num":"01","headline":"소제목(궁금증갭)","emphasis":"headline 안 강조어 1개(headline에 그대로 포함)","points":[{"k":"핵심 키워드(짧고 굵게)","t":"1~2문장 구체 설명, 핵심단어만 **강조**"}],"takeaway":"이 슬라이드 핵심 한 줄(선택)"} ... 5개]}
 규칙: points 장당 2~4개. t는 길고 유익하게(원인·메커니즘·실전팁·오해vs사실), 뻔한 일반론 한 줄 금지. 근거 없는 수치·효능 단정 금지(입증 범위 밖 금지, "N만명"류 금지). 제품은 5장 중 정확히 1곳 포인트에만. 화살표/특수기호/글머리기호 금지. ${lang} 맞춤법 정확(오타 금지).`;
-    const br = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 1800, system: bSys, messages: [{ role: 'user', content: bUsr }] });
+    const br = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 3000, system: bSys, messages: [{ role: 'user', content: bUsr }] });
     const bm = (br.content[0]?.text || '').match(/\{[\s\S]*\}/);
     if (!bm) throw new Error('bodyOnly 파싱 실패');
     const bp = JSON.parse(bm[0]);
@@ -303,7 +303,7 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
 
   const r = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1800,
+    max_tokens: 3000,
     system,
     messages: [{ role: 'user', content: user }],
   });
@@ -369,7 +369,7 @@ Return JSON exactly:
 {"caption":"EN caption (diary/casual, hook + info + comment-splitting question + save/share trigger, with emoji, <200 chars)","hashtags":"EXACTLY 5: #millimilli (mandatory, first) + 4 related tags, space-separated","slides":[ same length as input, each with only the text fields that were present, translated ]}`;
   const r = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1800,
+    max_tokens: 3000,
     system,
     messages: [{ role: 'user', content: user }],
   });
