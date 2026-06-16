@@ -116,6 +116,12 @@ function starSvg(color = BLACK) {
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
 const starIcon = (size = 26, color = BLACK) => ({ type: 'img', props: { src: starSvg(color), style: { width: size, height: size, marginLeft: 4, marginRight: 2 } } });
+// 체크 아이콘(✓) — 본문 체크리스트용. ✓ 글리프 서브셋 누락 방지로 SVG.
+function checkSvg(color = BLACK) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4.5 13 L9.5 18 L19.5 6" fill="none" stroke="${color}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+const checkIcon = (size = 38, color = BLACK) => ({ type: 'img', props: { src: checkSvg(color), style: { width: size, height: size, marginRight: 20, marginTop: 6 } } });
 // 텍스트 렌더 폭 추정(satori measure 불가) — 숫자/영문 ≈0.58em, 한글 등 ≈1.0em. 동그라미 크기 산정용.
 const estTextW = (str, fs) => [...String(str ?? '')].reduce((a, c) => a + fs * (/[0-9A-Za-z.,%$+\-:]/.test(c) ? 0.58 : 1.0), 0);
 // node 를 손그림 원으로 감쌈 (pad: 타원이 텍스트보다 얼마나 클지)
@@ -531,6 +537,40 @@ function renderBodySteps(s) {
   ].filter(Boolean));
 }
 
+// ── 본문 통일 템플릿(body_info): 소제목 + 체크리스트 포인트(키워드 굵게 + 설명) [+ 핵심 박스] ──
+//   정신없는 도표 혼합 대신 모든 본문을 이 한 형식으로. 가독성: 굵기 위계·줄바꿈(포인트 단위)·체크표시.
+function renderBodyInfo(s) {
+  const head = hl(s);
+  let points = Array.isArray(s.points) && s.points.length
+    ? s.points
+    : (s.body ? String(s.body).split('\n').map(l => l.trim()).filter(Boolean).map(t => ({ k: '', t })) : []);
+  points = points.slice(0, 4);
+  const n = points.length;
+  // 포인트 수에 따라 폰트 살짝 조절(많으면 약간 작게) — 한 카드 안에 안정적으로.
+  const kSize = n >= 4 ? 40 : 44;
+  const tSize = n >= 4 ? 35 : 38;
+  const gap = n >= 4 ? 30 : 40;
+  const pointRow = (p, i) => row({ alignItems: 'flex-start', marginBottom: i === n - 1 ? 0 : gap }, [
+    checkIcon(n >= 4 ? 34 : 38, BLACK),
+    col({ flex: 1 }, [
+      p.k ? txt(p.k, { fontFamily: FONT, fontWeight: 700, fontSize: kSize, color: BLACK, lineHeight: 1.25, letterSpacing: -0.5, marginBottom: 6, wordBreak: 'keep-all' }) : null,
+      p.t ? h('div', { display: 'flex' }, [richText(String(p.t), { fontSize: tSize, color: '#3A3A3A', lineHeight: 1.5 })]) : null,
+    ].filter(Boolean)),
+  ]);
+  return frame([
+    row({ alignItems: 'baseline' }, [
+      s.num ? txt(String(s.num), { fontFamily: FONT, fontWeight: 300, fontSize: 40, color: SUB, marginRight: 20, letterSpacing: 1 }) : null,
+      head.text ? (head.emphasis
+        ? headlineWithEmphasis(head, { fontSize: 54, color: BLACK, lineHeight: 1.14, letterSpacing: -1 })
+        : headlineText(head.text, { fontSize: 54, lineHeight: 1.14, letterSpacing: -1 })) : null,
+    ].filter(Boolean)),
+    h('div', { display: 'flex', width: 110, height: 6, backgroundColor: BLACK, marginTop: 24, marginBottom: 40 }, ''),
+    col({ flex: 1, justifyContent: 'flex-start' }, points.map(pointRow)),
+    s.takeaway ? h('div', { display: 'flex', backgroundColor: '#F1F1EE', padding: '26px 30px', marginTop: 28 }, [richText(String(s.takeaway), { fontSize: 38, color: BLACK, lineHeight: 1.4 })]) : null,
+    footer(),
+  ].filter(Boolean));
+}
+
 // ── 본문: 매크로 클로즈업 사진(인물 아님 — 질감·제형·입자) + 소제목 + 설명 ──
 function renderBodyCloseup(s) {
   const head = hl(s);
@@ -593,9 +633,10 @@ export function renderSlide(s, market) {
     case 'cover_number': return renderCoverNumber(s);
     case 'body_short': return renderBodyShort(s);
     case 'body_long': return renderBodyLong(s);
+    case 'body_info': return renderBodyInfo(s);   // ★ 통일 본문 템플릿(체크리스트)
     case 'body_textonly': return renderBodyTextonly(s);
     case 'body_fullimage': return renderBodyFullimage(s);
-    // 데이터-비주얼 본문(정보성) + 매크로 클로즈업 본문
+    // (레거시) 데이터-비주얼 본문 — 신규는 body_info 로 통일. 구 드래프트 하위호환용 유지.
     case 'body_stat': return renderBodyStat(s);
     case 'body_donut': return renderBodyDonut(s);
     case 'body_compare': return renderBodyCompare(s);

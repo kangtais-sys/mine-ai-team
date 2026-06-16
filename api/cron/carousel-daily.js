@@ -253,40 +253,28 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
 
 감각적 정보성 캐러셀을 아래 JSON으로만 반환(코드블록 없이 순수 JSON). 슬라이드 총 7~8장 = 커버1 + 본문5~6 + 마무리1.
 
-⚠️ 본문 밀도(매우 중요 — 빈약 금지):
-- 각 본문은 "저장하고 싶은" 구체 정보로 채울 것: 실제 수치·성분/메커니즘·실전 적용 팁·전후 비교·오해vs사실. 뻔한 일반론 한 줄("수분이 중요해요" 류) 금지.
-- 정보가 진짜 유용해서 저장각(저장하고 두고두고 볼) 밀도. 본문 5~6장을 서로 다른 각도(원인·메커니즘·실측수치·실전법·비교·체크리스트 등)로 전개.
-- ⚠️ 근거 없는 수치·효능 단정 금지 — 입증 혜택 범위(24h 보습·장벽·결 정돈) 밖의 수치/효능을 단정하지 말 것(과장 방지).
-- 제품 클레임은 입증 범위 내, 근거 없는 수치·인원("N만명이 확인"·"전문가 N명") 단정 금지.
-
-⚠️ 본문 이미지 원칙(매우 중요):
-- 본문은 무관한 인물 사진을 넣지 않는다. 정보성 본문은 "데이터 비주얼"(코드 렌더: 숫자/비교/스텝)을 우선한다.
-- 각 본문 슬라이드에 "visual" 필드를 반드시 지정: "data_stat" | "data_donut" | "data_compare" | "data_steps" | "closeup" | "none".
-- 정보성 본문은 data_stat / data_donut / data_compare / data_steps 를 우선(숫자·링·비교·스텝). 사진은 질감 설명이 꼭 필요할 때만 closeup.
-- data_donut = 단일 퍼센트(예 72%·40%) 도넛 링. 퍼센트 강조 슬라이드는 data_stat 대신 data_donut 으로 변주(같은 큰숫자 반복 방지).
-- ⚠️ 본문 변주(매우 중요): 본문 슬라이드끼리 visual 을 **서로 다르게** 섞을 것. data_stat·data_compare·data_steps 를 모두 한 번씩은 쓰고, 텍스트 강조형(body_textonly=visual:none, 큰 문장 강조)도 1장 섞어 리듬을 줄 것(도표만 연속 금지).
-  · **직전 본문과 반드시 다른 visual**: 바로 앞 본문이 data_compare 면 다음은 data_compare 금지(stat·steps·none 중 다른 것). 같은 막대도표(data_compare) 2장 연속 절대 금지.
-  · 매 콘텐츠 똑같은 visual 순서 반복 금지. 이번 콘텐츠는 ${['data_stat 시작','data_compare 시작','data_steps 시작'][Math.abs(keyword.length) % 3]} 권장(이후는 위 규칙대로 섞어 전개).
-- 본문 type 은 visual 에 따라 아래처럼 정한다(둘을 일치시킬 것):
+⚠️ 본문 = 전부 동일 템플릿(body_info)으로 통일 — 도표·사진 혼합 금지(정신없음 방지). 진짜 정보성 + 가독성 최우선:
+- 본문 5~6장, 각 장 = body_info. 구조: 소제목(궁금증갭) + 체크리스트 포인트 2~4개.
+- 각 포인트 = {"k":"핵심 키워드(짧고 굵게)","t":"1~2문장 구체 설명(길고 유익하게)"}. t 는 원인·메커니즘·실측·실전팁·오해vs사실 등 "저장각" 정보로. 뻔한 일반론 한 줄 금지.
+- 가독성 규칙: t 안에서 핵심 단어만 **강조**(굵게). 한 포인트 1~2문장(한 문단 통째 금지). 줄바꿈은 포인트 단위로 자연히 나뉨.
+- "takeaway"(이 슬라이드 핵심 한 줄)는 선택 — 넣으면 하단 강조박스로 렌더됨.
+- ⚠️ 근거 없는 수치·효능 단정 금지(입증 범위 24h 보습·장벽·결 밖 금지). "N만명 확인"·"전문가 N명"류 금지.
+- 제품은 본문 정확히 1곳 포인트에만 은근히 녹임(광고 톤 금지).
+- 본문 슬라이드 형식(아래 하나로 통일):
 
 {
   "caption": "인스타 캡션 ${lang}, 일기/구어체, 첫 줄 후킹 + 정보 + 댓글 가르는 질문 + 저장/공유 유도(이모지 포함, 200자 이내)",
   "hashtags": "정확히 5개: #밀리밀리(필수, 맨 앞) + 관련 해시태그 4개. 공백 구분. ${lang}.",
   "slides": [
     ${coverGuide[coverType] || coverGuide.cover_textonly},
-    // 본문 5~6장(밀도 높게·서로 다른 visual 섞어): 각 본문에 num("01","02"...) 부여. visual 에 맞춰 type·필드 작성:
-    //   visual:"data_stat"   → {"type":"body_stat","visual":"data_stat","num":"01","stat":"숫자/수치 문자열(예 984ppm·24h·4주)","statLabel":"숫자 라벨 한 줄","body":"한 줄 설명(**강조**)","circle":true/false}
-    //   visual:"data_donut"  → {"type":"body_donut","visual":"data_donut","num":"02","stat":"단일 퍼센트(예 72%)","statLabel":"라벨 한 줄","body":"한 줄 설명(**강조**)"}
-    //   visual:"data_compare"→ {"type":"body_compare","visual":"data_compare","num":"02","headline":"소제목","emphasis":"headline 안 강조 단어 1개","compare":{"left":"항목A","leftVal":"값/표현","right":"항목B","rightVal":"값/표현"}}
-    //   visual:"data_steps"  → {"type":"body_steps","visual":"data_steps","num":"03","headline":"소제목","emphasis":"headline 안 강조 단어 1개","steps":[{"n":"01","t":"한 줄(**강조**)"},{"n":"02","t":"한 줄"}]}
-    //   visual:"closeup"     → {"type":"body_closeup","visual":"closeup","num":"04","headline":"소제목","body":"설명(**강조**)","closeupSubject":"매크로 주제(예 '피부 질감 매크로'·'미스트 분사 입자'·'세럼 제형')"}
-    //   visual:"none"        → {"type":"body_textonly","visual":"none","num":"05","body":"설명만(**강조**)"}
-    // 본문 중 정확히 1곳에만 ${heroLine} 를 해결책으로 은근히 녹임(광고 톤 금지).
+    // 본문 5~6장 — 전부 아래 body_info 한 형식으로 통일. 각 본문 num("01","02"...) 부여:
+    //   {"type":"body_info","num":"01","headline":"소제목(궁금증갭)","emphasis":"headline 안 강조어 1개(선택)","points":[{"k":"핵심 키워드","t":"1~2문장 구체 설명(**핵심단어 강조**)"}, ...2~4개],"takeaway":"이 슬라이드 핵심 한 줄(선택)"}
+    // 본문 중 정확히 1곳 포인트에만 ${heroLine} 를 해결책으로 은근히 녹임(광고 톤 금지).
     {"type":"cta_editorial","headline":"마무리 한 줄(저장 유도)","emphasis":"headline 안 강조 단어 1개","body":"한 줄 마무리(선택)","comment":"댓글 가르는 질문(짧게)","share":"공유 트리거(예: ~한 친구에게)"}
   ]
 }
 주의:
-- 정보성 본문은 data_* 우선, closeup 은 질감 설명에만, 인물 사진 본문 금지.
+- 본문은 전부 body_info(체크리스트) 통일. 도표·인물/사진 본문 금지.
 - cover headline·각 본문 headline 은 궁금증갭. emphasis 는 반드시 headline 에 그대로 포함된 단어 1개.
 - 제품은 본문 단 1곳만.
 - ${lang} 맞춤법·띄어쓰기 정확히. 오타 절대 금지(예: '건조'를 '견조'로 쓰지 말 것). 어색한 합성어 금지.
