@@ -52,7 +52,7 @@ const PRODUCTS = {
 };
 // 인물(레퍼 얼굴) — 레퍼 무드에 강의존(strength 0.9). 프롬프트는 가볍게(셀카 감성만) — 과한 묘사는 레퍼를 덮으니 금지.
 //   포즈 강제 X. 주제는 카드 텍스트가 전달하고, 사진은 레퍼 셀카 무드를 그대로 가져온다(주제 부위는 가볍게 노출만).
-const PERSON_PROMPT = 'candid selfie, phone-camera photo, intimate close-up, match the reference face and overall mood very closely (rednote/pinterest selfie aesthetic), photoreal dewy natural skin, real person everyday vibe, soft tone, 4:5 세로. no glossy studio, no model pose, no heavy retouch';
+const PERSON_PROMPT = 'candid selfie, phone-camera photo, intimate close-up, match the reference face and overall mood very closely (rednote/pinterest selfie aesthetic), photoreal dewy natural skin, real person everyday vibe, soft tone, 4:5 세로. fully clothed in a simple modest everyday top, no nudity, no bare shoulders, no lingerie/towel, SFW. no glossy studio, no model pose, no heavy retouch';
 // 클로즈업(매크로) 프롬프트 — 인물 없음. 제품 레퍼 기반 질감·제형·입자. 자연 실사 매크로.
 const CLOSEUP_PROMPT = 'natural real photo, extreme macro close-up, photoreal, no face, no person, soft natural light, everyday natural context, authentic snapshot feel, NOT studio editorial, shallow depth of field, 4:5 세로. glossy/plastic 금지';
 // 제품 샷 프롬프트 — 일상 맥락(파우치/책상 등) 자연 실사. 단일 제품 레퍼.
