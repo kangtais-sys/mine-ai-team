@@ -217,11 +217,32 @@ const INFO_DAYS = new Set([0, 1, 2, 3, 4, 5, 6]);
 // 시장별 슬라이드 카피 생성(궁금증갭+대세감, 제품 은근 1곳, 클레임 범위).
 //   신규 디자인 포맷 스키마: 커버 타입은 cover(로테이션 주입), 본문은 LLM이 내용량에 맞춰 선택,
 //   마무리는 cta_editorial 고정. emphasis 단어 1개로 두께 위계 표시.
-async function genSlides(market, keyword, coverType, axis = '발견', varietyHint = '', product = PRODUCTS.mist) {
+async function genSlides(market, keyword, coverType, axis = '발견', varietyHint = '', product = PRODUCTS.mist, opts = {}) {
   const lang = market === 'kr' ? '한국어' : 'English';
   const heroLine = market === 'kr'
     ? `${product.name} (입증 혜택 범위: ${product.claim}. 이 범위 밖 효능·부위·수치 단정 금지)`
     : `${product.nameEn} (substantiated claims only: ${product.claimEn}. no claims outside this range)`;
+  // 본문만 재생성(커버·마무리 유지) — body_info 통일 템플릿 5장만.
+  if (opts.bodyOnly) {
+    const bSys = `당신은 밀리밀리(MILLIMILLI) 뷰티 정보 카루셀 본문 카피라이터. 출력 언어: ${lang}. 진짜 정보성·가독성 최우선.`;
+    const bUsr = `오늘 키워드: ${keyword}
+히어로 제품(본문 정확히 1곳 포인트에만 은근히): ${heroLine}
+시리즈 결(axis): ${axis}
+본문 5장만 생성(커버·마무리 없음). 각 장 = body_info. 순수 JSON만(코드블록 없이):
+{"slides":[{"type":"body_info","num":"01","headline":"소제목(궁금증갭)","emphasis":"headline 안 강조어 1개(headline에 그대로 포함)","points":[{"k":"핵심 키워드(짧고 굵게)","t":"1~2문장 구체 설명, 핵심단어만 **강조**"}],"takeaway":"이 슬라이드 핵심 한 줄(선택)"} ... 5개]}
+규칙: points 장당 2~4개. t는 길고 유익하게(원인·메커니즘·실전팁·오해vs사실), 뻔한 일반론 한 줄 금지. 근거 없는 수치·효능 단정 금지(입증 범위 밖 금지, "N만명"류 금지). 제품은 5장 중 정확히 1곳 포인트에만. 화살표/특수기호/글머리기호 금지. ${lang} 맞춤법 정확(오타 금지).`;
+    const br = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 1800, system: bSys, messages: [{ role: 'user', content: bUsr }] });
+    const bm = (br.content[0]?.text || '').match(/\{[\s\S]*\}/);
+    if (!bm) throw new Error('bodyOnly 파싱 실패');
+    const bp = JSON.parse(bm[0]);
+    bp.slides = (bp.slides || []).map(s => ({ ...s, type: 'body_info' }));
+    for (const s of bp.slides) {
+      const ht = (typeof s.headline === 'object' && s.headline) ? (s.headline.text || '') : (s.headline || '');
+      const e = (s.emphasis || '').trim();
+      if (ht && (!e || !ht.includes(e))) { const tk = String(ht).split(/\s+/).filter(Boolean); if (tk.length) s.emphasis = tk.reduce((a, b) => (b.length > a.length ? b : a), tk[0]); }
+    }
+    return bp; // {slides:[body_info...]}
+  }
   const system = `당신은 밀리밀리(MILLIMILLI) 브랜드의 감각적 에디토리얼 뷰티 캐러셀 카피라이터입니다.
 출력 언어: ${lang}. 시장: ${market.toUpperCase()}.
 절대 규칙:
@@ -326,6 +347,8 @@ async function translateSlidesToEn(parsed) {
     if (s.comment != null) o.comment = s.comment;
     if (s.share != null) o.share = s.share;
     if (Array.isArray(s.steps)) o.steps = s.steps.map(st => ({ t: st.t ?? '' }));
+    if (Array.isArray(s.points)) o.points = s.points.map(p => ({ k: p.k ?? '', t: p.t ?? '' })); // body_info 체크리스트
+    if (s.takeaway != null) o.takeaway = s.takeaway;
     if (s.compare && typeof s.compare === 'object') {
       o.compare = { left: s.compare.left ?? '', leftVal: s.compare.leftVal ?? '', right: s.compare.right ?? '', rightVal: s.compare.rightVal ?? '' };
     }
@@ -373,6 +396,10 @@ Return JSON exactly:
     if (Array.isArray(en.steps) && Array.isArray(t.steps)) {
       en.steps = en.steps.map((st, j) => ({ ...st, t: t.steps[j]?.t ?? st.t }));
     }
+    if (Array.isArray(en.points) && Array.isArray(t.points)) {
+      en.points = en.points.map((p, j) => ({ ...p, k: t.points[j]?.k ?? p.k, t: t.points[j]?.t ?? p.t }));
+    }
+    if (t.takeaway != null) en.takeaway = t.takeaway;
     if (en.compare && t.compare) {
       en.compare = { ...en.compare, left: t.compare.left ?? en.compare.left, leftVal: t.compare.leftVal ?? en.compare.leftVal, right: t.compare.right ?? en.compare.right, rightVal: t.compare.rightVal ?? en.compare.rightVal };
     }
@@ -488,6 +515,45 @@ export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) return res.status(401).json({ error: 'Unauthorized' });
   const dry = req.query?.dry === '1';
   const force = req.query?.force === '1';
+
+  // ── bodyOnly 모드: 기존 카루셀의 커버·마무리는 유지하고 본문만 body_info 통일 템플릿으로 재생성 ──
+  //   ?bodyOnly=1&date=YYYY-MM-DD. 같은 주제·제품 유지(드래프트 keyword 사용). KR 생성 + EN 번역.
+  if (req.query?.bodyOnly === '1') {
+    const date = (req.query?.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)) ? req.query.date : null;
+    if (!date) return res.status(400).json({ error: 'date(YYYY-MM-DD) 필요' });
+    try {
+      const sb = getSupabase();
+      const { data: rows } = await sb.from('creator_drafts').select('id,data').limit(2000);
+      const all = (rows || []).map(r => ({ id: r.id, ...r.data })).filter(d => d.version === 'milli-v1' && d.date === date && (d.slotType || '') === SLOT);
+      if (!all.length) return res.status(404).json({ error: '해당 날짜 카루셀 없음', date });
+      const krSrc = all.find(d => d.channel === 'kr_ig') || all.find(d => (d.region || '') === 'kr') || all[0];
+      const keyword = krSrc.keyword || '스킨케어 루틴';
+      const kwObj = KEYWORDS.find(k => k.kw === keyword);
+      const product = PRODUCTS[(kwObj && kwObj.p) || 'mist'] || PRODUCTS.mist;
+      const axis = krSrc.axis || '발견';
+      const krBody = await genSlides('kr', keyword, null, axis, '', product, { bodyOnly: true });
+      const enBody = await translateSlidesToEn({ slides: krBody.slides, caption: '', hashtags: '' });
+      const fonts = await loadFonts();
+      const results = [];
+      for (const d of all) {
+        const isUs = (d.region || '') === 'us' || String(d.channel).startsWith('us');
+        const body = isUs ? enBody.slides : krBody.slides;
+        const old = Array.isArray(d.slides) ? d.slides : [];
+        if (old.length < 2) { results.push({ channel: d.channel, skip: 'no cover/cta' }); continue; }
+        const newSlides = [old[0], ...body, old[old.length - 1]]; // 커버 + 새 본문 + 마무리 유지
+        const urls = await bakeCards(newSlides, isUs ? 'us' : 'kr', `${d.id}_b`, fonts);
+        const nd = { ...d }; delete nd.id;
+        nd.slides = newSlides; nd.mediaUrls = urls; nd.updatedAt = new Date().toISOString();
+        await sb.from('creator_drafts').update({ data: nd }).eq('id', d.id);
+        results.push({ channel: d.channel, cards: urls.length });
+      }
+      return res.status(200).json({ ok: true, bodyOnly: true, date, keyword, product: product.name, results });
+    } catch (e) {
+      console.error('[carousel-daily bodyOnly]', e.message);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   // 콘텐츠는 '내일(D+1)' 것을 미리 생성해 보드에 올림(당일 아님). 아래 today 변수는 타깃=내일 날짜.
   //   ?date=YYYY-MM-DD = 특정 날짜 타깃(과거분 재생성용, force 와 함께).
   const dateOverride = (req.query?.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)) ? req.query.date : null;
