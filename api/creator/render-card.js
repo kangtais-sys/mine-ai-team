@@ -91,10 +91,21 @@ function richText(str, { fontSize, color, lineHeight = 1.5, justify = 'flex-star
     words.map(x => txt(x.w, { fontFamily: FONT, fontWeight: x.b ? 700 : 300, fontSize, color, lineHeight, marginRight: Math.round(fontSize * 0.28), marginBottom: Math.round(fontSize * 0.18) })));
 }
 
-// 손그림 거친 타원 (살짝 비뚤·오버슛) — 핵심 수치 강조용. img(data:svg)로 오버레이.
-function roughEllipseSvg(w, h, color) {
-  const p = `M ${w * .52} ${h * .1} C ${w * .92} ${h * .04} ${w * 1.0} ${h * .62} ${w * .56} ${h * .9} C ${w * .12} ${h * 1.04} ${w * .0} ${h * .42} ${w * .46} ${h * .12} C ${w * .62} ${h * .04} ${w * .8} ${h * .08} ${w * .9} ${h * .2}`;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}"><path d="${p}" fill="none" stroke="${color}" stroke-width="${Math.max(4, w * .014)}" stroke-linecap="round"/></svg>`;
+// 손그림 거친 강조 마크 — 매번 다르게(변주 4종 랜덤): 타원2·이중루프·손그림박스. img(data:svg)로 오버레이.
+//   variant 인자로 고정 가능(테스트/특정 변주). 미지정 시 랜덤(카드마다 다른 동그라미).
+function roughEllipseSvg(w, h, color, variant = null) {
+  const variants = [
+    // v0 — 기본 거친 타원(살짝 비뚤·오버슛)
+    `M ${w * .52} ${h * .1} C ${w * .92} ${h * .04} ${w * 1.0} ${h * .62} ${w * .56} ${h * .9} C ${w * .12} ${h * 1.04} ${w * .0} ${h * .42} ${w * .46} ${h * .12} C ${w * .62} ${h * .04} ${w * .8} ${h * .08} ${w * .9} ${h * .2}`,
+    // v1 — 반대 기울기 타원
+    `M ${w * .48} ${h * .12} C ${w * .08} ${h * .04} ${w * .0} ${h * .6} ${w * .46} ${h * .9} C ${w * .9} ${h * 1.05} ${w * 1.02} ${h * .4} ${w * .56} ${h * .1} C ${w * .4} ${h * .02} ${w * .2} ${h * .08} ${w * .12} ${h * .22}`,
+    // v2 — 이중 루프(스크리블, 두 바퀴)
+    `M ${w * .5} ${h * .14} C ${w * .9} ${h * .05} ${w * .98} ${h * .6} ${w * .55} ${h * .88} C ${w * .13} ${h * 1.02} ${w * .04} ${h * .45} ${w * .45} ${h * .16} C ${w * .72} ${h * .0} ${w * 1.0} ${h * .34} ${w * .64} ${h * .82}`,
+    // v3 — 손그림 둥근 사각 박스
+    `M ${w * .12} ${h * .3} C ${w * .1} ${h * .08} ${w * .4} ${h * .06} ${w * .62} ${h * .08} C ${w * .86} ${h * .1} ${w * .95} ${h * .14} ${w * .92} ${h * .44} C ${w * .95} ${h * .72} ${w * .88} ${h * .92} ${w * .58} ${h * .9} C ${w * .33} ${h * .94} ${w * .08} ${h * .9} ${w * .1} ${h * .64} C ${w * .08} ${h * .48} ${w * .1} ${h * .42} ${w * .12} ${h * .3}`,
+  ];
+  const i = variant != null ? (variant % variants.length) : Math.floor(Math.random() * variants.length);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}"><path d="${variants[i]}" fill="none" stroke="${color}" stroke-width="${Math.max(4, w * .014)}" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
 // 별 아이콘(★) — Noto Sans KR 서브셋에 ★/☆/✦ 등 별 글리프가 없어 ⊠(notdef)로 깨짐(실측 확인).
