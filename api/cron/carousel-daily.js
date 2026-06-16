@@ -229,8 +229,8 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
 히어로 제품(본문 정확히 1곳 포인트에만 은근히): ${heroLine}
 시리즈 결(axis): ${axis}
 본문 5장만 생성(커버·마무리 없음). 각 장 = body_info. 순수 JSON만(코드블록 없이):
-{"slides":[{"type":"body_info","num":"01","headline":"소제목(궁금증갭)","emphasis":"headline 안 강조어 1개(headline에 그대로 포함)","points":[{"k":"핵심 키워드(짧고 굵게)","t":"1~2문장 구체 설명, 핵심단어만 **강조**"}],"takeaway":"이 슬라이드 핵심 한 줄(선택)"} ... 5개]}
-규칙: points 장당 2~3개(많아도 3개). t는 1~2문장 — 한 포인트 합쳐 최대 2줄(한국어 약 45자/영어 약 90자) 이내로 간결하고 유익하게(원인·메커니즘·실전팁). 길게 늘어진 한 문단 금지(카드 넘침 방지). 뻔한 일반론 금지. takeaway 는 약 20자 이내 짧게(선택). 근거 없는 수치·효능 단정 금지(입증 범위 밖 금지, "N만명"류 금지). 제품은 5장 중 정확히 1곳 포인트에만. 화살표/특수기호/글머리기호 금지. ${lang} 맞춤법 정확(오타 금지).`;
+{"slides":[{"type":"body_info","num":"01","headline":"소제목(궁금증갭)","emphasis":"headline 안 강조어 1개(headline에 그대로 포함)","points":[{"k":"핵심 키워드(짧고 굵게)","t":"1~2문장 구체 설명, 핵심단어만 **강조**","icon":"내용에 맞는 아이콘 1개"}],"takeaway":"이 슬라이드 핵심 한 줄(선택)"} ... 5개]}
+규칙: points 장당 2~3개(많아도 3개). 각 포인트 icon 은 아래 중 내용에 가장 맞는 1개(인포그래픽): drop(수분·보습), shield(장벽·보호), layers(층·진피·구조), clock(시간·지속·24h), sun(자외선·낮·광), moon(밤·저녁루틴), leaf(진정·순함·자연), sparkle(윤기·광채·개선효과), lock(가두기·밀착·잠금), up(상승·리프팅·탄력개선), alert(주의·오해·흔한실수), check(일반). t는 1~2문장 — 한 포인트 합쳐 최대 2줄(한국어 약 45자/영어 약 90자) 이내로 간결하고 유익하게(원인·메커니즘·실전팁). 길게 늘어진 한 문단 금지(카드 넘침 방지). 뻔한 일반론 금지. takeaway 는 약 20자 이내 짧게(선택). 근거 없는 수치·효능 단정 금지(입증 범위 밖 금지, "N만명"류 금지). 제품은 5장 중 정확히 1곳 포인트에만. 화살표/특수기호/글머리기호 금지. ${lang} 맞춤법 정확(오타 금지).`;
     const br = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 3000, system: bSys, messages: [{ role: 'user', content: bUsr }] });
     const bm = (br.content[0]?.text || '').match(/\{[\s\S]*\}/);
     if (!bm) throw new Error('bodyOnly 파싱 실패');
@@ -289,7 +289,7 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
   "slides": [
     ${coverGuide[coverType] || coverGuide.cover_textonly},
     // 본문 5~6장 — 전부 아래 body_info 한 형식으로 통일. 각 본문 num("01","02"...) 부여:
-    //   {"type":"body_info","num":"01","headline":"소제목(궁금증갭)","emphasis":"headline 안 강조어 1개(선택)","points":[{"k":"핵심 키워드","t":"1~2문장 간결 설명(최대 2줄·약45자, **핵심단어 강조**)"}, ...2~3개],"takeaway":"핵심 한 줄(약20자, 선택)"}
+    //   {"type":"body_info","num":"01","headline":"소제목(궁금증갭)","emphasis":"headline 안 강조어 1개(선택)","points":[{"k":"핵심 키워드","t":"1~2문장 간결 설명(최대 2줄·약45자, **핵심단어 강조**)","icon":"내용에 맞는 아이콘(drop·shield·layers·clock·sun·moon·leaf·sparkle·lock·up·alert·check 중 1)"}, ...2~3개],"takeaway":"핵심 한 줄(약20자, 선택)"}
     // 본문 중 정확히 1곳 포인트에만 ${heroLine} 를 해결책으로 은근히 녹임(광고 톤 금지).
     {"type":"cta_editorial","headline":"마무리 한 줄(저장 유도)","emphasis":"headline 안 강조 단어 1개","body":"한 줄 마무리(선택)","comment":"댓글 가르는 질문(짧게)","share":"공유 트리거(예: ~한 친구에게)"}
   ]

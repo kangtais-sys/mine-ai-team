@@ -122,6 +122,30 @@ function checkSvg(color = BLACK) {
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
 const checkIcon = (size = 38, color = BLACK) => ({ type: 'img', props: { src: checkSvg(color), style: { width: size, height: size, marginRight: 20, marginTop: 6 } } });
+// 본문 인포그래픽 아이콘 세트(라인) — 포인트 내용에 맞는 아이콘 배지로 한눈에 스캔.
+const BODY_ICONS = {
+  check: 'M4 13 l5 5 l11 -12',
+  drop: 'M12 3 C12 3 6 10.5 6 15 a6 6 0 0 0 12 0 C18 10.5 12 3 12 3 Z',
+  shield: 'M12 3 L20 6 V12 C20 16.5 16.5 19.5 12 21 C7.5 19.5 4 16.5 4 12 V6 Z',
+  layers: 'M12 4 L20 8 L12 12 L4 8 Z M4 12 L12 16 L20 12',
+  clock: 'M12 4 a8 8 0 1 0 0.01 0 M12 8 V12.5 L15.5 14',
+  sun: 'M12 8.5 a3.5 3.5 0 1 0 0.01 0 M12 2 V4 M12 20 V22 M2 12 H4 M20 12 H22 M5 5 L6.4 6.4 M17.6 17.6 L19 19 M19 5 L17.6 6.4 M6.4 17.6 L5 19',
+  moon: 'M20 14 A8 8 0 1 1 10 4 A6.5 6.5 0 0 0 20 14 Z',
+  leaf: 'M5 19 C5 11 11 5 19 5 C19 13 13 19 5 19 Z M6 18 C10 14 13 11 16 9',
+  sparkle: 'M12 3 L13.6 10.4 L21 12 L13.6 13.6 L12 21 L10.4 13.6 L3 12 L10.4 10.4 Z',
+  lock: 'M8 11 V8 a4 4 0 0 1 8 0 V11 M6 11 H18 V20 H6 Z',
+  up: 'M12 20 V5 M6 11 L12 5 L18 11',
+  alert: 'M12 3 L22 20 H2 Z M12 9 V14.5 M12 17.2 V17.4',
+};
+function iconSvg(name, color = BLACK) {
+  const d = BODY_ICONS[name] || BODY_ICONS.check;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="${d}" fill="none" stroke="${color}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+const iconBadge = (name, { size = 72, icon = 40, bg = '#F1F1EE', color = BLACK } = {}) =>
+  h('div', { display: 'flex', width: size, height: size, borderRadius: Math.round(size / 2), backgroundColor: bg, alignItems: 'center', justifyContent: 'center', marginRight: 24, flexShrink: 0 }, [
+    { type: 'img', props: { src: iconSvg(name, color), style: { width: icon, height: icon } } },
+  ]);
 // 텍스트 렌더 폭 추정(satori measure 불가) — 숫자/영문 ≈0.58em, 한글 등 ≈1.0em. 동그라미 크기 산정용.
 const estTextW = (str, fs) => [...String(str ?? '')].reduce((a, c) => a + fs * (/[0-9A-Za-z.,%$+\-:]/.test(c) ? 0.58 : 1.0), 0);
 // node 를 손그림 원으로 감쌈 (pad: 타원이 텍스트보다 얼마나 클지)
@@ -551,9 +575,10 @@ function renderBodyInfo(s) {
   const tSize = n >= 3 ? 35 : 38;
   const gap = n >= 3 ? 30 : 40;
   const hasTake = !!s.takeaway && n <= 3;
+  const badge = n >= 3 ? 64 : 72;
   const pointRow = (p, i) => row({ alignItems: 'flex-start', marginBottom: i === n - 1 ? 0 : gap }, [
-    checkIcon(36, BLACK),
-    col({ flex: 1 }, [
+    iconBadge(p.icon || 'check', { size: badge, icon: Math.round(badge * 0.55) }),
+    col({ flex: 1, marginTop: 2 }, [
       p.k ? txt(p.k, { fontFamily: FONT, fontWeight: 700, fontSize: kSize, color: BLACK, lineHeight: 1.25, letterSpacing: -0.5, marginBottom: 6, wordBreak: 'keep-all' }) : null,
       p.t ? h('div', { display: 'flex' }, [richText(String(p.t), { fontSize: tSize, color: '#3A3A3A', lineHeight: 1.45 })]) : null,
     ].filter(Boolean)),
