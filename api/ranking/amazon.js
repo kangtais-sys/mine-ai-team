@@ -6,10 +6,12 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-// 추적 대상: 밀리밀리 500 Dalton Protein Mist
-const ASIN = process.env.AMAZON_MIST_ASIN || 'B0GYCB5164';
 const MARKETPLACE_ID = process.env.SP_API_MARKETPLACE_ID || 'ATVPDKIKX0DER'; // US
-const PRODUCT_URL = `https://www.amazon.com/dp/${ASIN}`;
+// 추적 대상 제품 — 미스트 + 앰플. cacheKey/snap 은 제품별 분리(변동 계산 독립).
+const PRODUCTS = {
+  mist:  { asin: process.env.AMAZON_MIST_ASIN  || 'B0GYCB5164', cacheKey: 'ranking:amazon',       snap: 'ranking:amazon',       defaultName: '500 Dalton Protein Mist', label: '미스트' },
+  ample: { asin: process.env.AMAZON_AMPLE_ASIN || 'B0GYC88ZGL', cacheKey: 'ranking:amazon_ample', snap: 'ranking:amazon_ample', defaultName: 'Collagen Ample', label: '앰플' },
+};
 
 async function getLwaToken() {
   const cached = await redis.get('amazon:lwa_token');
@@ -64,16 +66,16 @@ async function spFetch(path, lwaToken) {
   return JSON.parse(text);
 }
 
-// salesRanks 응답에서 가장 구체적인(미스트류) 카테고리 순위 추출
+// salesRanks 응답에서 스킨케어 세부 카테고리(미스트/세럼/앰플류) 순위 추출
 function pickRank(item) {
   const sr = (item?.salesRanks || []).find(s => s.marketplaceId === MARKETPLACE_ID) || (item?.salesRanks || [])[0];
   if (!sr) return null;
-  const classification = sr.classificationRanks || []; // 세부 카테고리 (예: Facial Mists)
+  const classification = sr.classificationRanks || []; // 세부 카테고리 (예: Facial Mists / Facial Serums)
   const displayGroup = sr.displayGroupRanks || [];     // 대분류 (예: Beauty & Personal Care)
 
-  // 1순위: 미스트/페이스 관련 세부 카테고리
-  const mist = classification.find(c => /mist|toner|face/i.test(c.title || ''));
-  if (mist) return { category: mist.title, rank: mist.rank, link: mist.link };
+  // 1순위: 스킨케어 세부 카테고리(미스트/세럼/앰플/토너/페이스 등)
+  const skincare = classification.find(c => /mist|toner|face|facial|serum|ample|essence|collagen|moistur|skin|cream/i.test(c.title || ''));
+  if (skincare) return { category: skincare.title, rank: skincare.rank, link: skincare.link };
   // 2순위: 세부 카테고리 중 순위가 가장 좋은(작은) 것
   if (classification.length) {
     const best = [...classification].sort((a, b) => a.rank - b.rank)[0];
@@ -87,45 +89,48 @@ function pickRank(item) {
   return null;
 }
 
-export async function fetchAmazonRank() {
+// 제품 1개 BSR 조회 + 캐시/스냅샷(변동 계산). p = PRODUCTS.mist | PRODUCTS.ample
+async function fetchRankForProduct(p) {
   const lwaToken = await getLwaToken();
-  const path = `/catalog/2022-04-01/items/${ASIN}?marketplaceIds=${MARKETPLACE_ID}&includedData=salesRanks,summaries`;
+  const path = `/catalog/2022-04-01/items/${p.asin}?marketplaceIds=${MARKETPLACE_ID}&includedData=salesRanks,summaries`;
   const item = await spFetch(path, lwaToken);
 
   const picked = pickRank(item);
-  if (!picked) throw new Error('salesRanks 없음 (카테고리 미배정 또는 신규 ASIN)');
+  if (!picked) throw new Error(`salesRanks 없음 (카테고리 미배정 또는 신규 ASIN: ${p.asin})`);
 
-  const name = item?.summaries?.[0]?.itemName || '500 Dalton Protein Mist';
+  const name = item?.summaries?.[0]?.itemName || p.defaultName;
 
-  // 전일 대비 변동 계산
+  // 전일 대비 변동 계산(제품별 스냅샷)
   const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10).replace(/-/g, '');
-  const snapKey = `ranking:amazon:${today}`;
   let prevRank = null;
   try {
-    // 가장 최근 다른 날짜 스냅샷
-    const prev = await redis.get('ranking:amazon:lastsnap');
+    const prev = await redis.get(`${p.snap}:lastsnap`);
     if (prev && prev.date !== today) prevRank = prev.rank;
   } catch { /* noop */ }
 
   const result = {
     platform: 'Amazon US',
     flag: '🇺🇸',
+    label: p.label,
     category: picked.category,
     name,
     rank: picked.rank,
     prevRank,
     change: prevRank != null ? prevRank - picked.rank : 0,
     ours: true,
-    url: PRODUCT_URL,
+    url: `https://www.amazon.com/dp/${p.asin}`,
     source: 'SP-API',
     updatedAt: new Date().toISOString(),
   };
 
-  await redis.set('ranking:amazon', result, { ex: 172800 });
-  await redis.set(snapKey, picked.rank, { ex: 60 * 60 * 24 * 40 });
-  await redis.set('ranking:amazon:lastsnap', { date: today, rank: picked.rank }, { ex: 60 * 60 * 24 * 40 });
+  await redis.set(p.cacheKey, result, { ex: 172800 });
+  await redis.set(`${p.snap}:${today}`, picked.rank, { ex: 60 * 60 * 24 * 40 });
+  await redis.set(`${p.snap}:lastsnap`, { date: today, rank: picked.rank }, { ex: 60 * 60 * 24 * 40 });
   return result;
 }
+
+export async function fetchAmazonRank() { return fetchRankForProduct(PRODUCTS.mist); }      // 미스트(하위호환)
+export async function fetchAmazonRankAmple() { return fetchRankForProduct(PRODUCTS.ample); } // 앰플
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });

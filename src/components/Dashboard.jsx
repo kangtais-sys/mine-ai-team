@@ -101,7 +101,7 @@ function RankingCard({ ranking }) {
   return (
     <div style={{ ...CARD }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>🏆 미스트 카테고리 랭킹</div>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>🏆 제품 카테고리 랭킹</div>
         <div style={{ fontSize: 10, color: '#AEAEB2' }}>
           {ranking?.updatedAt ? `${timeAgo(ranking.updatedAt)} 갱신` : ''}
         </div>
@@ -122,7 +122,7 @@ function RankingCard({ ranking }) {
           >
             <span style={{ fontSize: 16 }}>{it.flag}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>{it.platform}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: '#1D1D1F' }}>{it.platform}{it.label ? ` · ${it.label}` : ''}</div>
               <div style={{ fontSize: 10, color: '#AEAEB2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {it.category}{it.source === 'manual' ? ' · 수동' : ''}
               </div>

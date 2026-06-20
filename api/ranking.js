@@ -1,5 +1,5 @@
 import { Redis } from '@upstash/redis';
-import { fetchAmazonRank } from './ranking/amazon.js';
+import { fetchAmazonRank, fetchAmazonRankAmple } from './ranking/amazon.js';
 
 const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
@@ -15,19 +15,27 @@ function isStale(item) {
 
 // 합본 ranking:data 조립 + 저장 (brand 에이전트 / ChatView 호환)
 async function assemble({ refresh = false } = {}) {
-  // 1) 아마존: 캐시 신선하면 사용, 아니면 SP-API 재호출
+  // 1) 아마존 미스트: 캐시 신선하면 사용, 아니면 SP-API 재호출
   let amazon = await redis.get('ranking:amazon');
   if (refresh || isStale(amazon)) {
     try { amazon = await fetchAmazonRank(); }
-    catch (e) { console.error('[Ranking] amazon refresh 실패:', e.message); /* 캐시 유지 */ }
+    catch (e) { console.error('[Ranking] amazon(mist) refresh 실패:', e.message); /* 캐시 유지 */ }
   }
 
-  // 2) 올리브영: 내 맥 스크립트가 푸시한 값 그대로 사용
+  // 2) 아마존 앰플
+  let amazonAmple = await redis.get('ranking:amazon_ample');
+  if (refresh || isStale(amazonAmple)) {
+    try { amazonAmple = await fetchAmazonRankAmple(); }
+    catch (e) { console.error('[Ranking] amazon(ample) refresh 실패:', e.message); /* 캐시 유지 */ }
+  }
+
+  // 3) 올리브영: 내 맥 스크립트가 푸시한 값 그대로 사용
   const oliveyoung = await redis.get('ranking:oliveyoung');
 
   const items = [];
   if (oliveyoung) items.push(oliveyoung);
   if (amazon) items.push(amazon);
+  if (amazonAmple) items.push(amazonAmple);
 
   const data = {
     status: items.length ? 'connected' : 'no_data',
