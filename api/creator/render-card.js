@@ -297,9 +297,8 @@ function headlineWithEmphasis(headline, { fontSize, color = BLACK, lineHeight = 
   const mk = (w) => txt(w, { fontFamily: FONT, fontWeight: 700, fontSize, color, lineHeight, letterSpacing, marginRight: Math.round(fontSize * 0.24) });
   const parts = [];
   before.split(/\s+/).filter(Boolean).forEach(w => parts.push(mk(w)));
-  // 강조어: 글자수 기반 폭 추정(한글/영문 평균). 타원이 단어를 충분히 감싸도록 0.7 로 넉넉히.
-  const charW = fontSize * 0.7;
-  const ew = Math.max(fontSize, Math.round(emph.length * charW));
+  // 강조어 폭: estTextW(한글 1.0em·영문 0.58em)로 실제 글자폭 추정 — 긴 한글 단어에서 동그라미가 글자 침범하던 문제 해결.
+  const ew = Math.max(fontSize, Math.round(estTextW(emph, fontSize)));
   // circled 노드를 div 로 감싸 좌우 여백 확보(인접 단어와 동그라미 겹침 방지).
   parts.push(h('div', { display: 'flex', marginLeft: Math.round(fontSize * 0.14), marginRight: Math.round(fontSize * 0.32) }, [
     circled(
