@@ -57,10 +57,10 @@ export default async function handler(req, res) {
   const token = process.env.META_ACCESS_TOKEN || process.env.INSTAGRAM_ACCESS_TOKEN;
   if (!token) return res.status(500).json({ error: 'no meta token' });
 
-  const days = Number(req.query.days) || 180;
   const minSpend = Number(req.query.minSpend) || 50000;
   const withVideos = req.query.withVideos !== '0';
-  const datePreset = days >= 180 ? 'last_180d' : days >= 90 ? 'last_90d' : days >= 30 ? 'last_30d' : 'last_7d';
+  const VALID_PRESETS = ['last_7d', 'last_14d', 'last_28d', 'last_30d', 'last_90d', 'last_year', 'this_year', 'maximum'];
+  const datePreset = VALID_PRESETS.includes(req.query.preset) ? req.query.preset : 'last_year';
 
   const fields = [
     'id', 'name', 'status', 'effective_status', 'created_time',
