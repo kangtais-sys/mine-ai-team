@@ -67,7 +67,7 @@ export default async function handler(req, res) {
     'adset{id,name,targeting,optimization_goal,billing_event}',
     'campaign{id,name,objective}',
     'creative{id,image_url,thumbnail_url,video_id,body,title,call_to_action_type,object_story_spec{instagram_actor_id,page_id,video_data{call_to_action,image_url,message,title,video_id},link_data{message,name,description,picture,call_to_action,link}}}',
-    `insights.date_preset(${datePreset}).level(ad){spend,impressions,clicks,ctr,cpc,frequency,reach,actions,action_values,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p100_watched_actions,video_avg_time_watched_actions,publisher_platform,platform_position}`,
+    `insights.date_preset(${datePreset}).level(ad){spend,impressions,clicks,ctr,cpc,frequency,reach,actions,action_values,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p100_watched_actions,video_avg_time_watched_actions}`,
   ].join(',');
 
   const allAds = [];
