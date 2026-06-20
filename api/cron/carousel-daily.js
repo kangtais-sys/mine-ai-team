@@ -44,7 +44,7 @@ const BRAND_LOOK = [
 // 제품(미스트 히어로) — product-assets.md
 const PRODUCT_MIST = '4a56fcd8-478d-4860-b722-03934e6eaf3f';
 // 제품 라인업 — claims-substantiation.md / product-assets.md. 주제→제품→클레임→에셋 매핑(제품마다 입증 범위 내에서만).
-const PRODUCTS = {
+export const PRODUCTS = {
   mist:  { name: '밀리밀리 500달톤 단백질 미스트', nameEn: 'MILLIMILLI 500 Dalton Protein Mist', claim: '24시간 보습 + 팔자·눈가 주름·볼 꺼짐 개선(4주 인체적용시험)', claimEn: '24h hydration + nasolabial/eye-area wrinkle & volume-loss improvement (4-week clinical)', media: PRODUCT_MIST },
   ample: { name: '밀리밀리 앰플', nameEn: 'MILLIMILLI Ample', claim: '피부 리프팅 + 모공 부위 탄력 개선(4주 인체적용시험)', claimEn: 'skin lifting + pore-area firmness improvement (4-week clinical)', media: 'bb221889-17b5-4866-a0f2-0070247c6623' },
   vita:  { name: '밀리밀리 비타미스트', nameEn: 'MILLIMILLI Vita Mist', claim: '윤기 + 톤·색소침착 개선(미백)', claimEn: 'radiance + tone & pigmentation (brightening) improvement', media: 'a6e71e46-d815-482d-ab07-dfdf2dcb56ab' },
@@ -194,7 +194,7 @@ const CHANNELS = [
 
 // 주제→제품 풀 — 제품을 번갈아 인터리브(주제도 돌고 제품도 돈다). 각 주제는 그 제품의 입증 클레임 범위 안에서만.
 //   p: mist|ample|vita|cica (PRODUCTS). 컴플라이언스: 미간/목주름·다크서클·시술후기 등 미입증/효능단정은 제외.
-const KEYWORDS = [
+export const KEYWORDS = [
   { kw: '속건조', p: 'mist' },          { kw: '콜라겐·탄력', p: 'ample' },   { kw: '미백·톤', p: 'vita' },        { kw: '진정·붉은기', p: 'cica' },
   { kw: '푸석함', p: 'mist' },          { kw: '모공 탄력', p: 'ample' },     { kw: '칙칙함·색소', p: 'vita' },    { kw: '피부장벽 케어', p: 'cica' },
   { kw: '수분장벽', p: 'mist' },        { kw: '피부 리프팅', p: 'ample' },   { kw: '윤기·광채', p: 'vita' },      { kw: '자극·트러블', p: 'cica' },
@@ -205,6 +205,23 @@ const KEYWORDS = [
 ];
 // 시리즈 아크(sns-strategy): 발견60/신뢰25/캐릭터15 — 20슬롯 인터리브 패턴으로 비중 근사 + 매번 다른 결.
 const SERIES_SEQ = ['발견','신뢰','발견','발견','캐릭터','발견','신뢰','발견','발견','캐릭터','발견','신뢰','발견','발견','발견','신뢰','발견','발견','캐릭터','신뢰'];
+
+// ── 인포그래픽 본문 생성 가이드(2026-06-20) — 아이콘 나열 금지, 데이터 형태별 진짜 시각화 ──
+//   render-card.js 의 body_chart/vs/timeline/cause/mistake 스키마와 1:1. 데이터 부족 시 렌더러가 body_info 폴백.
+const BODY_IG_GUIDE = `본문은 "아이콘+글 나열"이 아니라, 내용 형태에 가장 맞는 인포그래픽 타입을 골라 '정보를 그림으로' 보여줄 것. 한 캐러셀 안에서 최소 3종류 이상 섞어 다양하게(같은 타입 2연속 지양). 타입별 스키마:
+- body_chart  (시간·나이·단계에 따른 증가/감소 추세): {"type":"body_chart","num":"01","headline":"소제목","emphasis":"headline 안 단어1","yLabel":"지표 이름","yHint":"(기준 한 줄, 선택)","chart":[{"x":"축라벨","y":0~100}...3~4개],"markerIdx":변곡점_인덱스(선택),"markerNote":"마커 한 줄(선택)","chips":[{"k":"원인 키워드","t":"짧은 설명"}...최대3],"takeaway":"핵심 한 줄(선택)"}
+- body_vs     (두 대상 대조 A vs B): {"type":"body_vs","num":"02","headline":"...","emphasis":"...","colA":{"label":"왼쪽"},"colB":{"label":"오른쪽(강조측)"},"rows":[{"metric":"비교 항목","a":{"viz":{"type":"bar","val":0~1},"word":"왼쪽 값"},"b":{"viz":{"type":"bar","val":0~1},"word":"오른쪽 값"}}...2~3]. viz 는 수치 비교면 {"type":"bar","val":0~1} 또는 {"type":"dots","filled":N,"total":6}, 없으면 viz 생략하고 word 만,"takeaway":"..."}
+- body_timeline (순서·단계·방법): {"type":"body_timeline","num":"03","headline":"...","emphasis":"...","steps":[{"big":"핵심 수치(선택,예 3분)","bigUnit":"단위(선택)","k":"단계 제목","t":"설명 1~2문장(**핵심강조**)"}...2~3],"takeaway":"..."}
+- body_cause  (인과 "A=B 같은 문제" / 입증·인증): {"type":"body_cause","num":"04","headline":"...","emphasis":"...","left":"원인","right":"결과","linkNote":"둘을 잇는 설명(**강조**)","cert":{"title":"4주 인체적용시험 확인","body":"제품·근거 한 줄"}(제품/근거 슬라이드일 때만 cert 포함)}
+- body_mistake (흔한 실수 vs 올바른 방법): {"type":"body_mistake","num":"05","headline":"...","emphasis":"...","leftLabel":"흔한 실수","rightLabel":"이렇게 하세요","rows":[{"bad":"실수","good":"해법(**강조**)"}...2~3],"takeaway":"..."}
+- body_info   (위 어디에도 안 맞을 때만): {"type":"body_info","num":"06","headline":"...","emphasis":"...","points":[{"k":"키워드","t":"설명(**강조**)","icon":"drop|shield|layers|clock|sun|moon|leaf|sparkle|lock|up|alert|check 중 1"}...2~3],"takeaway":"..."}
+공통 규칙: 모든 본문에 num·headline(궁금증갭 소제목)·emphasis(headline 에 그대로 든 단어 1개) 필수. 텍스트는 간결(카드 넘침 방지). 근거 없는 수치·효능 단정 금지(입증 범위 밖 금지, "N만명"류 금지). 제품은 본문 정확히 1곳에만 은근히(보통 body_cause 의 cert 또는 한 포인트). 화살표/특수기호/이모지/글머리기호 금지.`;
+
+const IG_BODY_TYPES = new Set(['body_chart', 'body_vs', 'body_timeline', 'body_cause', 'body_mistake', 'body_info']);
+// 본문 슬라이드 타입 검증 — 알 수 없는 타입은 body_info 로(렌더러가 데이터 부족 시 추가 폴백). 인포그래픽 데이터는 render-card 의 ig_hasData 가 검증.
+function normalizeBodySlides(slides) {
+  return (slides || []).map(s => (s && IG_BODY_TYPES.has(s.type)) ? s : { ...s, type: 'body_info' });
+}
 
 const kstNow = () => new Date(Date.now() + 9 * 3600000);
 const kstToday = () => kstNow().toISOString().slice(0, 10);
@@ -217,25 +234,27 @@ const INFO_DAYS = new Set([0, 1, 2, 3, 4, 5, 6]);
 // 시장별 슬라이드 카피 생성(궁금증갭+대세감, 제품 은근 1곳, 클레임 범위).
 //   신규 디자인 포맷 스키마: 커버 타입은 cover(로테이션 주입), 본문은 LLM이 내용량에 맞춰 선택,
 //   마무리는 cta_editorial 고정. emphasis 단어 1개로 두께 위계 표시.
-async function genSlides(market, keyword, coverType, axis = '발견', varietyHint = '', product = PRODUCTS.mist, opts = {}) {
+export async function genSlides(market, keyword, coverType, axis = '발견', varietyHint = '', product = PRODUCTS.mist, opts = {}) {
   const lang = market === 'kr' ? '한국어' : 'English';
   const heroLine = market === 'kr'
     ? `${product.name} (입증 혜택 범위: ${product.claim}. 이 범위 밖 효능·부위·수치 단정 금지)`
     : `${product.nameEn} (substantiated claims only: ${product.claimEn}. no claims outside this range)`;
-  // 본문만 재생성(커버·마무리 유지) — body_info 통일 템플릿 5장만.
+  // 본문만 재생성(커버·마무리 유지) — 인포그래픽 5장.
   if (opts.bodyOnly) {
-    const bSys = `당신은 밀리밀리(MILLIMILLI) 뷰티 정보 카루셀 본문 카피라이터. 출력 언어: ${lang}. 진짜 정보성·가독성 최우선.`;
+    const bSys = `당신은 밀리밀리(MILLIMILLI) 뷰티 정보 카루셀 본문 카피라이터. 출력 언어: ${lang}. 진짜 정보성·가독성·시각화 최우선.`;
     const bUsr = `오늘 키워드: ${keyword}
-히어로 제품(본문 정확히 1곳 포인트에만 은근히): ${heroLine}
+히어로 제품(본문 정확히 1곳에만 은근히): ${heroLine}
 시리즈 결(axis): ${axis}
-본문 5장만 생성(커버·마무리 없음). 각 장 = body_info. 순수 JSON만(코드블록 없이):
-{"slides":[{"type":"body_info","num":"01","headline":"소제목(궁금증갭)","emphasis":"headline 안 강조어 1개(headline에 그대로 포함)","points":[{"k":"핵심 키워드(짧고 굵게)","t":"1~2문장 구체 설명, 핵심단어만 **강조**","icon":"내용에 맞는 아이콘 1개"}],"takeaway":"이 슬라이드 핵심 한 줄(선택)"} ... 5개]}
-규칙: points 장당 2~3개(많아도 3개). 각 포인트 icon 은 아래 중 내용에 가장 맞는 1개(인포그래픽): drop(수분·보습), shield(장벽·보호), layers(층·진피·구조), clock(시간·지속·24h), sun(자외선·낮·광), moon(밤·저녁루틴), leaf(진정·순함·자연), sparkle(윤기·광채·개선효과), lock(가두기·밀착·잠금), up(상승·리프팅·탄력개선), alert(주의·오해·흔한실수), check(일반). t는 1~2문장 — 한 포인트 합쳐 최대 2줄(한국어 약 45자/영어 약 90자) 이내로 간결하고 유익하게(원인·메커니즘·실전팁). 길게 늘어진 한 문단 금지(카드 넘침 방지). 뻔한 일반론 금지. takeaway 는 약 20자 이내 짧게(선택). 근거 없는 수치·효능 단정 금지(입증 범위 밖 금지, "N만명"류 금지). 제품은 5장 중 정확히 1곳 포인트에만. 화살표/특수기호/글머리기호 금지. ${lang} 맞춤법 정확(오타 금지).`;
-    const br = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 3000, system: bSys, messages: [{ role: 'user', content: bUsr }] });
+본문 5장만 생성(커버·마무리 없음). 순수 JSON만(코드블록 없이): {"slides":[ ...5개 ]}
+
+${BODY_IG_GUIDE}
+
+본문 5장은 위 타입을 섞어(최소 3종류) 구성. num 은 "01"~"05".`;
+    const br = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 4500, system: bSys, messages: [{ role: 'user', content: bUsr }] });
     const bm = (br.content[0]?.text || '').match(/\{[\s\S]*\}/);
     if (!bm) throw new Error('bodyOnly 파싱 실패');
     const bp = JSON.parse(bm[0]);
-    bp.slides = (bp.slides || []).map(s => ({ ...s, type: 'body_info' }));
+    bp.slides = normalizeBodySlides(bp.slides || []);
     for (const s of bp.slides) {
       const ht = (typeof s.headline === 'object' && s.headline) ? (s.headline.text || '') : (s.headline || '');
       const e = (s.emphasis || '').trim();
@@ -274,36 +293,29 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
 
 감각적 정보성 캐러셀을 아래 JSON으로만 반환(코드블록 없이 순수 JSON). 슬라이드 총 7~8장 = 커버1 + 본문5~6 + 마무리1.
 
-⚠️ 본문 = 전부 동일 템플릿(body_info)으로 통일 — 도표·사진 혼합 금지(정신없음 방지). 진짜 정보성 + 가독성 최우선:
-- 본문 5~6장, 각 장 = body_info. 구조: 소제목(궁금증갭) + 체크리스트 포인트 2~3개(많아도 3개).
-- 각 포인트 = {"k":"핵심 키워드(짧고 굵게)","t":"1~2문장 구체 설명"}. t 는 한 포인트 합쳐 최대 2줄(한국어 약 45자) 이내로 간결+유익(원인·메커니즘·실전팁). 길게 늘어진 한 문단 금지(카드 넘침 방지). 뻔한 일반론 금지.
-- 가독성 규칙: t 안에서 핵심 단어만 **강조**(굵게). 한 포인트 1~2문장(한 문단 통째 금지). 줄바꿈은 포인트 단위로 자연히 나뉨.
-- "takeaway"(이 슬라이드 핵심 한 줄)는 선택 — 넣으면 하단 강조박스로 렌더됨.
-- ⚠️ 근거 없는 수치·효능 단정 금지(입증 범위 24h 보습·장벽·결 밖 금지). "N만명 확인"·"전문가 N명"류 금지.
-- 제품은 본문 정확히 1곳 포인트에만 은근히 녹임(광고 톤 금지).
-- 본문 슬라이드 형식(아래 하나로 통일):
+⚠️ 본문 = 인포그래픽(내용 형태별 시각화). 아이콘+글 나열로 다 통일하지 말 것 — 정보를 '그림으로'.
+${BODY_IG_GUIDE}
+- 본문 중 정확히 1곳에만 ${heroLine} 를 해결책으로 은근히(보통 body_cause 의 cert 또는 한 포인트). 광고 톤 금지.
 
 {
   "caption": "인스타 캡션 ${lang}, 일기/구어체, 첫 줄 후킹 + 정보 + 댓글 가르는 질문 + 저장/공유 유도(이모지 포함, 200자 이내)",
   "hashtags": "정확히 5개: #밀리밀리(필수, 맨 앞) + 관련 해시태그 4개. 공백 구분. ${lang}.",
   "slides": [
     ${coverGuide[coverType] || coverGuide.cover_textonly},
-    // 본문 5~6장 — 전부 아래 body_info 한 형식으로 통일. 각 본문 num("01","02"...) 부여:
-    //   {"type":"body_info","num":"01","headline":"소제목(궁금증갭)","emphasis":"headline 안 강조어 1개(선택)","points":[{"k":"핵심 키워드","t":"1~2문장 간결 설명(최대 2줄·약45자, **핵심단어 강조**)","icon":"내용에 맞는 아이콘(drop·shield·layers·clock·sun·moon·leaf·sparkle·lock·up·alert·check 중 1)"}, ...2~3개],"takeaway":"핵심 한 줄(약20자, 선택)"}
-    // 본문 중 정확히 1곳 포인트에만 ${heroLine} 를 해결책으로 은근히 녹임(광고 톤 금지).
+    // 본문 5~6장 — 위 BODY_IG_GUIDE 의 타입들을 섞어(최소 3종류) 구성. 각 본문 num("01","02"...).
     {"type":"cta_editorial","headline":"마무리 한 줄(저장 유도)","emphasis":"headline 안 강조 단어 1개","body":"한 줄 마무리(선택)","comment":"댓글 가르는 질문(짧게)","share":"공유 트리거(예: ~한 친구에게)"}
   ]
 }
 주의:
-- 본문은 전부 body_info(체크리스트) 통일. 도표·인물/사진 본문 금지.
+- 본문은 인포그래픽 타입을 섞어 다양하게(같은 타입 2연속 지양, chart/vs/timeline 적극 활용).
 - cover headline·각 본문 headline 은 궁금증갭. emphasis 는 반드시 headline 에 그대로 포함된 단어 1개.
 - 제품은 본문 단 1곳만.
 - ${lang} 맞춤법·띄어쓰기 정확히. 오타 절대 금지(예: '건조'를 '견조'로 쓰지 말 것). 어색한 합성어 금지.
-- 카드 텍스트에 화살표/특수기호(→ ⟶ ⇒ ▶ 등) 절대 쓰지 말 것. 흐름·전환은 우리말 단어로(예: '촉촉했다가 건조', 'A는 B로'). 글머리 기호도 금지.`;
+- 카드 텍스트에 화살표/특수기호(→ ⟶ ⇒ ▶ 등)·이모지 절대 쓰지 말 것. 흐름·전환은 우리말 단어로. 글머리 기호도 금지.`;
 
   const r = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 3000,
+    max_tokens: 4500,
     system,
     messages: [{ role: 'user', content: user }],
   });
@@ -312,10 +324,13 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
   if (!m) throw new Error('LLM 응답 파싱 실패');
   const parsed = JSON.parse(m[0]);
   if (!Array.isArray(parsed.slides) || parsed.slides.length < 3) throw new Error('slides 부족');
-  // 커버 타입 강제(로테이션 주입값) + 마무리 cta_editorial 보장
+  // 커버 타입 강제(로테이션 주입값) + 마무리 cta_editorial 보장 + 본문 타입 정규화
   parsed.slides[0].type = coverType;
   const last = parsed.slides[parsed.slides.length - 1];
   if (last.type !== 'cta_editorial') last.type = 'cta_editorial';
+  // 가운데(본문) 슬라이드만 인포그래픽 타입 검증
+  const mid = normalizeBodySlides(parsed.slides.slice(1, parsed.slides.length - 1));
+  parsed.slides = [parsed.slides[0], ...mid, last];
   // emphasis 보정: 동그라미 안정 — emphasis 없거나 headline 에 없으면 headline 최장 토큰으로.
   for (const s of parsed.slides) {
     const headText = (typeof s.headline === 'object' && s.headline) ? (s.headline.text || '') : (s.headline || '');
@@ -333,7 +348,7 @@ async function genSlides(market, keyword, coverType, axis = '발견', varietyHin
 //   텍스트 필드만 번역: headline, body, sub, statLabel, steps[].t, compare.left/leftVal/right/rightVal,
 //   comment, share, emphasis(번역된 headline에 포함된 단어로), caption, hashtags.
 //   type/num/stat(숫자)/image(공유 URL)/circle/visual/photoSubject 등 비텍스트는 그대로 복사.
-async function translateSlidesToEn(parsed) {
+export async function translateSlidesToEn(parsed) {
   // 이미지/구조는 그대로. 번역 대상 텍스트만 LLM 에 전달 → JSON 으로 회수.
   const slides = parsed.slides || [];
   // 번역 대상만 추출(인덱스 보존)
@@ -346,19 +361,39 @@ async function translateSlidesToEn(parsed) {
     if (s.statLabel != null) o.statLabel = s.statLabel;
     if (s.comment != null) o.comment = s.comment;
     if (s.share != null) o.share = s.share;
-    if (Array.isArray(s.steps)) o.steps = s.steps.map(st => ({ t: st.t ?? '' }));
-    if (Array.isArray(s.points)) o.points = s.points.map(p => ({ k: p.k ?? '', t: p.t ?? '' })); // body_info 체크리스트
     if (s.takeaway != null) o.takeaway = s.takeaway;
-    if (s.compare && typeof s.compare === 'object') {
-      o.compare = { left: s.compare.left ?? '', leftVal: s.compare.leftVal ?? '', right: s.compare.right ?? '', rightVal: s.compare.rightVal ?? '' };
-    }
+    // body_chart
+    if (s.yLabel != null) o.yLabel = s.yLabel;
+    if (s.yHint != null) o.yHint = s.yHint;
+    if (s.markerNote != null) o.markerNote = s.markerNote;
+    if (Array.isArray(s.chart)) o.chart = s.chart.map(p => ({ x: p.x ?? '' }));
+    if (Array.isArray(s.chips)) o.chips = s.chips.map(c => ({ k: c.k ?? '', t: c.t ?? '' }));
+    // body_vs 열 라벨
+    if (s.colA && typeof s.colA === 'object') o.colA = { label: s.colA.label ?? '' };
+    if (s.colB && typeof s.colB === 'object') o.colB = { label: s.colB.label ?? '' };
+    // body_timeline steps(또는 레거시 body_steps)
+    if (Array.isArray(s.steps)) o.steps = s.steps.map(st => ({ k: st.k ?? '', t: st.t ?? '', big: st.big ?? '', bigUnit: st.bigUnit ?? '' }));
+    // rows: body_vs({metric,a.word,b.word}) + body_mistake({bad,good}) 공용
+    if (Array.isArray(s.rows)) o.rows = s.rows.map(r => ({ metric: r.metric ?? '', aWord: r.a?.word ?? '', bWord: r.b?.word ?? '', bad: r.bad ?? '', good: r.good ?? '' }));
+    if (s.leftLabel != null) o.leftLabel = s.leftLabel; // body_mistake 헤더
+    if (s.rightLabel != null) o.rightLabel = s.rightLabel;
+    // body_cause
+    if (s.left != null) o.left = s.left;
+    if (s.right != null) o.right = s.right;
+    if (s.linkNote != null) o.linkNote = s.linkNote;
+    if (s.cert && typeof s.cert === 'object') o.cert = { title: s.cert.title ?? '', body: s.cert.body ?? '' };
+    // body_info 체크리스트
+    if (Array.isArray(s.points)) o.points = s.points.map(p => ({ k: p.k ?? '', t: p.t ?? '' }));
+    // 레거시 compare
+    if (s.compare && typeof s.compare === 'object') o.compare = { left: s.compare.left ?? '', leftVal: s.compare.leftVal ?? '', right: s.compare.right ?? '', rightVal: s.compare.rightVal ?? '' };
     return o;
   });
   const system = `You are a professional EN beauty-copy translator for the brand MILLIMILLI.
 Translate Korean carousel copy into natural, punchy US-English marketing copy (not literal). Keep the curiosity-gap + social-proof tone.
-- Preserve **bold** markers exactly (e.g. **단어** → **word**). Keep emoji.
+- Preserve **bold** markers exactly (e.g. **단어** → **word**). Keep emoji in caption only.
 - For each slide, "emphasis" MUST be a single word that appears verbatim in the translated "headline".
-- Do NOT translate or change numbers/units (24h, 984ppm, 500 Dalton, 4주→4 weeks is fine but keep digits).
+- Do NOT translate or change numbers/units (24h, 984ppm, 500 Dalton, 4주→4 weeks is fine but keep digits). For chart[].x and steps[].big keep all digits, translate only words.
+- Translate EVERY text field present in each slide object (headline, chips[].k/t, yLabel, yHint, markerNote, chart[].x, colA.label, colB.label, steps[].k/t/bigUnit, rows[].metric/aWord/bWord/bad/good, leftLabel, rightLabel, left, right, linkNote, cert.title/body, points[].k/t, takeaway, comment, share, sub, body). Keep the SAME json keys and array order/length. Do not add or drop fields.
 - Return ONLY JSON, same shape as input (array under "slides" + "caption" + "hashtags"). No code fences.`;
   const user = `Translate to English. Korean caption: ${JSON.stringify(parsed.caption || '')}
 Korean hashtags: ${JSON.stringify(parsed.hashtags || '')}
@@ -369,7 +404,7 @@ Return JSON exactly:
 {"caption":"EN caption (diary/casual, hook + info + comment-splitting question + save/share trigger, with emoji, <200 chars)","hashtags":"EXACTLY 5: #millimilli (mandatory, first) + 4 related tags, space-separated","slides":[ same length as input, each with only the text fields that were present, translated ]}`;
   const r = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 3000,
+    max_tokens: 4000,
     system,
     messages: [{ role: 'user', content: user }],
   });
@@ -393,13 +428,44 @@ Return JSON exactly:
     if (t.statLabel != null) en.statLabel = t.statLabel;
     if (t.comment != null) en.comment = t.comment;
     if (t.share != null) en.share = t.share;
+    if (t.takeaway != null) en.takeaway = t.takeaway;
+    // body_chart
+    if (t.yLabel != null) en.yLabel = t.yLabel;
+    if (t.yHint != null) en.yHint = t.yHint;
+    if (t.markerNote != null) en.markerNote = t.markerNote;
+    if (Array.isArray(en.chart) && Array.isArray(t.chart)) en.chart = en.chart.map((p, j) => ({ ...p, x: t.chart[j]?.x ?? p.x }));
+    if (Array.isArray(en.chips) && Array.isArray(t.chips)) en.chips = en.chips.map((c, j) => ({ ...c, k: t.chips[j]?.k ?? c.k, t: t.chips[j]?.t ?? c.t }));
+    // body_vs 열 라벨
+    if (en.colA && t.colA) en.colA = { ...en.colA, label: t.colA.label ?? en.colA.label };
+    if (en.colB && t.colB) en.colB = { ...en.colB, label: t.colB.label ?? en.colB.label };
+    // body_timeline steps(또는 레거시 body_steps)
     if (Array.isArray(en.steps) && Array.isArray(t.steps)) {
-      en.steps = en.steps.map((st, j) => ({ ...st, t: t.steps[j]?.t ?? st.t }));
+      en.steps = en.steps.map((st, j) => ({ ...st, k: t.steps[j]?.k ?? st.k, t: t.steps[j]?.t ?? st.t, bigUnit: t.steps[j]?.bigUnit ?? st.bigUnit }));
     }
+    // rows: body_vs(a.word/b.word/metric) + body_mistake(bad/good)
+    if (Array.isArray(en.rows) && Array.isArray(t.rows)) {
+      en.rows = en.rows.map((r, j) => {
+        const tr2 = t.rows[j] || {}; const nr = { ...r };
+        if (r.metric != null && tr2.metric != null) nr.metric = tr2.metric;
+        if (r.a && tr2.aWord != null) nr.a = { ...r.a, word: tr2.aWord };
+        if (r.b && tr2.bWord != null) nr.b = { ...r.b, word: tr2.bWord };
+        if (r.bad != null && tr2.bad != null) nr.bad = tr2.bad;
+        if (r.good != null && tr2.good != null) nr.good = tr2.good;
+        return nr;
+      });
+    }
+    if (t.leftLabel != null) en.leftLabel = t.leftLabel;
+    if (t.rightLabel != null) en.rightLabel = t.rightLabel;
+    // body_cause
+    if (t.left != null) en.left = t.left;
+    if (t.right != null) en.right = t.right;
+    if (t.linkNote != null) en.linkNote = t.linkNote;
+    if (en.cert && t.cert) en.cert = { ...en.cert, title: t.cert.title ?? en.cert.title, body: t.cert.body ?? en.cert.body };
+    // body_info
     if (Array.isArray(en.points) && Array.isArray(t.points)) {
       en.points = en.points.map((p, j) => ({ ...p, k: t.points[j]?.k ?? p.k, t: t.points[j]?.t ?? p.t }));
     }
-    if (t.takeaway != null) en.takeaway = t.takeaway;
+    // 레거시 compare
     if (en.compare && t.compare) {
       en.compare = { ...en.compare, left: t.compare.left ?? en.compare.left, leftVal: t.compare.leftVal ?? en.compare.leftVal, right: t.compare.right ?? en.compare.right, rightVal: t.compare.rightVal ?? en.compare.rightVal };
     }

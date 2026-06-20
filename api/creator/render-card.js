@@ -51,7 +51,12 @@ export async function loadFonts() {
 const sx = (s) => (typeof s === 'string')
   ? s.replace(/[→➔➜➝➞➡➙⇒⇨⟶⟹⮕➝➔➜►▶▸]/g, '›')
      .replace(/[←↑↓↔↕⇐⇓⟵⬅⬆⬇]/g, '·')
+     // 이모지 제거 — Noto Sans KR 에 이모지 글리프 없어 notdef(⊠) 박스로 깨짐. 카드는 흑백 미니멀이라 이모지 안 씀(이모지는 인스타 캡션에만).
+     //   기호/딩뱃/국기/변형선택자/ZWJ 광범위 제거. (milli²의 ²=U+00B2, 가운뎃점 ·=U+00B7 은 범위 밖이라 안전)
+     .replace(/[\u{1F000}-\u{1FAFF}\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{2190}-\u{21FF}\u{1F1E6}-\u{1F1FF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}\u{2122}\u{2139}]/gu, '')
      .replace(/\*\*/g, '') // 헤드라인/라벨에 새어든 마크다운 볼드 마커 제거. (richText 는 sx(str) 전체 적용 대신 ** 를 먼저 파싱 후 세그먼트별 sx 호출 → 볼드 위계 유지)
+     .replace(/\s+([.,!?])/g, '$1') // 이모지/강조 제거 후 남는 부호 앞 공백 정리
+     .trimEnd()
   : s;
 
 // ── 하이퍼스크립트 (satori VDOM) ──
@@ -136,6 +141,7 @@ const BODY_ICONS = {
   lock: 'M8 11 V8 a4 4 0 0 1 8 0 V11 M6 11 H18 V20 H6 Z',
   up: 'M12 20 V5 M6 11 L12 5 L18 11',
   alert: 'M12 3 L22 20 H2 Z M12 9 V14.5 M12 17.2 V17.4',
+  x: 'M6 6 L18 18 M18 6 L6 18',
 };
 function iconSvg(name, color = BLACK) {
   const d = BODY_ICONS[name] || BODY_ICONS.check;
@@ -643,7 +649,190 @@ function renderCtaEditorial(s, market = 'kr') {
   ], { bg: WHITE });
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// 인포그래픽 본문 (2026-06-20) — 데이터 형태별 시각 구조. 아이콘 장식이 아니라 정보를 '그림'으로.
+//   chart=추세/감소 · vs=대조 · timeline=순서 · cause=인과+인증 · mistake=실수vs해법.
+//   ⚠️ SVG 안에 한글 금지(satori btoa 깨짐) — 라벨은 DOM txt 로.
+//   데이터 부족 시 renderSlide 가 body_info 로 폴백.
+// ───────────────────────────────────────────────────────────────────────────
+const ig_icSvg = (d, color = BLACK, sw = 1.8) => 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="${d}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/></svg>`);
+const ig_iconImg = (name, { size = 40, color = BLACK, sw = 1.8 } = {}) => ({ type: 'img', props: { src: ig_icSvg(BODY_ICONS[name] || BODY_ICONS.check, color, sw), style: { width: size, height: size } } });
+function ig_header(num, headline, emphasis) {
+  const head = headline && typeof headline === 'object' ? headline : { text: headline || '', emphasis: emphasis || '' };
+  return col({}, [
+    num ? txt(String(num), { fontFamily: FONT, fontWeight: 300, fontSize: 34, color: SUB, letterSpacing: 1, marginBottom: 10 }) : null,
+    head.text ? (head.emphasis
+      ? headlineWithEmphasis(head, { fontSize: 50, lineHeight: 1.14, letterSpacing: -1 })
+      : headlineText(head.text, { fontSize: 50, lineHeight: 1.14, letterSpacing: -1 })) : null,
+    h('div', { display: 'flex', width: 110, height: 6, backgroundColor: BLACK, marginTop: 22, marginBottom: 36 }, ''),
+  ].filter(Boolean));
+}
+const ig_takeaway = (s) => s ? h('div', { display: 'flex', backgroundColor: '#F1F1EE', padding: '24px 28px', marginTop: 'auto', marginBottom: 24 }, [richText(String(s), { fontSize: 34, color: BLACK, lineHeight: 1.35 })]) : null;
+
+// 추세 라인차트 SVG(한글 없음) — points:[{x,y(0~100)}], markerIdx 옵션.
+function ig_lineChart(points, { w = 920, ht = 440, markerIdx = null } = {}) {
+  const padL = 8, padR = 8, padT = 40, padB = 30, plotW = w - padL - padR, plotH = ht - padT - padB, n = points.length;
+  const xs = points.map((_, i) => padL + (plotW * i) / (n - 1));
+  const ys = points.map(p => padT + plotH * (1 - (Number(p.y) || 0) / 100));
+  let d = `M ${xs[0]} ${ys[0]}`;
+  for (let i = 0; i < n - 1; i++) { const cx = (xs[i] + xs[i + 1]) / 2; d += ` C ${cx} ${ys[i]} ${cx} ${ys[i + 1]} ${xs[i + 1]} ${ys[i + 1]}`; }
+  const area = `${d} L ${xs[n - 1]} ${padT + plotH} L ${xs[0]} ${padT + plotH} Z`;
+  const grid = [0.25, 0.5, 0.75].map(g => `<line x1="${padL}" y1="${padT + plotH * g}" x2="${w - padR}" y2="${padT + plotH * g}" stroke="#ECECEA" stroke-width="2"/>`).join('');
+  const dots = xs.map((x, i) => `<circle cx="${x}" cy="${ys[i]}" r="9" fill="${BLACK}"/>`).join('');
+  let marker = '';
+  if (markerIdx != null && xs[markerIdx] != null) { const mx = xs[markerIdx], my = ys[markerIdx]; marker = `<line x1="${mx}" y1="${padT}" x2="${mx}" y2="${padT + plotH}" stroke="${BLACK}" stroke-width="2" stroke-dasharray="6 6"/><circle cx="${mx}" cy="${my}" r="15" fill="none" stroke="${BLACK}" stroke-width="4"/>`; }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${ht}">${grid}<path d="${area}" fill="#F2F2F0"/><path d="${d}" fill="none" stroke="${BLACK}" stroke-width="6" stroke-linecap="round"/>${marker}${dots}</svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+
+// ── body_chart: 추세/감소 라인차트 + 원인 칩 ──
+function renderBodyChart(s) {
+  const chart = Array.isArray(s.chart) ? s.chart.filter(p => p && p.x != null) : [];
+  return frame([
+    ig_header(s.num, hl(s)),
+    s.yLabel ? row({ alignItems: 'flex-end', marginBottom: 6 }, [
+      txt(s.yLabel, { fontFamily: FONT, fontWeight: 500, fontSize: 28, color: BLACK }),
+      s.yHint ? txt(s.yHint, { fontFamily: FONT, fontWeight: 300, fontSize: 24, color: SUB, marginLeft: 10 }) : null,
+    ].filter(Boolean)) : null,
+    h('div', { display: 'flex', width: W - 160, height: 440 }, [{ type: 'img', props: { src: ig_lineChart(chart, { w: W - 160, ht: 440, markerIdx: s.markerIdx }), style: { width: W - 160, height: 440 } } }]),
+    row({ width: W - 160, justifyContent: 'space-between', marginTop: 8, marginBottom: 8, paddingLeft: 8, paddingRight: 8 }, chart.map(p => txt(String(p.x), { fontFamily: FONT, fontWeight: 300, fontSize: 26, color: SUB }))),
+    s.markerNote ? row({ marginTop: 4, marginBottom: 22 }, [
+      h('div', { display: 'flex', width: 16, height: 16, borderRadius: 8, border: `4px solid ${BLACK}`, marginRight: 14 }, ''),
+      txt(s.markerNote, { fontFamily: FONT, fontWeight: 500, fontSize: 30, color: BLACK }),
+    ]) : null,
+    Array.isArray(s.chips) && s.chips.length ? row({ justifyContent: 'space-between', marginTop: 14 }, s.chips.slice(0, 3).map(c =>
+      col({ width: (W - 160 - 36) / 3, backgroundColor: GRAY, padding: '22px 20px' }, [
+        c.k ? txt(c.k, { fontFamily: FONT, fontWeight: 700, fontSize: 30, color: BLACK, marginBottom: 8, wordBreak: 'keep-all' }) : null,
+        c.t ? txt(c.t, { fontFamily: FONT, fontWeight: 300, fontSize: 24, color: '#3A3A3A', lineHeight: 1.35, wordBreak: 'keep-all' }) : null,
+      ].filter(Boolean)))) : null,
+    ig_takeaway(s.takeaway),
+    footer(),
+  ].filter(Boolean));
+}
+
+// ── body_vs: 2열 대조 매트릭스 ──
+function ig_viz(viz, strong) {
+  if (!viz) return null;
+  if (viz.type === 'bar') return h('div', { display: 'flex', width: '100%', height: 40, backgroundColor: '#EAEAE8' }, [h('div', { display: 'flex', width: `${Math.round((Number(viz.val) || 0) * 100)}%`, height: 40, backgroundColor: strong ? BLACK : '#C9C9C6' }, '')]);
+  if (viz.type === 'dots') { const total = viz.total || 6; const filled = Math.max(0, Math.min(total, viz.filled || 0)); return row({ gap: 10 }, Array.from({ length: total }, (_, i) => h('div', { display: 'flex', width: 22, height: 22, borderRadius: 11, backgroundColor: i < filled ? BLACK : '#E2E2DF' }, ''))); }
+  return null;
+}
+function renderBodyVs(s) {
+  const colW = (W - 160 - 40) / 2;
+  const A = s.colA || {}, B = s.colB || {}, rows = Array.isArray(s.rows) ? s.rows : [];
+  const headerCell = (label, accent) => h('div', { display: 'flex', width: colW, justifyContent: 'center', alignItems: 'center', backgroundColor: accent ? BLACK : WHITE, border: `3px solid ${BLACK}`, padding: '18px 0' }, [txt(String(label || ''), { fontFamily: FONT, fontWeight: 700, fontSize: 40, color: accent ? WHITE : BLACK, letterSpacing: -1 })]);
+  const dataCell = (cell = {}, strong) => col({ width: colW, padding: '22px 26px', justifyContent: 'center', minHeight: 140, border: `3px solid ${BLACK}`, borderTop: 'none', backgroundColor: strong ? '#FAFAF9' : WHITE }, [
+    cell.viz ? h('div', { display: 'flex', marginBottom: 16 }, [ig_viz(cell.viz, strong)]) : null,
+    txt(String(cell.word || ''), { fontFamily: FONT, fontWeight: strong ? 700 : 500, fontSize: 30, color: BLACK, lineHeight: 1.3, wordBreak: 'keep-all' }),
+  ].filter(Boolean));
+  return frame([
+    ig_header(s.num, hl(s)),
+    row({ gap: 40 }, [headerCell(A.label, false), headerCell(B.label, true)]),
+    col({ flex: 1 }, rows.map(r => col({}, [
+      h('div', { display: 'flex', width: '100%', justifyContent: 'center', backgroundColor: GRAY, padding: '10px 0', borderLeft: `3px solid ${BLACK}`, borderRight: `3px solid ${BLACK}` }, [txt(String(r.metric || ''), { fontFamily: FONT, fontWeight: 500, fontSize: 26, color: SUB, letterSpacing: 1 })]),
+      row({ gap: 40 }, [dataCell(r.a, false), dataCell(r.b, true)]),
+    ]))),
+    ig_takeaway(s.takeaway),
+    footer(),
+  ].filter(Boolean));
+}
+
+// ── body_timeline: 순서(번호 배지 + 세로 연결선) ──
+function renderBodyTimeline(s) {
+  const steps = Array.isArray(s.steps) ? s.steps : [];
+  const n = steps.length;
+  const badge = (i) => col({ alignItems: 'center', marginRight: 32, flexShrink: 0 }, [
+    h('div', { display: 'flex', width: 84, height: 84, borderRadius: 42, backgroundColor: BLACK, alignItems: 'center', justifyContent: 'center' }, [txt(String(i + 1), { fontFamily: FONT, fontWeight: 700, fontSize: 44, color: WHITE })]),
+    i < n - 1 ? h('div', { display: 'flex', width: 4, height: 96, backgroundColor: '#D9D9D6', marginTop: 8 }, '') : null,
+  ].filter(Boolean));
+  const step = (st, i) => row({ alignItems: 'flex-start', marginBottom: i < n - 1 ? 4 : 0 }, [
+    badge(i),
+    col({ flex: 1, marginTop: 6 }, [
+      st.big ? row({ alignItems: 'baseline', marginBottom: 6 }, [
+        txt(String(st.big), { fontFamily: FONT, fontWeight: 700, fontSize: 72, color: BLACK, letterSpacing: -2, marginRight: 16 }),
+        st.bigUnit ? txt(String(st.bigUnit), { fontFamily: FONT, fontWeight: 500, fontSize: 34, color: SUB }) : null,
+      ].filter(Boolean)) : null,
+      st.k ? txt(String(st.k), { fontFamily: FONT, fontWeight: 700, fontSize: 42, color: BLACK, lineHeight: 1.2, letterSpacing: -0.5, marginBottom: 8, wordBreak: 'keep-all' }) : null,
+      st.t ? h('div', { display: 'flex' }, [richText(String(st.t), { fontSize: 32, color: '#3A3A3A', lineHeight: 1.4 })]) : null,
+    ].filter(Boolean)),
+  ]);
+  return frame([
+    ig_header(s.num, hl(s)),
+    col({ flex: 1, justifyContent: 'center' }, steps.map(step)),
+    ig_takeaway(s.takeaway),
+    footer(),
+  ].filter(Boolean));
+}
+
+// ── body_cause: 인과 등식 + 인증 배지 ──
+function renderBodyCause(s) {
+  const eqBox = (label) => col({ flex: 1, backgroundColor: GRAY, padding: '34px 24px', alignItems: 'center', justifyContent: 'center', minHeight: 150 }, [
+    txt(String(label || ''), { fontFamily: FONT, fontWeight: 700, fontSize: 42, color: BLACK, lineHeight: 1.2, letterSpacing: -1 }),
+  ]);
+  return frame([
+    ig_header(s.num, hl(s)),
+    row({ alignItems: 'center', marginBottom: 24 }, [
+      eqBox(s.left),
+      txt('=', { fontFamily: FONT, fontWeight: 700, fontSize: 80, color: BLACK, marginLeft: 24, marginRight: 24 }),
+      eqBox(s.right),
+    ]),
+    s.linkNote ? h('div', { display: 'flex', marginBottom: 'auto' }, [richText(String(s.linkNote), { fontSize: 32, color: '#3A3A3A', lineHeight: 1.45 })]) : null,
+    s.cert ? col({ backgroundColor: BLACK, padding: '34px 36px', marginTop: 28, marginBottom: 24 }, [
+      row({ alignItems: 'center', marginBottom: 16 }, [
+        h('div', { display: 'flex', width: 56, height: 56, borderRadius: 28, backgroundColor: WHITE, alignItems: 'center', justifyContent: 'center', marginRight: 20 }, [ig_iconImg('check', { size: 32, color: BLACK, sw: 2.6 })]),
+        txt(String(s.cert.title || ''), { fontFamily: FONT, fontWeight: 700, fontSize: 40, color: WHITE, letterSpacing: -1 }),
+      ]),
+      s.cert.body ? txt(String(s.cert.body), { fontFamily: FONT, fontWeight: 300, fontSize: 30, color: '#D6D6D6', lineHeight: 1.4, wordBreak: 'keep-all' }) : null,
+    ].filter(Boolean)) : null,
+    footer(),
+  ].filter(Boolean));
+}
+
+// ── body_mistake: 실수 vs 해법(2열) ──
+function renderBodyMistake(s) {
+  const colW = (W - 160 - 32) / 2;
+  const rows = Array.isArray(s.rows) ? s.rows : [];
+  const head = (label, accent) => h('div', { display: 'flex', width: colW, alignItems: 'center', justifyContent: 'center', padding: '16px 0', backgroundColor: accent ? BLACK : '#EDEDEA' }, [
+    txt(String(label || ''), { fontFamily: FONT, fontWeight: 700, fontSize: 36, color: accent ? WHITE : '#6A6A66', letterSpacing: -0.5 }),
+  ]);
+  const cell = (icon, text, strong) => row({ width: colW, alignItems: 'flex-start', padding: '22px 22px', minHeight: 150, backgroundColor: strong ? '#FAFAF9' : '#F4F4F2' }, [
+    h('div', { display: 'flex', marginRight: 16, marginTop: 4, flexShrink: 0 }, [ig_iconImg(icon, { size: 36, color: BLACK, sw: 2.4 })]),
+    h('div', { display: 'flex', flex: 1 }, [richText(String(text || ''), { fontSize: 30, color: BLACK, lineHeight: 1.35 })]),
+  ]);
+  return frame([
+    ig_header(s.num, hl(s)),
+    row({ gap: 32, marginBottom: 16 }, [head(s.leftLabel || '흔한 실수', false), head(s.rightLabel || '이렇게 하세요', true)]),
+    col({ flex: 1, gap: 16 }, rows.map(r => row({ gap: 32 }, [cell('x', r.bad, false), cell('check', r.good, true)]))),
+    ig_takeaway(s.takeaway),
+    footer(),
+  ].filter(Boolean));
+}
+
+// 인포그래픽 데이터 충분성 검사 — 부족하면 body_info 폴백.
+function ig_hasData(s) {
+  switch (s.type) {
+    case 'body_chart': return Array.isArray(s.chart) && s.chart.length >= 2;
+    case 'body_vs': return s.colA && s.colB && Array.isArray(s.rows) && s.rows.length >= 1;
+    case 'body_timeline': return Array.isArray(s.steps) && s.steps.length >= 1;
+    case 'body_cause': return !!(s.left && s.right);
+    case 'body_mistake': return Array.isArray(s.rows) && s.rows.length >= 1;
+    default: return true;
+  }
+}
+
 export function renderSlide(s, market) {
+  // 인포그래픽 본문 — 데이터 부족 시 body_info 폴백
+  if (['body_chart', 'body_vs', 'body_timeline', 'body_cause', 'body_mistake'].includes(s.type)) {
+    if (!ig_hasData(s)) return renderBodyInfo(s);
+    switch (s.type) {
+      case 'body_chart': return renderBodyChart(s);
+      case 'body_vs': return renderBodyVs(s);
+      case 'body_timeline': return renderBodyTimeline(s);
+      case 'body_cause': return renderBodyCause(s);
+      case 'body_mistake': return renderBodyMistake(s);
+    }
+  }
   switch (s.type) {
     // 기존(하위호환)
     case 'cover': return renderCover(s, market);
