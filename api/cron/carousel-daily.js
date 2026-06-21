@@ -211,7 +211,7 @@ const SERIES_SEQ = ['발견','신뢰','발견','발견','캐릭터','발견','�
 const BODY_IG_GUIDE = `본문은 "아이콘+글 나열"이 아니라, 내용 형태에 가장 맞는 인포그래픽 타입을 골라 '정보를 그림으로' 보여줄 것. 한 캐러셀 안에서 최소 3종류 이상 섞어 다양하게(같은 타입 2연속 지양). 타입별 스키마:
 - body_chart  (시간·나이·단계에 따른 증가/감소 추세): {"type":"body_chart","num":"01","headline":"소제목","emphasis":"headline 안 단어1","yLabel":"지표 이름","yHint":"(기준 한 줄, 선택)","chart":[{"x":"축라벨","y":0~100}...3~4개],"markerIdx":변곡점_인덱스(선택),"markerNote":"마커 한 줄(선택)","chips":[{"k":"원인 키워드","t":"짧은 설명"}...최대3],"takeaway":"핵심 한 줄(선택)"}
 - body_vs     (두 대상 대조 A vs B): {"type":"body_vs","num":"02","headline":"...","emphasis":"...","colA":{"label":"왼쪽"},"colB":{"label":"오른쪽(강조측)"},"rows":[{"metric":"비교 항목","a":{"viz":{"type":"bar","val":0~1},"word":"왼쪽 값"},"b":{"viz":{"type":"bar","val":0~1},"word":"오른쪽 값"}}...2~3]. viz 는 수치 비교면 {"type":"bar","val":0~1} 또는 {"type":"dots","filled":N,"total":6}, 없으면 viz 생략하고 word 만,"takeaway":"..."}
-- body_timeline (순서·단계·방법): {"type":"body_timeline","num":"03","headline":"...","emphasis":"...","steps":[{"big":"핵심 수치(선택,예 3분)","bigUnit":"단위(선택)","k":"단계 제목","t":"설명 1~2문장(**핵심강조**)"}...2~3],"takeaway":"..."}
+- body_timeline (순서·단계·방법): {"type":"body_timeline","num":"03","headline":"...","emphasis":"...","steps":[{"big":"핵심 숫자 지표만(선택, 예 '3분'·'24h'·'2배'). ⚠️단계번호('1단계','2단계')나 분류어('스킨','메이크업')는 절대 넣지 말 것 — 단계 번호는 배지로 자동 표시됨. 진짜 수치 없으면 big 자체를 생략","bigUnit":"단위(선택)","k":"단계 제목","t":"설명 1~2문장(**핵심강조**)"}...2~3],"takeaway":"..."}
 - body_cause  (인과 "A=B 같은 문제" / 입증·인증): {"type":"body_cause","num":"04","headline":"...","emphasis":"...","left":"원인","right":"결과","linkNote":"둘을 잇는 설명(**강조**)","cert":{"title":"4주 인체적용시험 확인","body":"제품·근거 한 줄"}(제품/근거 슬라이드일 때만 cert 포함)}
 - body_mistake (흔한 실수 vs 올바른 방법): {"type":"body_mistake","num":"05","headline":"...","emphasis":"...","leftLabel":"흔한 실수","rightLabel":"이렇게 하세요","rows":[{"bad":"실수","good":"해법(**강조**)"}...2~3],"takeaway":"..."}
 - body_info   (위 어디에도 안 맞을 때만): {"type":"body_info","num":"06","headline":"...","emphasis":"...","points":[{"k":"키워드","t":"설명(**강조**)","icon":"drop|shield|layers|clock|sun|moon|leaf|sparkle|lock|up|alert|check 중 1"}...2~3],"takeaway":"..."}
@@ -440,7 +440,7 @@ Return JSON exactly:
     if (en.colB && t.colB) en.colB = { ...en.colB, label: t.colB.label ?? en.colB.label };
     // body_timeline steps(또는 레거시 body_steps)
     if (Array.isArray(en.steps) && Array.isArray(t.steps)) {
-      en.steps = en.steps.map((st, j) => ({ ...st, k: t.steps[j]?.k ?? st.k, t: t.steps[j]?.t ?? st.t, bigUnit: t.steps[j]?.bigUnit ?? st.bigUnit }));
+      en.steps = en.steps.map((st, j) => ({ ...st, k: t.steps[j]?.k ?? st.k, t: t.steps[j]?.t ?? st.t, big: t.steps[j]?.big ?? st.big, bigUnit: t.steps[j]?.bigUnit ?? st.bigUnit }));
     }
     // rows: body_vs(a.word/b.word/metric) + body_mistake(bad/good)
     if (Array.isArray(en.rows) && Array.isArray(t.rows)) {

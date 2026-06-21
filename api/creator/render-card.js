@@ -738,6 +738,8 @@ function renderBodyVs(s) {
 }
 
 // ── body_timeline: 순서(번호 배지 + 세로 연결선) ──
+// big 은 '핵심 숫자 지표'만(예 3분/24h/2배). 단계번호('1단계'/'step 1')·분류어(숫자 없음)는 배지와 중복/오용이라 무시.
+const validBig = (b) => { const s = String(b ?? '').trim(); return !!s && /\d/.test(s) && !/단계|step/i.test(s); };
 function renderBodyTimeline(s) {
   const steps = Array.isArray(s.steps) ? s.steps : [];
   const n = steps.length;
@@ -748,7 +750,7 @@ function renderBodyTimeline(s) {
   const step = (st, i) => row({ alignItems: 'flex-start', marginBottom: i < n - 1 ? 4 : 0 }, [
     badge(i),
     col({ flex: 1, marginTop: 6 }, [
-      st.big ? row({ alignItems: 'baseline', marginBottom: 6 }, [
+      validBig(st.big) ? row({ alignItems: 'baseline', marginBottom: 6 }, [
         txt(String(st.big), { fontFamily: FONT, fontWeight: 700, fontSize: 72, color: BLACK, letterSpacing: -2, marginRight: 16 }),
         st.bigUnit ? txt(String(st.bigUnit), { fontFamily: FONT, fontWeight: 500, fontSize: 34, color: SUB }) : null,
       ].filter(Boolean)) : null,
