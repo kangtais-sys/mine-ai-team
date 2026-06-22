@@ -68,10 +68,11 @@ for (const date of dates) {
     const body = isUs ? enBody.slides : krBody.slides;
     const newSlides = [old[0], ...body, old[old.length - 1]];
     const urls = await bake(newSlides, isUs ? 'us' : 'kr', `${d.id}`);
-    const { id, ...data } = d;
+    const rowId = d.id;
+    const data = { ...d }; // ⚠️ id 포함 유지 (data.id 빠지면 보드 발행/승인 'id 필수' 실패)
     data.slides = newSlides; data.slidesRaw = JSON.parse(JSON.stringify(newSlides));
     data.mediaUrls = urls; data.format = 'cardnews'; data.infographic = true; data.updatedAt = new Date().toISOString();
-    const { error } = await sb.from('creator_drafts').update({ data }).eq('id', id);
+    const { error } = await sb.from('creator_drafts').update({ data }).eq('id', rowId);
     console.log(' ', d.channel, error ? 'ERR ' + error.message : `updated (${urls.length}장)`);
   }
 }

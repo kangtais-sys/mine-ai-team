@@ -225,7 +225,7 @@ export default async function handler(req, res) {
         .limit(300);
       if (error) throw error;
       const drafts = (data || [])
-        .map(r => r.data)
+        .map(r => ({ ...r.data, id: r.id })) // 항상 행 id 주입(data.id 누락돼도 보드가 발행/승인 가능) — id 없으면 액션이 400 'id 필수'로 조용히 실패
         .filter(d => d && d.version === 'milli-v1' && d.date >= week && d.date <= weekEnd);
       return res.status(200).json({ drafts, slots: SLOTS });
     } catch (e) {
