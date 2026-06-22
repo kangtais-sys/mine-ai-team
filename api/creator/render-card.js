@@ -710,29 +710,42 @@ function renderBodyChart(s) {
   ].filter(Boolean));
 }
 
-// ── body_vs: 2열 대조 매트릭스 ──
-function ig_viz(viz, strong) {
+// ── body_vs: 2열 대조 매트릭스 ── (글 양/행 수에 맞춰 적응형 — 카드 넘침 방지)
+function ig_viz(viz, strong, { barH = 40, dot = 22 } = {}) {
   if (!viz) return null;
-  if (viz.type === 'bar') return h('div', { display: 'flex', width: '100%', height: 40, backgroundColor: '#EAEAE8' }, [h('div', { display: 'flex', width: `${Math.round((Number(viz.val) || 0) * 100)}%`, height: 40, backgroundColor: strong ? BLACK : '#C9C9C6' }, '')]);
-  if (viz.type === 'dots') { const total = viz.total || 6; const filled = Math.max(0, Math.min(total, viz.filled || 0)); return row({ gap: 10 }, Array.from({ length: total }, (_, i) => h('div', { display: 'flex', width: 22, height: 22, borderRadius: 11, backgroundColor: i < filled ? BLACK : '#E2E2DF' }, ''))); }
+  if (viz.type === 'bar') return h('div', { display: 'flex', width: '100%', height: barH, backgroundColor: '#EAEAE8' }, [h('div', { display: 'flex', width: `${Math.round((Number(viz.val) || 0) * 100)}%`, height: barH, backgroundColor: strong ? BLACK : '#C9C9C6' }, '')]);
+  if (viz.type === 'dots') { const total = viz.total || 6; const filled = Math.max(0, Math.min(total, viz.filled || 0)); return row({ gap: 8 }, Array.from({ length: total }, (_, i) => h('div', { display: 'flex', width: dot, height: dot, borderRadius: Math.round(dot / 2), backgroundColor: i < filled ? BLACK : '#E2E2DF' }, ''))); }
   return null;
 }
 function renderBodyVs(s) {
   const colW = (W - 160 - 40) / 2;
-  const A = s.colA || {}, B = s.colB || {}, rows = Array.isArray(s.rows) ? s.rows : [];
-  const headerCell = (label, accent) => h('div', { display: 'flex', width: colW, justifyContent: 'center', alignItems: 'center', backgroundColor: accent ? BLACK : WHITE, border: `3px solid ${BLACK}`, padding: '18px 0' }, [txt(String(label || ''), { fontFamily: FONT, fontWeight: 700, fontSize: 40, color: accent ? WHITE : BLACK, letterSpacing: -1 })]);
-  const dataCell = (cell = {}, strong) => col({ width: colW, padding: '22px 26px', justifyContent: 'center', minHeight: 140, border: `3px solid ${BLACK}`, borderTop: 'none', backgroundColor: strong ? '#FAFAF9' : WHITE }, [
-    cell.viz ? h('div', { display: 'flex', marginBottom: 16 }, [ig_viz(cell.viz, strong)]) : null,
-    txt(String(cell.word || ''), { fontFamily: FONT, fontWeight: strong ? 700 : 500, fontSize: 30, color: BLACK, lineHeight: 1.3, wordBreak: 'keep-all' }),
+  const A = s.colA || {}, B = s.colB || {};
+  const rows = (Array.isArray(s.rows) ? s.rows : []).slice(0, 3); // 최대 3행
+  const n = rows.length;
+  const big = n >= 3; // 행 많으면 압축 티어
+  const longLabel = Math.max(String(A.label || '').length, String(B.label || '').length) > 14;
+  const hFont = longLabel ? 27 : (big ? 33 : 38);  // 헤더 라벨(길면 축소)
+  const mFont = big ? 22 : 25;                       // 행 라벨
+  const wFont = big ? 26 : 30;                       // 셀 값
+  const barH = big ? 26 : 36;
+  const cellMin = big ? 92 : 118;
+  const cellPad = big ? '14px 18px' : '20px 24px';
+  // 헤더: 두 칸 높이 정렬(stretch) + 길면 줄바꿈(headlineText 단어 wrap, 중앙)
+  const headerCell = (label, accent) => h('div', { display: 'flex', width: colW, justifyContent: 'center', alignItems: 'center', backgroundColor: accent ? BLACK : WHITE, border: `3px solid ${BLACK}`, padding: '12px 14px' },
+    [headlineText(String(label || ''), { fontWeight: 700, fontSize: hFont, color: accent ? WHITE : BLACK, lineHeight: 1.12, letterSpacing: -0.5, align: 'center' })]);
+  const dataCell = (cell = {}, strong) => col({ width: colW, padding: cellPad, justifyContent: 'center', minHeight: cellMin, border: `3px solid ${BLACK}`, borderTop: 'none', backgroundColor: strong ? '#FAFAF9' : WHITE }, [
+    cell.viz ? h('div', { display: 'flex', marginBottom: 12 }, [ig_viz(cell.viz, strong, { barH, dot: big ? 18 : 22 })]) : null,
+    cell.word ? headlineText(String(cell.word), { fontWeight: strong ? 700 : 500, fontSize: wFont, color: BLACK, lineHeight: 1.25, letterSpacing: -0.3, align: 'flex-start' }) : null,
   ].filter(Boolean));
   return frame([
     ig_header(s.num, hl(s)),
-    row({ gap: 40 }, [headerCell(A.label, false), headerCell(B.label, true)]),
-    col({ flex: 1 }, rows.map(r => col({}, [
-      h('div', { display: 'flex', width: '100%', justifyContent: 'center', backgroundColor: GRAY, padding: '10px 0', borderLeft: `3px solid ${BLACK}`, borderRight: `3px solid ${BLACK}` }, [txt(String(r.metric || ''), { fontFamily: FONT, fontWeight: 500, fontSize: 26, color: SUB, letterSpacing: 1 })]),
-      row({ gap: 40 }, [dataCell(r.a, false), dataCell(r.b, true)]),
-    ]))),
-    ig_takeaway(s.takeaway),
+    row({ gap: 40, alignItems: 'stretch' }, [headerCell(A.label, false), headerCell(B.label, true)]),
+    ...rows.map(r => col({}, [
+      h('div', { display: 'flex', width: '100%', justifyContent: 'center', backgroundColor: GRAY, padding: '8px 6px', borderLeft: `3px solid ${BLACK}`, borderRight: `3px solid ${BLACK}` }, [txt(String(r.metric || ''), { fontFamily: FONT, fontWeight: 500, fontSize: mFont, color: SUB, letterSpacing: 1, wordBreak: 'keep-all' })]),
+      row({ gap: 40, alignItems: 'stretch' }, [dataCell(r.a, false), dataCell(r.b, true)]),
+    ])),
+    // takeaway: 압축 티어는 정상 흐름(겹침 방지), 여유 있으면 하단 정렬
+    s.takeaway ? h('div', { display: 'flex', backgroundColor: '#F1F1EE', padding: big ? '16px 24px' : '24px 28px', marginTop: big ? 18 : 'auto', marginBottom: 16 }, [richText(String(s.takeaway), { fontSize: big ? 30 : 34, color: BLACK, lineHeight: 1.3 })]) : null,
     footer(),
   ].filter(Boolean));
 }
