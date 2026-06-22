@@ -181,9 +181,11 @@ const footer = () => row({ justifyContent: 'space-between', alignItems: 'center'
 ]);
 
 // ── 슬라이드 프레임 ──
+// minHeight(고정 height 아님) — 콘텐츠가 H 보다 적으면 H 로 채우고(marginTop:auto 하단정렬 유지),
+//   넘치면 자라남 → bakePng 의 auto-fit 이 측정해서 자동 축소(전 슬라이드 공통 넘침 방지).
 function frame(children, { bg = WHITE } = {}) {
   return h('div', {
-    width: W, height: H, display: 'flex', flexDirection: 'column', backgroundColor: bg,
+    width: W, minHeight: H, display: 'flex', flexDirection: 'column', backgroundColor: bg,
     padding: 80, fontFamily: FONT,
   }, children);
 }
@@ -595,7 +597,7 @@ function renderBodyInfo(s) {
       ? headlineWithEmphasis(head, { fontSize: 50, color: BLACK, lineHeight: 1.14, letterSpacing: -1 })
       : headlineText(head.text, { fontSize: 50, lineHeight: 1.14, letterSpacing: -1 })) : null,
     h('div', { display: 'flex', width: 110, height: 6, backgroundColor: BLACK, marginTop: 22, marginBottom: 36 }, ''),
-    col({ flex: 1, justifyContent: 'flex-start' }, points.map(pointRow)),
+    col({}, points.map(pointRow)),
     hasTake ? h('div', { display: 'flex', backgroundColor: '#F1F1EE', padding: '24px 28px', marginTop: 20 }, [richText(String(s.takeaway), { fontSize: 36, color: BLACK, lineHeight: 1.4 })]) : null,
     footer(),
   ].filter(Boolean));
@@ -667,7 +669,9 @@ function ig_header(num, headline, emphasis) {
     h('div', { display: 'flex', width: 110, height: 6, backgroundColor: BLACK, marginTop: 22, marginBottom: 36 }, ''),
   ].filter(Boolean));
 }
-const ig_takeaway = (s) => s ? h('div', { display: 'flex', backgroundColor: '#F1F1EE', padding: '24px 28px', marginTop: 'auto', marginBottom: 24 }, [richText(String(s), { fontSize: 34, color: BLACK, lineHeight: 1.35 })]) : null;
+// 본문 공통: 콘텐츠는 자연 흐름(flex:1 박스 금지 — 넘치면 형제 위로 겹침), takeaway 는 정상 흐름(마진 auto 금지),
+//   하단 정렬은 footer 의 marginTop:auto 가 담당, 총높이 넘침은 bakePng auto-fit 이 축소. → 어떤 본문도 겹침/잘림 없음.
+const ig_takeaway = (s) => s ? h('div', { display: 'flex', backgroundColor: '#F1F1EE', padding: '22px 28px', marginTop: 20, marginBottom: 18 }, [richText(String(s), { fontSize: 34, color: BLACK, lineHeight: 1.35 })]) : null;
 
 // 추세 라인차트 SVG(한글 없음) — points:[{x,y(0~100)}], markerIdx 옵션.
 function ig_lineChart(points, { w = 920, ht = 440, markerIdx = null } = {}) {
@@ -745,7 +749,7 @@ function renderBodyVs(s) {
       row({ gap: 40, alignItems: 'stretch' }, [dataCell(r.a, false), dataCell(r.b, true)]),
     ])),
     // takeaway: 압축 티어는 정상 흐름(겹침 방지), 여유 있으면 하단 정렬
-    s.takeaway ? h('div', { display: 'flex', backgroundColor: '#F1F1EE', padding: big ? '16px 24px' : '24px 28px', marginTop: big ? 18 : 'auto', marginBottom: 16 }, [richText(String(s.takeaway), { fontSize: big ? 30 : 34, color: BLACK, lineHeight: 1.3 })]) : null,
+    s.takeaway ? h('div', { display: 'flex', backgroundColor: '#F1F1EE', padding: big ? '16px 24px' : '24px 28px', marginTop: 18, marginBottom: 16 }, [richText(String(s.takeaway), { fontSize: big ? 30 : 34, color: BLACK, lineHeight: 1.3 })]) : null,
     footer(),
   ].filter(Boolean));
 }
@@ -773,7 +777,7 @@ function renderBodyTimeline(s) {
   ]);
   return frame([
     ig_header(s.num, hl(s)),
-    col({ flex: 1, justifyContent: 'center' }, steps.map(step)),
+    col({}, steps.map(step)),
     ig_takeaway(s.takeaway),
     footer(),
   ].filter(Boolean));
@@ -817,7 +821,7 @@ function renderBodyMistake(s) {
   return frame([
     ig_header(s.num, hl(s)),
     row({ gap: 32, marginBottom: 16 }, [head(s.leftLabel || '흔한 실수', false), head(s.rightLabel || '이렇게 하세요', true)]),
-    col({ flex: 1, gap: 16 }, rows.map(r => row({ gap: 32 }, [cell('x', r.bad, false), cell('check', r.good, true)]))),
+    col({ gap: 16 }, rows.map(r => row({ gap: 32 }, [cell('x', r.bad, false), cell('check', r.good, true)]))),
     ig_takeaway(s.takeaway),
     footer(),
   ].filter(Boolean));
@@ -875,8 +879,30 @@ export function renderSlide(s, market) {
   }
 }
 
+// satori SVG 의 height 속성 추출(자연 높이 측정용)
+function svgHeight(svg) {
+  const m = svg.match(/<svg[^>]*\bheight="([\d.]+)"/);
+  return m ? parseFloat(m[1]) : H;
+}
+
+// 전 슬라이드 공통 넘침 방지(auto-fit):
+//   1) height 미지정으로 한 번 렌더 → 콘텐츠 자연 높이 측정(frame minHeight 라 최소 H, 넘치면 그 이상).
+//   2) H 이하면 그대로 H 로 확정 렌더.
+//   3) H 초과면 비율 k=H/자연높이 로 콘텐츠를 통째로 축소(transformOrigin 좌상단) 후 W×H 흰 캔버스에 안착.
+//      본문(넘침이 나는 곳)은 전부 흰 배경이라 축소로 생기는 우측 여백이 안 보임 → 잘림 없이 전부 표시.
 export async function bakePng(vdom, fonts) {
-  const svg = await satori(vdom, { width: W, height: H, fonts });
+  let finalVdom = vdom;
+  try {
+    const measured = await satori(vdom, { width: W, fonts });
+    const nat = svgHeight(measured);
+    if (nat > H + 1) {
+      const k = Math.max(0.5, H / nat); // 과도 축소 하한
+      finalVdom = h('div', { width: W, height: H, display: 'flex', backgroundColor: WHITE, overflow: 'hidden' }, [
+        h('div', { display: 'flex', transform: `scale(${k})`, transformOrigin: 'top left' }, [vdom]),
+      ]);
+    }
+  } catch { /* 측정 실패 시 고정 렌더로 폴백 */ }
+  const svg = await satori(finalVdom, { width: W, height: H, fonts });
   const png = new Resvg(svg, { fitTo: { mode: 'width', value: W } }).render().asPng();
   return png;
 }
