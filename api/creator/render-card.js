@@ -885,23 +885,34 @@ function svgHeight(svg) {
   return m ? parseFloat(m[1]) : H;
 }
 
+// vdom 트리에 이미지가 있는지(커버/사진 슬라이드 감지)
+function vdomHasImage(node) {
+  if (!node || typeof node !== 'object') return false;
+  if (node.type === 'img') return true;
+  const c = node.props && node.props.children;
+  if (Array.isArray(c)) return c.some(vdomHasImage);
+  return vdomHasImage(c);
+}
+
 // 전 슬라이드 공통 넘침 방지(auto-fit):
 //   1) height 미지정으로 한 번 렌더 → 콘텐츠 자연 높이 측정(frame minHeight 라 최소 H, 넘치면 그 이상).
-//   2) H 이하면 그대로 H 로 확정 렌더.
-//   3) H 초과면 비율 k=H/자연높이 로 콘텐츠를 통째로 축소(transformOrigin 좌상단) 후 W×H 흰 캔버스에 안착.
-//      본문(넘침이 나는 곳)은 전부 흰 배경이라 축소로 생기는 우측 여백이 안 보임 → 잘림 없이 전부 표시.
+//   2) H 이하면 그대로 H 로 확정 렌더.  3) H 초과면 비율 k=H/자연높이 로 콘텐츠 통째 축소 후 W×H 흰 캔버스에 안착(흰배경이라 여백 안보임).
+//   ⚠️ 이미지 있는 슬라이드(커버 등)는 측정 패스 생략 — 측정 시 이미지 로드 실패가 satori 캐시를 오염시켜 최종 렌더까지 깨뜨림.
+//      커버/사진은 고정 레이아웃이라 넘치지 않으므로 auto-fit 불필요.
 export async function bakePng(vdom, fonts) {
   let finalVdom = vdom;
-  try {
-    const measured = await satori(vdom, { width: W, fonts });
-    const nat = svgHeight(measured);
-    if (nat > H + 1) {
-      const k = Math.max(0.5, H / nat); // 과도 축소 하한
-      finalVdom = h('div', { width: W, height: H, display: 'flex', backgroundColor: WHITE, overflow: 'hidden' }, [
-        h('div', { display: 'flex', transform: `scale(${k})`, transformOrigin: 'top left' }, [vdom]),
-      ]);
-    }
-  } catch { /* 측정 실패 시 고정 렌더로 폴백 */ }
+  if (!vdomHasImage(vdom)) {
+    try {
+      const measured = await satori(vdom, { width: W, fonts });
+      const nat = svgHeight(measured);
+      if (nat > H + 1) {
+        const k = Math.max(0.5, H / nat); // 과도 축소 하한
+        finalVdom = h('div', { width: W, height: H, display: 'flex', backgroundColor: WHITE, overflow: 'hidden' }, [
+          h('div', { display: 'flex', transform: `scale(${k})`, transformOrigin: 'top left' }, [vdom]),
+        ]);
+      }
+    } catch { /* 측정 실패 시 고정 렌더로 폴백 */ }
+  }
   const svg = await satori(finalVdom, { width: W, height: H, fonts });
   const png = new Resvg(svg, { fitTo: { mode: 'width', value: W } }).render().asPng();
   return png;
