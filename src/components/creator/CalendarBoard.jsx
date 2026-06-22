@@ -395,8 +395,9 @@ function Drawer({ cell, onClose, onAction, busy }) {
                 style={{ ...ghostBtn, padding: '14px 14px', fontSize: 13.5, borderColor: '#D9CCF5', color: ACCENT }}>
                 🔁 {channel.platform === 'instagram' ? '틱톡' : '인스타'}에 복사
               </button>
+              {/* US 틱톡은 Zernio 자동발행 불가 → [드라이브 저장](수동 게시용). 그 외는 자동 발행. */}
               <button disabled={busy} onClick={() => onAction('publish', { ...cell, caption, hashtags, time, refUrl })} style={{ ...primaryBtn, flex: 1.6, padding: '14px 18px', fontSize: 15 }}>
-                {busy ? <Loader2 size={17} className="spin" /> : <Send size={16} />} 발행
+                {busy ? <Loader2 size={17} className="spin" /> : (channel.key === 'us_tt' ? <Upload size={16} /> : <Send size={16} />)} {channel.key === 'us_tt' ? '드라이브 저장' : '발행'}
               </button>
               <button disabled={busy} onClick={() => onAction('delete', cell)} style={{ ...ghostBtn, flex: '0 0 auto', width: 56, color: '#FF3B30', borderColor: '#FFD9D6', padding: '14px 12px' }}>
                 <Trash2 size={16} />
