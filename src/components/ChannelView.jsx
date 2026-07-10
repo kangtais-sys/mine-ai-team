@@ -31,6 +31,14 @@ const ACCOUNTS = {
     lightBg: '#F0F6FF',
     ig: 'millimilli.us',
   },
+  yu_milli: {
+    label: 'yu_milli 글로벌',
+    subLabel: '@yu_milli · IG/TikTok',
+    emoji: '🚀',
+    color: '#22C55E',
+    lightBg: '#F0FDF4',
+    ig: 'yu_milli',
+  },
 };
 
 const CARD = { background: '#FFFFFF', border: '1px solid #E5E5EA', borderRadius: 12, padding: '18px 20px' };
@@ -138,7 +146,7 @@ export default function ChannelView() {
         fetch('/api/channel/history').then(r => r.json()),
       ]);
 
-      setPersona({ yuminhye: personaRes.yuminhye || {}, millimilli: personaRes.millimilli || {} });
+      setPersona({ yuminhye: personaRes.yuminhye || {}, millimilli: personaRes.millimilli || {}, millimilli_us: personaRes.millimilli_us || {}, yu_milli: personaRes.yu_milli || {} });
       setRules(personaRes.rules || []);
       setSettings(settingsRes);
       setHistory(historyRes);
@@ -175,6 +183,7 @@ export default function ChannelView() {
     loadAll();
     loadPosts('yuminhye');
     loadPosts('millimilli');
+    loadPosts('yu_milli');
     loadFollowers();
   }, []);
 
@@ -264,7 +273,7 @@ export default function ChannelView() {
       if (data.success) {
         // Reload persona
         const personaRes = await fetch('/api/channel/persona').then(r => r.json());
-        setPersona({ yuminhye: personaRes.yuminhye || {}, millimilli: personaRes.millimilli || {} });
+        setPersona({ yuminhye: personaRes.yuminhye || {}, millimilli: personaRes.millimilli || {}, millimilli_us: personaRes.millimilli_us || {}, yu_milli: personaRes.yu_milli || {} });
         showToast(`✅ 페르소나 재학습 완료 (${data.learnedFrom}개 게시물)`);
       } else {
         showToast(data.message || '게시물 데이터 없음', 'error');

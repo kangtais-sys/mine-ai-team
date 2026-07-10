@@ -31,15 +31,18 @@ const PROFILE_TO_ACCOUNT = {
   '69d08cc1986d57bb8f733102': 'millimilli',    // 원래 millimilli 프로필 ID
   '69fbfc1992b3d8e85f86d277': 'millimilli',    // millimilli.kr 실측
   '69fbfd0692b3d8e85f86d882': 'millimilli_us', // millimilli.us 실측 — KR과 분리(독립 설정)
+  '6a4e53a93dd7688766d1ed95': 'yu_milli',      // yu_milli 신규 프로필(IG+TikTok) 실측 — 유민혜 글로벌 개인계정
 };
 const YUMINHYE_HANDLES = new Set(['lala_lounge_', 'yuminhye', 'peerstory', '15초유민혜', '0.8l_yuminhye']);
 const MILLIMILLI_US_HANDLES = new Set(['millimilli.us']);
 const MILLIMILLI_HANDLES = new Set(['millimilli.kr', 'millimilli-l4j', 'millimilli.official', 'millimilli_official', 'millimilli']);
+const YU_MILLI_HANDLES = new Set(['yu_milli']);
 
 function detectAccount(profileId, username) {
   if (profileId && PROFILE_TO_ACCOUNT[profileId]) return PROFILE_TO_ACCOUNT[profileId];
   if (username) {
     const u = username.toLowerCase();
+    if (YU_MILLI_HANDLES.has(u)) return 'yu_milli';           // yu_milli 먼저 (글로벌 개인 계정)
     if (YUMINHYE_HANDLES.has(u)) return 'yuminhye';
     if (MILLIMILLI_US_HANDLES.has(u)) return 'millimilli_us'; // .us 먼저 (KR보다 우선)
     if (MILLIMILLI_HANDLES.has(u)) return 'millimilli';

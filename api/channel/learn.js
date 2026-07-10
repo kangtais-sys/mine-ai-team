@@ -10,6 +10,8 @@ export const config = { maxDuration: 30 };
 const ACCOUNT_NAMES = {
   yuminhye: '유민혜 (@lala_lounge_ / @yuminhye)',
   millimilli: '밀리밀리 브랜드 (@millimilli_official)',
+  millimilli_us: 'MILLIMILLI US brand (@millimilli.us)',
+  yu_milli: 'yu_milli (유민혜 글로벌 개인·창업자/포뮬레이터 · @yu_milli)',
 };
 
 async function callClaude(system, userContent) {
@@ -176,8 +178,8 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const { account, mode = 'posts' } = req.body || {};
-  if (!['yuminhye', 'millimilli', 'millimilli_us'].includes(account)) {
-    return res.status(400).json({ error: 'account must be yuminhye, millimilli or millimilli_us' });
+  if (!['yuminhye', 'millimilli', 'millimilli_us', 'yu_milli'].includes(account)) {
+    return res.status(400).json({ error: 'account must be yuminhye, millimilli, millimilli_us or yu_milli' });
   }
 
   try {

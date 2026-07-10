@@ -39,6 +39,17 @@ const DEFAULT_PERSONAS = {
     dmGreeting: 'Hi! This is MILLIMILLI 😊',
     forbid: ['competitor mentions', 'unverified efficacy claims', 'stock guarantees', 'KR-only claims (Olive Young #1 / KRW)'],
   },
+  yu_milli: {
+    name: 'yu_milli (유민혜 · Global)',
+    handles: ['@yu_milli'],
+    character: 'Solo K-beauty FOUNDER + hands-on product R&D formulator. 39, brand #1 in Olive Young, "bad English, big dream", goal = Sephora. Underdog, authentic, personal — NOT a corporate brand voice. Speaks with real formulator authority on ingredients & product development.',
+    tone: 'English, first-person founder voice. Warm, humble, honest, casual (lowercase-friendly), 1-3 emojis, max 2 sentences. Underdog energy. On product/ingredient/skin-science questions, answer with genuine formulator expertise — but still personal, never salesy.',
+    topics: ['K-beauty tips (real, no-filter)', 'founder journey', 'ingredient & formulation science', 'face-line / skin care', 'Korean actress skincare secrets', 'Olive Young #1 → Sephora'],
+    commentStyle: 'Warm genuine thanks to supporters, invite engagement (e.g. "comment LINE"), share real tips personally. English only.',
+    dmStyle: 'Personal founder replies in English, grateful and direct, formulator-level help on product/skin questions without hard selling.',
+    dmGreeting: 'hi! thank you so much for the message 🙈',
+    forbid: ['corporate/ad brand tone', 'over-polished PR speak', 'price or discount promises', 'unverified efficacy claims', 'competitor bashing', 'switching to Korean for English followers'],
+  },
 };
 
 // Rules stored as JSON array at channel:rules key
@@ -60,23 +71,24 @@ function genId() {
 export default async function handler(req, res) {
   // GET: return persona + rules + url knowledge
   if (req.method === 'GET') {
-    const [ymRaw, mmRaw, rules, ymUrls, mmUrls] = await Promise.all([
+    const parseUrls = r => {
+      if (!r) return [];
+      try { return Array.isArray(r) ? r : JSON.parse(r); } catch { return []; }
+    };
+    const [ymRaw, mmRaw, yuMilliRaw, rules, ymUrls, mmUrls, yuMilliUrls] = await Promise.all([
       redis.get('channel:persona:yuminhye'),
       redis.get('channel:persona:millimilli'),
+      redis.get('channel:persona:yu_milli'),
       getRules(),
-      redis.get('channel:url-knowledge:yuminhye').then(r => {
-        if (!r) return [];
-        try { return Array.isArray(r) ? r : JSON.parse(r); } catch { return []; }
-      }).catch(() => []),
-      redis.get('channel:url-knowledge:millimilli').then(r => {
-        if (!r) return [];
-        try { return Array.isArray(r) ? r : JSON.parse(r); } catch { return []; }
-      }).catch(() => []),
+      redis.get('channel:url-knowledge:yuminhye').then(parseUrls).catch(() => []),
+      redis.get('channel:url-knowledge:millimilli').then(parseUrls).catch(() => []),
+      redis.get('channel:url-knowledge:yu_milli').then(parseUrls).catch(() => []),
     ]);
 
     return res.status(200).json({
       yuminhye: { ...DEFAULT_PERSONAS.yuminhye, ...(ymRaw || {}), urlKnowledge: ymUrls },
       millimilli: { ...DEFAULT_PERSONAS.millimilli, ...(mmRaw || {}), urlKnowledge: mmUrls },
+      yu_milli: { ...DEFAULT_PERSONAS.yu_milli, ...(yuMilliRaw || {}), urlKnowledge: yuMilliUrls },
       rules,
     });
   }

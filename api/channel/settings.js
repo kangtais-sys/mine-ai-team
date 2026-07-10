@@ -23,15 +23,17 @@ const DEFAULT = {
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
-    const [ym, mm, mmUs] = await Promise.all([
+    const [ym, mm, mmUs, yuMilli] = await Promise.all([
       redis.get('channel:settings:yuminhye'),
       redis.get('channel:settings:millimilli'),
       redis.get('channel:settings:millimilli_us'),
+      redis.get('channel:settings:yu_milli'),
     ]);
     return res.status(200).json({
       yuminhye: { ...DEFAULT, ...(ym || {}) },
       millimilli: { ...DEFAULT, ...(mm || {}) },
       millimilli_us: { ...DEFAULT, ...(mmUs || {}) },
+      yu_milli: { ...DEFAULT, ...(yuMilli || {}) },
     });
   }
 

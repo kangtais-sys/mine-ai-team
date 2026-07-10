@@ -36,6 +36,9 @@
 | 69fbfc1992b3d8e85f86d277 | millimilli | millimilli.kr |
 | 69fbfd0692b3d8e85f86d882 | millimilli | millimilli.us |
 | 69d08cc1986d57bb8f733102 | millimilli | (원래 ID) |
+| 6a4e53a93dd7688766d1ed95 | yu_milli | yu_milli (프로필, IG+TikTok) |
+| 6a4e54573ecd8aa34462836e | yu_milli | yu_milli 인스타 계정ID |
+| 6a4e55773ecd8aa344629431 | yu_milli | yu_milli 틱톡 계정ID |
 
 ### Zernio API 스펙 (검증 완료 — 추측 금지)
 ```
