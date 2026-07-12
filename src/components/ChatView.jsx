@@ -249,7 +249,7 @@ const AGENT_DASHBOARDS = {
     const [replyLearnResult, setReplyLearnResult] = useState(null);
 
     // accent per account
-    const ACCENT = { yuminhye: '#FF6B6B', millimilli: '#5E6AD2', millimilli_us: '#4A90E2' };
+    const ACCENT = { yuminhye: '#FF6B6B', millimilli: '#5E6AD2', millimilli_us: '#4A90E2', yu_milli: '#22C55E' };
     const accent = ACCENT[tab] || '#5E6AD2';
 
     // 탭 전환 시 결과 메시지 초기화
@@ -272,7 +272,7 @@ const AGENT_DASHBOARDS = {
       }).catch(() => {});
       // Load follower counts from stats (Zernio/Redis 캐시 기반)
       fetch('/api/stats').then(r => r.json()).then(d => {
-        ['yuminhye', 'millimilli', 'millimilli_us'].forEach(acct => {
+        ['yuminhye', 'millimilli', 'millimilli_us', 'yu_milli'].forEach(acct => {
           const acctData = d?.[acct];
           const followers = acctData?.instagram?.count || acctData?.total || null;
           setIgStats(prev => ({ ...prev, [acct]: { ...prev[acct], followers } }));
@@ -283,7 +283,7 @@ const AGENT_DASHBOARDS = {
         if (d && !d.error) setApprovalQueue(d);
       }).catch(() => {});
       // Load history + avg comments per account
-      ['yuminhye', 'millimilli', 'millimilli_us'].forEach(acct => {
+      ['yuminhye', 'millimilli', 'millimilli_us', 'yu_milli'].forEach(acct => {
         fetch(`/api/channel/history?account=${acct}`).then(r => r.json()).then(d => {
           if (d && !d.error) setHistory(prev => ({ ...prev, [acct]: d }));
         }).catch(() => {});
@@ -507,14 +507,14 @@ const AGENT_DASHBOARDS = {
       </div>
     );
 
-    const tabAccountLabel = { yuminhye: '유민혜', millimilli: '밀리밀리 KR', millimilli_us: '밀리밀리 US' };
+    const tabAccountLabel = { yuminhye: '유민혜', millimilli: '밀리밀리 KR', millimilli_us: '밀리밀리 US', yu_milli: 'yu_milli 글로벌' };
 
     return (
       <>
         <DailyReportCard agentId="creator" />
         {/* Account tabs */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-          {[['yuminhye', '유민혜', '#FF6B6B'], ['millimilli', '밀리밀리 KR', '#5E6AD2'], ['millimilli_us', '밀리밀리 US', '#4A90E2']].map(([id, label, color]) => (
+          {[['yuminhye', '유민혜', '#FF6B6B'], ['millimilli', '밀리밀리 KR', '#5E6AD2'], ['millimilli_us', '밀리밀리 US', '#4A90E2'], ['yu_milli', 'yu_milli 글로벌', '#22C55E']].map(([id, label, color]) => (
             <button
               key={id}
               onClick={() => setTab(id)}
@@ -880,7 +880,7 @@ const AGENT_DASHBOARDS = {
           <div style={{ fontSize: 12, fontWeight: 600, color: '#1D1D1F', marginBottom: 10 }}>컨텍스트 규칙 (상황/이슈 추가)</div>
 
           {(() => {
-            const ACCT_LABEL = { yuminhye: ['유민혜'], millimilli: ['밀리밀리', '밀리밀리KR'], millimilli_us: ['밀리밀리US', '밀리밀리 US'] };
+            const ACCT_LABEL = { yuminhye: ['유민혜'], millimilli: ['밀리밀리', '밀리밀리KR'], millimilli_us: ['밀리밀리US', '밀리밀리 US'], yu_milli: ['yu_milli', 'yu_milli 글로벌'] };
             const visibleRules = rules.filter(r =>
               r.account === tab ||
               (ACCT_LABEL[tab] || []).includes(r.account) ||
