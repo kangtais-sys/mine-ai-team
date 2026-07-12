@@ -25,45 +25,36 @@ export default async function handler(req, res) {
     return res.status(200).json({ key, rawLogs: parsed });
   }
 
-  // Fetch logs for specific account or all
-  const [ymComments, mmComments, ymDms, mmDms] = await Promise.all([
-    redis.lrange('channel:auto:comment:logs:yuminhye', 0, 49),
-    redis.lrange('channel:auto:comment:logs:millimilli', 0, 49),
-    redis.lrange('channel:auto:dm:logs:yuminhye', 0, 49),
-    redis.lrange('channel:auto:dm:logs:millimilli', 0, 49),
-  ]);
-
-  const [ymCC, mmCC, ymDC, mmDC] = await Promise.all([
-    redis.get('channel:auto:count:comment:yuminhye'),
-    redis.get('channel:auto:count:comment:millimilli'),
-    redis.get('channel:auto:count:dm:yuminhye'),
-    redis.get('channel:auto:count:dm:millimilli'),
-  ]);
-
   const parseList = (arr) => (arr || []).map(parse).filter(Boolean);
 
-  if (account) {
-    const commentCount = account === 'yuminhye' ? (ymCC || 0) : (mmCC || 0);
-    const dmCount = account === 'yuminhye' ? (ymDC || 0) : (mmDC || 0);
-    return res.status(200).json({
-      comments: parseList(account === 'yuminhye' ? ymComments : mmComments),
-      dms: parseList(account === 'yuminhye' ? ymDms : mmDms),
-      counts: { comment: commentCount, dm: dmCount },
-      commentCount,
-      dmCount,
-    });
+  // 계정별 로그/카운트를 정확한 Redis 키에서 읽는다 (계정 혼선 방지)
+  async function fetchAccount(acct) {
+    const [comments, dms, cc, dc] = await Promise.all([
+      redis.lrange(`channel:auto:comment:logs:${acct}`, 0, 49),
+      redis.lrange(`channel:auto:dm:logs:${acct}`, 0, 49),
+      redis.get(`channel:auto:count:comment:${acct}`),
+      redis.get(`channel:auto:count:dm:${acct}`),
+    ]);
+    return {
+      comments: parseList(comments),
+      dms: parseList(dms),
+      counts: { comment: cc || 0, dm: dc || 0 },
+      commentCount: cc || 0,
+      dmCount: dc || 0,
+    };
   }
 
-  return res.status(200).json({
-    yuminhye: {
-      comments: parseList(ymComments),
-      dms: parseList(ymDms),
-      counts: { comment: ymCC || 0, dm: ymDC || 0 },
-    },
-    millimilli: {
-      comments: parseList(mmComments),
-      dms: parseList(mmDms),
-      counts: { comment: mmCC || 0, dm: mmDC || 0 },
-    },
-  });
+  const ACCOUNTS = ['yuminhye', 'millimilli', 'millimilli_us', 'yu_milli'];
+
+  // 특정 계정 요청
+  if (account) {
+    if (!ACCOUNTS.includes(account)) return res.status(400).json({ error: 'unknown account' });
+    return res.status(200).json(await fetchAccount(account));
+  }
+
+  // 전체 계정 통합
+  const all = await Promise.all(ACCOUNTS.map(fetchAccount));
+  const result = {};
+  ACCOUNTS.forEach((acct, i) => { result[acct] = all[i]; });
+  return res.status(200).json(result);
 }
