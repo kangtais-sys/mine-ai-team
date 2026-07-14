@@ -938,7 +938,7 @@ const AGENT_DASHBOARDS = {
           {/* Add rule */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ display: 'flex', gap: 5 }}>
-              {['전체', '유민혜', '밀리밀리KR', '밀리밀리US'].map(acct => (
+              {['전체', '유민혜', '밀리밀리KR', '밀리밀리US', 'yu_milli'].map(acct => (
                 <button
                   key={acct}
                   onClick={() => setRuleAccount(acct)}
