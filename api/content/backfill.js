@@ -49,6 +49,16 @@ async function fetchCreativeText(adIds, token) {
 
 const ax = (k) => Object.entries(AXES[k]).map(([c, l]) => `${c}(${l})`).join(' · ');
 
+// ⚠️ 이모지는 UTF-16 서로게이트 '쌍'이라 slice() 가 그 사이를 자르면 짝 잃은 코드유닛이 남고,
+//    JSON.stringify 결과가 유효하지 않은 JSON 이 되어 Anthropic API 가 400 으로 거부한다
+//    ("no low surrogate in string"). US 소재 카피에 💀👀🎁 가 많아 실제로 매 라운드 한 청크씩 죽었음.
+//    자른 뒤 짝 없는 서로게이트를 제거한다.
+const cut = (s, n) => String(s || '')
+  .replace(/\s+/g, ' ')
+  .slice(0, n)
+  .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+  .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+
 function buildPrompt(items) {
   return `너는 K뷰티 브랜드 밀리밀리의 광고 소재를 분류한다. 각 소재를 아래 축으로 분류해라.
 
@@ -67,9 +77,9 @@ function buildPrompt(items) {
 - confidence 는 0~1.
 
 소재 목록:
-${items.map((it, i) => `[${i}] 이름: ${it.name}
-    제목: ${(it.title || '').slice(0, 120)}
-    문구: ${(it.body || '').replace(/\s+/g, ' ').slice(0, 400)}`).join('\n')}
+${items.map((it, i) => `[${i}] 이름: ${cut(it.name, 120)}
+    제목: ${cut(it.title, 120)}
+    문구: ${cut(it.body, 400)}`).join('\n')}
 
 각 소재에 대해 i(목록 번호), product, angle, hook, confidence(0~1) 를 채워라.`;
 }
