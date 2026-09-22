@@ -10,10 +10,19 @@
 // ⚠️ '미집행' 을 성과 0 으로 읽지 말 것. 실측 206건 중 실제로 도는 건 37건(18%)뿐이다.
 //    만들었는데 안 돌린 소재가 82% — 이건 소재 품질 문제가 아니라 운영 문제다.
 
+import { Redis } from '@upstash/redis';
 import { readSheet } from '../utils/sheets.js';
 import { gradeContent, STATIC_THRESHOLDS, THRESHOLDS } from '../_assetCode.js';
 
 export const config = { maxDuration: 300 };
+
+// 시트 2개 + Meta 700건을 매번 긁으면 35초가 걸린다 — 화면이 못 견딘다.
+// 소재로그는 하루 단위로 갱신되고 Meta 성과도 실시간일 필요가 없어 30분 캐시로 충분.
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+const CACHE_TTL = 1800;
 
 const SHEETS = {
   us: { id: process.env.CREATIVE_LOG_US_SHEET_ID || '1TT130QL2nJbbbpMJrM1pTAAP5TpTgM9n6wXt-ZcKdm4', name: 'MM_소재로그_LIVE' },
@@ -40,8 +49,16 @@ const avg = (a) => { const v = a.filter(x => x != null); return v.length ? Numbe
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
   const q = req.query || {};
+  const cacheKey = `content:types:v1:${q.market || 'all'}:${q.preset || 'last_90d'}`;
 
   try {
+    if (q.refresh !== '1') {
+      try {
+        const hit = await redis.get(cacheKey);
+        if (hit) return res.status(200).json({ ...hit, cached: true });
+      } catch { /* 캐시 실패는 조회로 폴백 */ }
+    }
+
     // Meta 실측
     const { default: adWinners } = await import('../agents/ad-winners.js');
     const inner = { status(c) { this.statusCode = c; return this; }, json(p) { this.body = p; return this; } };
@@ -128,8 +145,9 @@ export default async function handler(req, res) {
       .sort((a, b) => b.n - a.n);
 
     const runItems = items.filter(x => x.run);
-    return res.status(200).json({
+    const payload = {
       status: 'connected',
+      builtAt: new Date().toISOString(),
       source: sheetInfo,
       thresholds: { video: THRESHOLDS, static: STATIC_THRESHOLDS },
       dict: { concept: CONCEPT, shot: SHOT },
@@ -142,7 +160,9 @@ export default async function handler(req, res) {
         drop: runItems.filter(x => x.grade === 'drop').length,
       },
       types, unrun, items,
-    });
+    };
+    try { await redis.set(cacheKey, payload, { ex: CACHE_TTL }); } catch { /* 캐시 실패해도 응답은 준다 */ }
+    return res.status(200).json(payload);
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
