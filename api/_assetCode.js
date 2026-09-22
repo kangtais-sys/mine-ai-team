@@ -113,6 +113,12 @@ export const THRESHOLDS = {
 };
 const LABEL = { hookRate: '훅률', holdRate: '유지율', clickFromView: '본→클릭' };
 
+// 정적 소재 기준 — 영상 지표(3초시청·완주)가 아예 없으므로 CTR 하나로 판정한다.
+// 근거: MM- 체계 소재 63건 중 영상은 12건뿐. 나머지 51건을 '측정불가'로 두면
+//       실제로 돌고 있는 소재의 80%를 판정 못 한다.
+// 값: KR 자사몰 전환 소재 실측 분포(CTR 1.0~3.7%)의 상·하위 사분위.
+export const STATIC_THRESHOLDS = { ctr: { pass: 3.0, replace: 1.5 } };
+
 const gradeOne = (v, t) => (v == null ? null : v >= t.pass ? 'pass' : v < t.replace ? 'replace' : 'warn');
 
 /**
@@ -126,8 +132,16 @@ const gradeOne = (v, t) => (v == null ? null : v >= t.pass ? 'pass' : v < t.repl
  *
  * 2개 이상 'replace' = 폐기 / 1개만 'replace' = 그 구간만 수정(전체 재생성 금지).
  */
-export function gradeContent(content) {
-  if (!content?.isVideo) return { grade: 'n/a', reason: '영상 아님 — 영상 지표 없음', parts: {} };
+export function gradeContent(content, ad = null) {
+  // ── 정적 소재 ── 영상 지표가 없다. CTR 단독 판정.
+  if (!content?.isVideo) {
+    const ctr = ad?.ctr;
+    if (ctr == null) return { grade: 'n/a', reason: '정적 소재 · CTR 없음', parts: {}, kind: 'static' };
+    const t = STATIC_THRESHOLDS.ctr;
+    if (ctr >= t.pass) return { grade: 'win', reason: `CTR ${ctr}% — 정적 합격선(${t.pass}%) 통과`, parts: { ctr: 'pass' }, kind: 'static', fix: null };
+    if (ctr < t.replace) return { grade: 'drop', reason: `CTR ${ctr}% — 교체선(${t.replace}%) 미만. 훅·비주얼 교체`, parts: { ctr: 'replace' }, kind: 'static', fix: 'hook' };
+    return { grade: 'keep', reason: `CTR ${ctr}% — 기준 내`, parts: { ctr: 'warn' }, kind: 'static', fix: null };
+  }
   const parts = {};
   for (const k of Object.keys(THRESHOLDS)) parts[k] = gradeOne(content[k], THRESHOLDS[k]);
   const scored = Object.values(parts).filter(Boolean);

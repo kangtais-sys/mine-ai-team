@@ -53,7 +53,7 @@ export default async function handler(req, res) {
           filledBy: 'llm', confidence: c.confidence ?? null,
         }
       : parsed;
-    const g = gradeContent(a.content);
+    const g = gradeContent(a.content, a);
     return {
       ...a, code,
       grade: g.grade, gradeReason: g.reason, fix: g.fix || null, parts: g.parts,
@@ -64,9 +64,11 @@ export default async function handler(req, res) {
   const video = ads.filter(a => a.content?.isVideo);
   const tally = (key) => ads.reduce((m, a) => (m[a[key] ?? '기타'] = (m[a[key] ?? '기타'] || 0) + 1, m), {});
 
-  // ── 위너 매트릭스: 제품 × 앵글 (훅타입은 레거시에서 결손이 커 2차 축으로) ──
+  // ── 위너 매트릭스: 제품 × 앵글 ──
+  // 정적 소재도 CTR 로 판정되므로 영상만 보지 않는다.
+  // (MM- 체계 소재 63건 중 영상은 12건뿐 — 영상만 보면 실제 집행분의 80%가 매트릭스에서 빠진다.)
   const cell = new Map();
-  for (const a of video) {
+  for (const a of ads) {
     const p = a.code.product, ang = a.code.angle;
     if (!p || !ang) continue;                       // 미분류는 매트릭스 오염 방지 위해 제외
     const k = `${a.market}|${p}|${ang}`;
@@ -81,11 +83,13 @@ export default async function handler(req, res) {
       win: graded.filter(a => a.grade === 'win').length,
       drop: graded.filter(a => a.grade === 'drop').length,
       passRate: graded.length ? Math.round(graded.filter(a => a.grade === 'win').length / graded.length * 100) : null,
+      videos: list.filter(a => a.content?.isVideo).length,
       avgHook: avg(list.map(a => a.content?.hookRate)),
       avgHold: avg(list.map(a => a.content?.holdRate)),
       avgClick: avg(list.map(a => a.content?.clickFromView)),
+      avgCtr: avg(list.map(a => a.ctr)),          // 정적 소재의 유일한 판정 지표
     };
-  }).sort((a, b) => (b.avgHook ?? -1) - (a.avgHook ?? -1));
+  }).sort((a, b) => (b.win - a.win) || ((b.avgCtr ?? -1) - (a.avgCtr ?? -1)));
 
   // ── 시리즈(문법 계열)별 요약 ──
   const bySeries = new Map();

@@ -87,7 +87,7 @@ export default async function handler(req, res) {
         }
         matched++;
         const c = a.content || {};
-        const g = gradeContent(c);
+        const g = gradeContent(c, a);
         const label = { win: '위너', keep: '유지', remix: '부분수정', drop: '폐기', 'n/a': '측정불가' }[g.grade] || g.grade;
         return [
           a.spend ?? '',
