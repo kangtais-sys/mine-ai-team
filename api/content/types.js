@@ -77,7 +77,7 @@ export default async function handler(req, res) {
       catch (e) { sheetInfo[mk] = { error: e.message }; continue; }
       const H = rows[0] || [];
       const ix = {
-        id: col(H, '소재ID'), meta: col(H, 'Meta광고이름'), date: col(H, '생성일'),
+        id: col(H, '소재ID'), meta: col(H, 'Meta광고이름'), date: col(H, '생성일'), status: col(H, '상태'),
         product: col(H, '제품'), concept: col(H, '대카'), shot: col(H, '소카'),
         avatar: col(H, '아바타'), pattern: col(H, '편집패턴'), claim: col(H, '핵심클레임'),
       };
@@ -88,6 +88,9 @@ export default async function handler(req, res) {
         const id = String(r[ix.id] || '').trim();
         const ad = adBy.get(id) || adBy.get(norm(String(r[ix.meta] || ''))) || null;
         const g = ad ? gradeContent(ad.content, ad) : null;
+        // '과거분' = 집행은 했으나 어느 Meta 광고인지 특정 불가(CapCut 영상). 미집행과 다르다.
+        const status = String(r[ix.status] || '').trim();
+        const archived = /과거분/.test(status);
         items.push({
           market: mk, id,
           date: r[ix.date] || null,
@@ -97,8 +100,11 @@ export default async function handler(req, res) {
           avatar: (r[ix.avatar] || '').trim() || null,
           pattern: (r[ix.pattern] || '').trim() || null,
           claim: (r[ix.claim] || '').trim() || null,
-          run: !!ad,
-          kind: ad ? (ad.content?.isVideo ? 'video' : 'image') : null,
+          run: !!ad, archived, status,
+          // 과거분은 편집패턴에 [영상] 표기가 있으므로 그것으로 종류를 판정한다.
+          kind: ad ? (ad.content?.isVideo ? 'video' : 'image')
+              : archived ? (/\[영상\]/.test(String(r[ix.pattern] || '')) ? 'video' : 'image')
+              : null,
           spend: ad?.spend ?? null, impressions: ad?.impressions ?? null,
           ctr: ad?.ctr ?? null, cpcUsd: ad?.cpcUsd ?? null,
           hookRate: ad?.content?.hookRate ?? null,
@@ -114,6 +120,7 @@ export default async function handler(req, res) {
     // 집행된 것만 성과 평균에 넣는다. 미집행을 섞으면 평균이 0으로 끌려간다.
     const group = new Map();
     for (const it of items) {
+      // 과거분도 유형 집계에는 넣는다(제작은 실제로 있었으므로). 성과 평균에서만 빠진다.
       const kind = it.kind || 'unrun';
       const key = `${kind}|${it.concept || '미분류'}`;
       if (!group.has(key)) group.set(key, []);
@@ -125,6 +132,7 @@ export default async function handler(req, res) {
       return {
         kind, concept, conceptName: CONCEPT[concept] || concept,
         made: list.length, run: run.length,
+        archived: list.filter(x => x.archived).length,
         win: run.filter(x => x.grade === 'win').length,
         keep: run.filter(x => x.grade === 'keep').length,
         drop: run.filter(x => x.grade === 'drop').length,
@@ -153,6 +161,7 @@ export default async function handler(req, res) {
       dict: { concept: CONCEPT, shot: SHOT },
       counts: {
         made: items.length, run: runItems.length,
+        archived: items.filter(x => x.archived).length,
         runRate: Math.round(runItems.length / Math.max(1, items.length) * 100),
         image: runItems.filter(x => x.kind === 'image').length,
         video: runItems.filter(x => x.kind === 'video').length,

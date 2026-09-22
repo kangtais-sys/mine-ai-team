@@ -6,10 +6,17 @@
 // 왜 필요한가: 소재로그(206건)는 전부 정적 이미지다. 영상은 CapCut 으로 따로 만들어
 //   시트를 안 거쳤다 — 그래서 유형 화면의 '영상형'이 0건이었다. 제작 경로가 둘인데 로그는 하나뿐.
 //
-// 매칭이 이 작업의 핵심: CapCut 프로젝트엔 Meta 광고이름이 없다.
-//   프로젝트명이 `0616 (2)-복사-복사...` 라 아무 정보가 없기 때문에
-//   **자막(첫 훅)과 Meta 소재 문구를 대조**해 찾는다.
-//   못 찾으면 비워두고 '매칭실패'로 남긴다 — 억지로 붙이면 성과가 엉뚱한 소재에 붙는다.
+// ⚠️ 과거분은 성과 조인이 구조적으로 불가능하다 (실측 2026-09-22: KR 0% · US 13%).
+//   CapCut 자막은 **화면에 박힌 글자**이고 Meta 광고문구는 **캡션**이라 서로 다른 텍스트다.
+//     자막  "What is that spray you've been using all flight?"
+//     캡션  "Mid-flight, the flight attendant asked what I was spraying."
+//   같은 개념을 다르게 쓴다. 문자열 대조로는 못 찾고, 억지로 붙이면 성과가 엉뚱한 소재에 붙는다.
+//   → 과거 28건은 **제작 로그로만** 남긴다(상태 '과거분'). 성과는 비운다.
+//      편집패턴·자막·BGM 은 크래프트 참고용으로 충분한 값어치가 있다.
+//
+// ✅ 앞으로는 조인이 필요 없다. **생성 시점에 소재ID를 발급**하고 담당자가 그 이름 그대로
+//   Meta 에 올리면 정적 소재와 똑같이 자동으로 붙는다. 추론이 아니라 설계로 해결.
+//   (자막 매칭은 보조로 남겨두되, 맞으면 쓰고 아니면 비운다.)
 
 import { readSheet, getGoogleAccessToken } from '../utils/sheets.js';
 
@@ -168,7 +175,9 @@ export default async function handler(req, res) {
         set('핵심클레임', (p.texts || []).slice(0, 4).join(' / ').slice(0, 300));
         set('파일위치', `~/Movies/CapCut/.../${p.project}`);
         set('Meta광고이름', ad ? ad.ad_name : '');
-        set('상태', ad ? 'READY' : '매칭실패');
+        // 과거분은 '집행 안 함'이 아니라 '집행했으나 어느 광고인지 특정 불가'다.
+        // 빈칸이나 '매칭실패'로 두면 미집행으로 읽혀 유형 판정에서 억울하게 빠진다.
+        set('상태', ad ? 'READY' : '과거분(영상·성과조인불가)');
         rows.push(row);
         preview.push({ id, concept, shot, matched: !!ad, meta: ad?.ad_name || null, hook: (p.hook || '').slice(0, 44) });
       }
@@ -176,6 +185,7 @@ export default async function handler(req, res) {
       result.markets[mk] = {
         sheet: st.name, projects: mine.length, newRows: rows.length, matched,
         matchRate: mine.length ? Math.round(matched / mine.length * 100) + '%' : '—',
+        note: '과거분은 자막↔캡션이 달라 성과 조인 불가 — 제작 로그로만 기록. 신규는 생성 시 소재ID 발급으로 해결.',
         startRow: st.nextRow,
         ...(dry ? { preview: preview.slice(0, 8) } : {}),
       };
