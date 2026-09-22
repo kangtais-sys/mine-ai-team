@@ -87,10 +87,15 @@ async function classifyChunk(items) {
   });
   const d = await r.json();
   if (d.error) throw new Error(`${d.error.type}: ${d.error.message}`);
-  const text = d.content?.[0]?.text || '';
+  // content[0] 이 항상 텍스트인 건 아니다(사고 블록 등이 앞설 수 있음) → 텍스트 블록만 모은다.
+  const text = (d.content || []).filter(b => b?.type === 'text').map(b => b.text).join('\n');
   const m = text.match(/\[[\s\S]*\]/);
-  if (!m) throw new Error('LLM 응답에 JSON 배열 없음');
-  return JSON.parse(m[0]);
+  if (!m) {
+    const kinds = (d.content || []).map(b => b?.type).join(',') || '없음';
+    throw new Error(`JSON 배열 없음 (stop=${d.stop_reason} blocks=${kinds}) 원문: ${text.slice(0, 200) || '(빈 텍스트)'}`);
+  }
+  try { return JSON.parse(m[0]); }
+  catch (e) { throw new Error(`JSON 파싱 실패(${e.message}) 원문: ${m[0].slice(0, 200)}`); }
 }
 
 const valid = (axis, v) => (v && Object.prototype.hasOwnProperty.call(AXES[axis], v) ? v : null);
