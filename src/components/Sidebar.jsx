@@ -1,5 +1,5 @@
 import { agents } from '../lib/agents';
-import { LayoutDashboard, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Sparkles, BarChart3 } from 'lucide-react';
 
 // AI 크리에이터는 에이전트 목록에서 AI 채널운영 바로 아래에 위치
 const CREATOR_MENU = {
@@ -107,15 +107,26 @@ export default function Sidebar({ route, onNavigate, urgentCount = 0 }) {
               {agent.id === CREATOR_MENU.insertAfter && (() => {
                 const CIcon = CREATOR_MENU.icon;
                 return (
-                  <div style={{ marginBottom: 1 }}>
-                    {menuItem(
-                      page === 'creator',
-                      <CIcon size={15} strokeWidth={1.8} />,
-                      CREATOR_MENU.name,
-                      () => onNavigate('creator'),
-                      0
-                    )}
-                  </div>
+                  <>
+                    <div style={{ marginBottom: 1 }}>
+                      {menuItem(
+                        page === 'creator',
+                        <CIcon size={15} strokeWidth={1.8} />,
+                        CREATOR_MENU.name,
+                        () => onNavigate('creator'),
+                        0
+                      )}
+                    </div>
+                    <div style={{ marginBottom: 1 }}>
+                      {menuItem(
+                        page === 'performance',
+                        <BarChart3 size={15} strokeWidth={1.8} />,
+                        '소재 성과',
+                        () => onNavigate('performance'),
+                        0
+                      )}
+                    </div>
+                  </>
                 );
               })()}
             </div>
