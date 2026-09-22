@@ -182,19 +182,26 @@ export default async function handler(req, res) {
             const p50 = sumAll(row.video_p50_watched_actions);
             const p100 = sumAll(row.video_p100_watched_actions);
             const plays = sumAll(row.video_play_actions);
+            // ⚠️ outbound_clicks_ctr 도 [{action_type,value}] 배열이다. Number(배열)=NaN 이 되므로 sumAll 필수.
             const outbound = sumAll(row.outbound_clicks);
+            const outboundCtrRaw = sumAll(row.outbound_clicks_ctr);
             const isVideo = plays > 0 || v3 > 0;
+            // 분모가 너무 작으면 비율이 폭주한다(실측: 3초시청 10회 · 클릭 50회 → 본→클릭 500%).
+            // 그런 값은 "성과가 좋다"가 아니라 "모수가 없다" → null 로 두고 화면에서 —로 표시.
+            const MIN_DEN = 100;
+            const ratio = (num, den) => (den >= MIN_DEN ? pct(num, den) : null);
             return {
               isVideo,
-              hookRate: isVideo ? pct(v3, impressions) : null,   // 3초 시청 / 노출 — 스크롤을 멈췄나
-              holdRate: isVideo ? pct(thru, v3) : null,          // ThruPlay / 3초 — 끝까지 봤나
-              midRate: isVideo ? pct(p50, v3) : null,            // 절반 지점 생존
-              finishRate: isVideo ? pct(p100, v3) : null,        // 완주
+              hookRate: isVideo ? ratio(v3, impressions) : null, // 3초 시청 / 노출 — 스크롤을 멈췄나
+              holdRate: isVideo ? ratio(thru, v3) : null,        // ThruPlay / 3초 — 끝까지 봤나
+              midRate: isVideo ? ratio(p50, v3) : null,          // 절반 지점 생존
+              finishRate: isVideo ? ratio(p100, v3) : null,      // 완주
               avgWatchSec: isVideo ? Number(sumAll(row.video_avg_time_watched_actions).toFixed(1)) || null : null,
               outboundClicks: outbound || null,
-              outboundCtr: row.outbound_clicks_ctr != null ? Number(Number(row.outbound_clicks_ctr).toFixed(2))
+              outboundCtr: outboundCtrRaw > 0 ? Number(outboundCtrRaw.toFixed(2))
                 : (outbound ? pct(outbound, impressions) : null),
-              clickFromView: isVideo && v3 > 0 ? pct(outbound, v3) : null, // 본 사람 중 몇 %가 눌렀나
+              clickFromView: isVideo ? ratio(outbound, v3) : null, // 본 사람 중 몇 %가 눌렀나
+              lowSample: isVideo && v3 < MIN_DEN,                  // 표본 부족 — 판정 보류 근거
               // Meta 가 같은 타겟 경쟁 소재와 비교해준 상대 순위. 절대선이 없어도 판정 가능.
               qualityRank: row.quality_ranking || null,
               engagementRank: row.engagement_rate_ranking || null,
