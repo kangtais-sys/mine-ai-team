@@ -85,19 +85,27 @@ export async function listHooks() {
   } catch { return []; }
 }
 
-/** 새 카드만 저장(기존 키는 건너뜀). 반환: {added, skipped} */
+/**
+ * 새 카드만 저장(기존 키는 건너뜀).
+ * 탈락 사유를 나눠서 보고한다 — 뭉뚱그리면 "다 저장됐다"로 읽힌다.
+ *   invalid   축/훅 문장이 없어 못 씀
+ *   duplicate 이미 라이브러리에 있음
+ *   collapsed 이번 배치 안에서 서로 겹침(같은 영상이 여러 키워드 검색에 걸린 경우)
+ */
 export async function saveHooks(cards, { overwrite = false } = {}) {
   const existing = overwrite ? {} : ((await redis.hgetall(HOOKS_KEY)) || {});
   const toWrite = {};
-  let skipped = 0;
+  let invalid = 0, duplicate = 0, collapsed = 0;
   for (const raw of cards) {
     const card = normalizeCard(raw);
-    if (!card.source || (!card.adapted.kr && !card.adapted.us)) { skipped++; continue; }
-    if (!overwrite && existing[card.id]) { skipped++; continue; }
+    if (!card.source || (!card.adapted.kr && !card.adapted.us)) { invalid++; continue; }
+    if (!overwrite && existing[card.id]) { duplicate++; continue; }
+    if (toWrite[card.id]) { collapsed++; continue; }
     toWrite[card.id] = card;
   }
-  if (Object.keys(toWrite).length) await redis.hset(HOOKS_KEY, toWrite);
-  return { added: Object.keys(toWrite).length, skipped };
+  const added = Object.keys(toWrite).length;
+  if (added) await redis.hset(HOOKS_KEY, toWrite);
+  return { added, skipped: invalid + duplicate + collapsed, invalid, duplicate, collapsed };
 }
 
 /** 쿨다운 안 걸린 카드만. 생성 파이프라인이 고를 후보 풀. */

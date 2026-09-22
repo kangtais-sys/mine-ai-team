@@ -132,9 +132,12 @@ async function scanYoutube(keywords, days) {
       } catch { /* 키워드 하나 실패가 전체를 막지 않게 */ }
     }
   }
-  // 키워드당 편중 방지 — 조회수 상위에서 고르게
-  out.sort((a, b) => (b.sourceMeta?.views || 0) - (a.sourceMeta?.views || 0));
-  return { items: out.slice(0, 20) };
+  // 같은 영상이 여러 키워드·시장 검색에 동시에 걸린다 → LLM 에 넘기기 전에 합친다.
+  // (안 합치면 같은 영상으로 카드를 두 번 만들고 저장 단계에서 조용히 하나로 뭉개진다.)
+  const uniq = new Map();
+  for (const it of out) if (!uniq.has(it.refId)) uniq.set(it.refId, it);
+  const deduped = [...uniq.values()].sort((a, b) => (b.sourceMeta?.views || 0) - (a.sourceMeta?.views || 0));
+  return { items: deduped.slice(0, 20), observedRaw: out.length, deduped: out.length - deduped.length };
 }
 
 // ── ② 내부 위너 ──
@@ -194,8 +197,8 @@ export default async function handler(req, res) {
   // ② 유튜브
   if (q.skipYoutube !== '1') {
     try {
-      const { items, error } = await scanYoutube(picked, days);
-      report.sources.youtube = { observed: items.length, ...(error ? { error } : {}) };
+      const { items, error, observedRaw, deduped } = await scanYoutube(picked, days);
+      report.sources.youtube = { observed: items.length, observedRaw, deduped, ...(error ? { error } : {}) };
       if (items.length) {
         const got = await llmCards(items, '유튜브 숏츠에서 고조회를 낸 뷰티 콘텐츠');
         for (const c of got) {
