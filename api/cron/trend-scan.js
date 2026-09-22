@@ -2,12 +2,16 @@
 // 인증: Authorization: Bearer ${CRON_SECRET}
 // 옵션: ?dry=1  ?keywords=a,b  ?days=90  ?skipInternal=1  ?skipYoutube=1
 //
-// 두 갈래로 채운다:
-//   ① 내부 위너  — 우리 소재 중 판정 win/keep 인 것에서 훅 카드 추출 (성과 근거가 붙는 유일한 소스)
-//   ② 유튜브 숏츠 — Data API 로 키워드별 고조회 숏츠 수집 → LLM 이 크래프트만 추출
+// ⚠️ 2026-09-22 소스 변경 — **유튜브는 기본 OFF**.
+//   유튜브 Data API 를 썼던 이유는 "코드가 볼 수 있는 유일한 소스"였기 때문이지,
+//   유튜브가 우리 트렌드 소스라서가 아니었다. MINE 확인: 실제로 봐야 할 건 **틱톡·인스타**.
+//   그쪽은 브라우저 에이전트(Aside/Codex)가 직접 보고 → trend.observe 작업으로 들어온다.
+//   유튜브는 ?youtube=1 로만 켠다(보조).
 //
-// 메타 광고 라이브러리·틱톡은 공식 API 가 막혀 있어 여기서 못 긁는다.
-// → 브라우저로 수집한 결과를 POST /api/content/hooks 로 넣는 경로를 따로 둔다(반자동, 설계 §4-1 명시).
+// 여기가 하는 일:
+//   ① 내부 위너 → 훅 카드  (성과 근거가 붙는 유일한 소스)
+//   ② 브라우저 에이전트가 볼 trend.observe 작업을 큐에 넣기
+//   ③ (옵션) 유튜브 보조 스캔
 //
 // ⛔ 원문 복제 금지. LLM 에 "패턴만 뽑고 우리 제품용 오리지널 훅을 새로 써라" 를 강제한다.
 
@@ -159,6 +163,12 @@ async function scanInternal(req) {
   }));
 }
 
+// 같은 배포의 다른 엔드포인트를 부를 때의 베이스 URL.
+const baseUrl = (req) =>
+  process.env.APP_BASE_URL
+  || (req.headers['x-forwarded-host'] ? `https://${req.headers['x-forwarded-host']}` : null)
+  || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://mine-ai-team.vercel.app');
+
 export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -194,8 +204,38 @@ export default async function handler(req, res) {
     } catch (e) { report.sources.internal = { error: e.message }; }
   }
 
-  // ② 유튜브
-  if (q.skipYoutube !== '1') {
+  // ② 브라우저 에이전트에게 맡길 관찰 작업 — 틱톡·인스타가 주 소스.
+  //    코드가 못 보는 영역이라 사람/컴퓨터유즈 에이전트가 직접 보고 구조를 받아적는다.
+  if (q.skipObserve !== '1') {
+    try {
+      const jobs = [];
+      for (const kw of picked) {
+        for (const [platform, market, query] of [
+          ['tiktok', 'us', kw.us], ['tiktok', 'kr', kw.kr],
+          ['instagram', 'us', kw.us], ['instagram', 'kr', kw.kr],
+        ]) {
+          jobs.push({
+            type: 'trend.observe', role: 'browser', priority: 'normal',
+            note: `${platform} · ${market.toUpperCase()} · ${query}`,
+            payload: { platform, market, query, minViews: platform === 'tiktok' ? 100000 : 50000, want: 3 },
+          });
+        }
+      }
+      if (!dry) {
+        const r = await fetch(`${baseUrl(req)}/api/agents/jobs?action=create`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.CRON_SECRET}` },
+          body: JSON.stringify({ jobs }),
+        }).then(x => x.json());
+        report.sources.observe = { queued: r.created?.length || 0, error: r.error || null };
+      } else {
+        report.sources.observe = { wouldQueue: jobs.length, sample: jobs.slice(0, 2).map(j => j.note) };
+      }
+    } catch (e) { report.sources.observe = { error: e.message }; }
+  }
+
+  // ③ 유튜브 — 기본 OFF. 보조 소스로만.
+  if (q.youtube === '1') {
     try {
       const { items, error, observedRaw, deduped } = await scanYoutube(picked, days);
       report.sources.youtube = { observed: items.length, observedRaw, deduped, ...(error ? { error } : {}) };
