@@ -10,8 +10,9 @@
 import { Redis } from '@upstash/redis';
 import { buildDailyPlan, kstDate, DAILY_SPEC, TRACK_META, LANES, PERSONA_POOL } from '../_daily.js';
 import { listHooks } from '../_hooks.js';
+import { makeBlueprint } from './blueprint.js';
 
-export const config = { maxDuration: 120 };
+export const config = { maxDuration: 300 };
 
 const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
@@ -76,10 +77,27 @@ async function generate(date, market) {
     market, date, recent,
   });
 
+  // 카피는 여기서 **한 번에** 쓴다. MINE 은 칸마다 버튼을 누르지 않는다.
+  //   9칸 병렬 — flash 계열이라 전체 10~20초. 한 칸이 실패해도 나머지는 살린다.
+  const written = await Promise.allSettled(
+    plan.slots.map(s => (s.state === 'awaiting_ref'
+      ? Promise.resolve(null)                    // 레퍼런스가 없으면 쓸 게 없다
+      : makeBlueprint({ slot: s, market })))
+  );
+  written.forEach((r, i) => {
+    if (r.status === 'fulfilled' && r.value) {
+      plan.slots[i].blueprint = { ...r.value.blueprint, _gate: r.value.gate, _engine: `${r.value.engine} · ${r.value.model}` };
+      plan.slots[i].status = r.value.gate.pass ? '검수' : '대기';
+    } else if (r.status === 'rejected') {
+      plan.slots[i].copyError = String(r.reason?.message || r.reason);
+    }
+  });
+
   plan.sources = {
     formats: formats.status === 'connected' ? `포맷 ${formats.count}종` : `포맷 실패(${formats.error || formats.status})`,
     types: types.status === 'connected' ? `소재로그 ${types.items?.length ?? 0}건` : `소재로그 실패(${types.error || types.status})`,
     hooks: `훅 카드 ${Array.isArray(hooks) ? hooks.length : 0}장`,
+    copy: `카피 ${plan.slots.filter(s2 => s2.blueprint).length}/${plan.slots.length}칸 (제미나이)`,
   };
   plan.builtAt = new Date().toISOString();
   await redis.set(key(date, market), plan, { ex: 60 * 60 * 24 * 60 });

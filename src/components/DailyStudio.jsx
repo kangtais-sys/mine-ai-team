@@ -297,7 +297,8 @@ function CapcutPack({ slot, market }) {
 
 // ── 칸 하나 ──────────────────────────────────────────────────────
 function SlotCard({ slot, market, date, onPatch }) {
-  const [open, setOpen] = useState(false);
+  // 카피는 이미 제미나이가 써서 들어온다. 눌러서 펼치는 게 아니라 기본으로 보인다.
+  const [open, setOpen] = useState(!!slot.blueprint);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const tone = TONE[slot.tone] || TONE.test;
@@ -312,7 +313,7 @@ function SlotCard({ slot, market, date, onPatch }) {
       const d = await r.json();
       if (!r.ok) { setErr(d.error || '생성 실패'); return; }
       setOpen(true);
-      await onPatch(slot.id, { blueprint: { ...d.blueprint, _gate: d.gate, _engine: `${d.engine} · ${d.model}` }, status: '검수' });
+      await onPatch(slot.id, { blueprint: { ...d.blueprint, _gate: d.gate, _engine: `${d.engine} · ${d.model}` }, status: d.gate?.pass ? '검수' : '대기', copyError: null });
     } catch (e) { setErr(String(e.message)); }
     finally { setBusy(false); }
   };
@@ -340,7 +341,6 @@ function SlotCard({ slot, market, date, onPatch }) {
         <Pill bg={tone.bg} fg={tone.fg} bold>{slot.mode || tone.label}</Pill>
         {slot.personaLabel && <Pill>👤 {slot.personaLabel}</Pill>}
         {slot.lever && <Pill>{slot.lever}</Pill>}
-        {slot.disclose && <Pill bg="#FFF4E5" fg={C.remix}>AI 연출 표기</Pill>}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -371,14 +371,17 @@ function SlotCard({ slot, market, date, onPatch }) {
         </div>
       ) : (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Btn onClick={generate} disabled={busy} small primary={!bp}>
-            <Sparkles size={12} />{busy ? '쓰는 중…' : bp ? '다시 쓰기' : '카피·훅 생성'}
-          </Btn>
-          {bp && (
+          {bp ? (
             <Btn onClick={() => setOpen(v => !v)} small>
-              {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}{open ? '접기' : '블루프린트'}
+              {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}{open ? '카피 접기' : '카피 보기'}
+            </Btn>
+          ) : (
+            // 제미나이가 실패했을 때만 나온다. 평소엔 누를 일이 없다.
+            <Btn onClick={generate} disabled={busy} small primary>
+              <Sparkles size={12} />{busy ? '쓰는 중…' : '카피 다시 받기'}
             </Btn>
           )}
+          {bp && <Btn onClick={generate} disabled={busy} small><RefreshCw size={12} />{busy ? '…' : '다시 쓰기'}</Btn>}
           {bp && slot.track !== 'image' && <CapcutPack slot={slot} market={market} />}
           {bp?._gate && !bp._gate.pass && (
             <Pill bg="#FDECEA" fg={C.drop} bold><AlertTriangle size={11} />게이트 {bp._gate.fails.length}건</Pill>
@@ -386,7 +389,9 @@ function SlotCard({ slot, market, date, onPatch }) {
         </div>
       )}
 
-      {err && <div style={{ fontSize: 11.5, color: C.drop }}>{err}</div>}
+      {(err || slot.copyError) && (
+        <div style={{ fontSize: 11.5, color: C.drop, lineHeight: 1.5 }}>제미나이 카피 실패 — {err || slot.copyError}</div>
+      )}
       {open && bp && <Blueprint bp={bp} gate={bp._gate} engine={bp._engine} />}
     </div>
   );

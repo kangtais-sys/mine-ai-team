@@ -3,7 +3,8 @@
 // POST /api/content/blueprint   { slot, market, date }
 //   → { 편집패턴, 핵심클레임, hookKr, hookUs, 댓글, 저장, 공유, 대세감, prompt, compliance, gate }
 //
-// 역할 분담 (MINE 확정): 카피·훅 = Gemini / 비주얼 생성 = Higgsfield(nano_banana_pro·gpt_image_2) / 구조·개발 = Claude.
+// 역할 분담 (MINE 확정): 카피·훅 = **Gemini 전담** / 비주얼 = Higgsfield(nano_banana_pro·gpt_image_2).
+//   폴백 없음 — MINE: "카피는 제미나이가 더 잘한다". 실패하면 조용히 딴 모델로 넘기지 않고 실패로 보여준다.
 //   ⚠️ OPENAI_API_KEY 는 이 프로젝트에 없다. "코덱스 비주얼"은 Higgsfield 가 라우팅하는
 //      gpt_image_2 로 대체한다 — 키를 늘리지 않는다.
 //
@@ -56,7 +57,8 @@ const RULES = `
 5. 컴플라이언스 — 입증 범위 밖 표현 금지:
    허용: 24시간 보습 · 피부장벽 · 결 정돈 · 팔자/눈가 4주(겉보기) · 탄력
    금지: 주름 제거/개선 단정 · 구조 차오름 · 의학적 효능 · 시술 동등 비교
-   KR/US 수치 혼용 금지. AI 연출물은 "AI 연출" 표기를 자막 항목에 포함.
+   KR/US 수치 혼용 금지.
+   ⛔ 자막에 "AI 연출"·"AI generated" 류 표기를 **넣지 말 것**.
 6. 가짜 증거 금지: 존재하지 않는 후기·수치·인물 인터뷰를 만들지 않는다. 실후기는 실제 캡처만.
 7. 비주얼 문법(정적): 흑백 + 라임 포인트 1색, Noto Sans KR 한 종, 헤드라인 900 자간 타이트,
    손그림 동그라미 검정 1곳, 직각(오퍼밴드만 라운드).
@@ -94,7 +96,7 @@ const SCHEMA_HINT = `
   "cuts": [
     { "n": 1, "sec": 1.9, "shot": "이 컷에서 화면에 무엇이 보이는지 (앵글·인물·동작)", "sub": "이 컷의 자막 1줄" }
   ],
-  "captions": ["자막으로 burn-in 할 문장들", "AI 연출 표기 포함"],
+  "captions": ["자막으로 burn-in 할 문장들"],
   "visualPrompt": "Higgsfield 용 영문 생성 프롬프트 (인물·조명·앵글·질감. 라벨 클로즈업 금지)",
   "complianceNote": "이 소재에서 특히 조심할 것 한 줄"
 }
@@ -159,25 +161,6 @@ async function callGemini(prompt) {
   return { model, data: JSON.parse(text) };
 }
 
-// Claude 폴백 — 카피는 Gemini 담당이지만 죽었을 때 오늘 작업이 멈추면 안 된다.
-async function callClaude(prompt) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error('ANTHROPIC_API_KEY 없음');
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 2048,
-      messages: [{ role: 'user', content: `${prompt}\n\nJSON 만 출력.` }],
-    }),
-  });
-  const j = await r.json();
-  if (!r.ok) throw new Error(`Claude ${r.status}: ${j?.error?.message || 'unknown'}`);
-  const text = (j.content || []).map(b => b.text || '').join('');
-  return { model: j.model, data: JSON.parse(text.replace(/^```(json)?|```$/g, '').trim()) };
-}
-
 // ── KPI 게이트 — LLM 이 규칙을 빠뜨렸는지 코드가 다시 검사한다 ──
 // 프롬프트에 썼다고 지켜지지 않는다. 통과 못하면 화면에 빨간 딱지가 붙는다.
 const BANNED = [/주름\s*(제거|없애|개선)/, /리프팅\s*효과/, /시술\s*(급|수준|대체)/, /필러\s*(효과|대체)/, /100%/, /완벽하?게?\s*제거/];
@@ -189,9 +172,9 @@ export function gateBlueprint(b, slot) {
   const triggers = ['comment', 'save', 'share'].filter(k => b[k] && String(b[k]).length > 3);
   if (triggers.length < 2) fails.push(`댓글·저장·공유 트리거 ${triggers.length}개 (2개 이상 필요)`);
   for (const re of BANNED) if (re.test(text)) fails.push(`컴플라이언스 위반 표현: ${re.source}`);
-  if (slot?.lane && LANES[slot.lane]?.disclose) {
-    const has = (b.captions || []).some(c => /AI\s*(연출|generated|생성)/i.test(String(c)));
-    if (!has) fails.push('AI 연출 표기 누락 (자막 항목에 필수)');
+  // AI 연출 표기 검사 제거 (MINE 확정 2026-09-23). 대신 표기가 **들어가면** 걸러낸다.
+  if ((b.captions || []).some(c => /AI\s*(연출|generated|생성)/i.test(String(c)))) {
+    fails.push('자막에 AI 연출 표기가 들어감 — 빼야 함');
   }
   if (slot?.track !== 'image') {
     // 영상 골격 — CapCut 실측 범위를 벗어나면 담당자가 그대로 못 쓴다.
@@ -207,6 +190,16 @@ export function gateBlueprint(b, slot) {
   return { pass: fails.length === 0, fails };
 }
 
+/**
+ * 칸 하나 → 블루프린트. daily.js 가 9칸을 병렬로 돌릴 때도 이걸 쓴다.
+ * 카피는 **제미나이 전담**(MINE 확정 2026-09-23). 폴백 없음 — 실패하면 실패로 보여준다.
+ */
+export async function makeBlueprint({ slot, market = 'us' }) {
+  const prompt = buildPrompt(slot, market);
+  const out = await callGemini(prompt);
+  return { engine: 'gemini', model: out.model, blueprint: out.data, gate: gateBlueprint(out.data, slot) };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
@@ -215,22 +208,12 @@ export default async function handler(req, res) {
     if (!slot?.track) return res.status(400).json({ error: 'slot 필요' });
     const market = body.market === 'kr' ? 'kr' : 'us';
 
-    const prompt = buildPrompt(slot, market);
-    let out, engine = 'gemini';
-    try {
-      out = await callGemini(prompt);
-    } catch (e) {
-      try { out = await callClaude(prompt); engine = 'claude(폴백)'; }
-      catch (e2) {
-        return res.status(502).json({ error: '카피 생성 실패', gemini: String(e.message), claude: String(e2.message) });
-      }
-    }
+    let out;
+    try { out = await makeBlueprint({ slot, market }); }
+    catch (e) { return res.status(502).json({ error: `제미나이 카피 생성 실패 — ${e.message}` }); }
 
-    const gate = gateBlueprint(out.data, slot);
     return res.status(200).json({
-      status: 'ok', engine, model: out.model, slotId: slot.id,
-      blueprint: out.data, gate,
-      // 비주얼은 여기서 생성하지 않는다 — 승인된 블루프린트만 Higgsfield 로 넘긴다.
+      status: 'ok', slotId: slot.id, ...out,
       visual: { router: 'higgsfield', models: ['nano_banana_pro', 'gpt_image_2', 'seedream'],
                 note: 'OPENAI_API_KEY 없이 gpt_image_2 는 Higgsfield 경유로만 사용' },
     });

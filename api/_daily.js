@@ -23,10 +23,13 @@ export const TRACK_META = {
 
 // 레인 — 무엇이 AI이고 무엇이 실제인가. 표기 의무가 여기서 갈린다.
 // docs 및 CLAUDE.md 규칙2(가짜 후기·가짜 증거 금지)와 직결.
+// disclose 는 전부 false — MINE 확정 2026-09-23: 자막에 AI 연출 표기를 넣지 않는다.
+// ⚠️ CLAUDE.md §5 와 docs/shorts-format-library.md 는 아직 "AI 연출 명시"로 남아 있다(문서 충돌).
+//    레인 구분 자체는 유지한다 — 실촬/AI 합성을 구분해야 후기·증거 소재에 AI 를 못 쓰게 막을 수 있다.
 export const LANES = {
   a: { label: '실촬',      disclose: false, note: '실제 촬영분 그대로' },
-  b: { label: '실촬+AI보정', disclose: true,  note: '실제 경험 기반, AI 후보정 — AI 연출 표기' },
-  c: { label: 'AI 합성',    disclose: true,  note: '순수 AI 생성 — AI 연출 표기 필수' },
+  b: { label: '실촬+AI보정', disclose: false, note: '실제 경험 기반, AI 후보정' },
+  c: { label: 'AI 합성',    disclose: false, note: '순수 AI 생성' },
 };
 
 // ── AI 인플루언서 ────────────────────────────────────────────────
