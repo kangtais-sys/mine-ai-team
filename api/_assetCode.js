@@ -114,10 +114,24 @@ export const THRESHOLDS = {
 const LABEL = { hookRate: '훅률', holdRate: '유지율', clickFromView: '본→클릭' };
 
 // 정적 소재 기준 — 영상 지표(3초시청·완주)가 아예 없으므로 CTR 하나로 판정한다.
-// 근거: MM- 체계 소재 63건 중 영상은 12건뿐. 나머지 51건을 '측정불가'로 두면
-//       실제로 돌고 있는 소재의 80%를 판정 못 한다.
-// 값: KR 자사몰 전환 소재 실측 분포(CTR 1.0~3.7%)의 상·하위 사분위.
-export const STATIC_THRESHOLDS = { ctr: { pass: 3.0, replace: 1.5 } };
+//
+// ⚠️ 2026-09-22 재조정. 처음엔 KR 자사몰 3건만 보고 pass 3.0 / replace 1.5 로 잡았는데
+//    집행 43건 실측에서 위너가 1건뿐이었다 — 표본 3건으로 정한 기준이 현실과 안 맞았다.
+//
+// **시장별로 분리한다.** 한 기준으로 묶으면 안 되는 이유가 분포에 있다:
+//    KR 21건  최저 1.45 · 중앙 2.35 · 75% 2.51 · 최고 2.97   ← 좁고 높음
+//    US 22건  최저 0.12 · 중앙 1.85 · 75% 2.37 · 최고 3.14   ← 넓고 낮음
+//    US 하한(0.12)이 KR 하한(1.45)의 1/12 이다. 공통 교체선을 쓰면
+//    KR 은 아무도 안 걸리고 US 만 무더기로 폐기된다.
+//
+// 값 = 각 시장 실측 분포의 75%(합격) / 25%(교체). 표본이 쌓이면 다시 조정한다.
+export const STATIC_THRESHOLDS = {
+  kr: { ctr: { pass: 2.5, replace: 1.95 } },
+  us: { ctr: { pass: 2.4, replace: 0.7 } },
+  // 시장 미상 — 두 시장 합산 분포(75% 2.49 / 25% 1.23)
+  default: { ctr: { pass: 2.5, replace: 1.2 } },
+};
+export const staticThresholds = (market) => STATIC_THRESHOLDS[market] || STATIC_THRESHOLDS.default;
 
 const gradeOne = (v, t) => (v == null ? null : v >= t.pass ? 'pass' : v < t.replace ? 'replace' : 'warn');
 
@@ -133,14 +147,16 @@ const gradeOne = (v, t) => (v == null ? null : v >= t.pass ? 'pass' : v < t.repl
  * 2개 이상 'replace' = 폐기 / 1개만 'replace' = 그 구간만 수정(전체 재생성 금지).
  */
 export function gradeContent(content, ad = null) {
-  // ── 정적 소재 ── 영상 지표가 없다. CTR 단독 판정.
+  // ── 정적 소재 ── 영상 지표가 없다. CTR 단독 판정. 기준은 시장별로 다르다.
   if (!content?.isVideo) {
     const ctr = ad?.ctr;
+    const mk = ad?.market;
     if (ctr == null) return { grade: 'n/a', reason: '정적 소재 · CTR 없음', parts: {}, kind: 'static' };
-    const t = STATIC_THRESHOLDS.ctr;
-    if (ctr >= t.pass) return { grade: 'win', reason: `CTR ${ctr}% — 정적 합격선(${t.pass}%) 통과`, parts: { ctr: 'pass' }, kind: 'static', fix: null };
-    if (ctr < t.replace) return { grade: 'drop', reason: `CTR ${ctr}% — 교체선(${t.replace}%) 미만. 훅·비주얼 교체`, parts: { ctr: 'replace' }, kind: 'static', fix: 'hook' };
-    return { grade: 'keep', reason: `CTR ${ctr}% — 기준 내`, parts: { ctr: 'warn' }, kind: 'static', fix: null };
+    const t = staticThresholds(mk).ctr;
+    const tag = STATIC_THRESHOLDS[mk] ? mk.toUpperCase() : '공통';
+    if (ctr >= t.pass) return { grade: 'win', reason: `CTR ${ctr}% — ${tag} 합격선(${t.pass}%) 통과`, parts: { ctr: 'pass' }, kind: 'static', fix: null };
+    if (ctr < t.replace) return { grade: 'drop', reason: `CTR ${ctr}% — ${tag} 교체선(${t.replace}%) 미만. 훅·비주얼 교체`, parts: { ctr: 'replace' }, kind: 'static', fix: 'hook' };
+    return { grade: 'keep', reason: `CTR ${ctr}% — ${tag} 기준 내`, parts: { ctr: 'warn' }, kind: 'static', fix: null };
   }
   const parts = {};
   for (const k of Object.keys(THRESHOLDS)) parts[k] = gradeOne(content[k], THRESHOLDS[k]);

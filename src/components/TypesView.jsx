@@ -166,7 +166,13 @@ export default function TypesView() {
               </div>
             )}
 
-            <Section title="이미지형" hint={`CTR 합격 ≥${data.thresholds.static.ctr.pass}% · 교체 <${data.thresholds.static.ctr.replace}%`} list={image} />
+            <Section
+              title="이미지형"
+              hint={market === 'all'
+                ? `CTR 기준은 시장별 — KR 합격 ≥${data.thresholds.static.kr.ctr.pass}% / US ≥${data.thresholds.static.us.ctr.pass}%`
+                : `CTR 합격 ≥${data.thresholds.static[market]?.ctr.pass}% · 교체 <${data.thresholds.static[market]?.ctr.replace}%`}
+              list={image}
+            />
             <Section title="영상형" hint={`훅률 ≥${data.thresholds.video.hookRate.pass}% · 유지율 ≥${data.thresholds.video.holdRate.pass}% · 본→클릭 ≥${data.thresholds.video.clickFromView.pass}%`} list={video} />
 
             <div style={{ fontSize: 11, color: C.faint }}>
