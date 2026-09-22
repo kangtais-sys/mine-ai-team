@@ -21,6 +21,14 @@ const GRAPH = 'https://graph.facebook.com/v19.0';
 const ROAS_TARGET = Number(process.env.ROAS_TARGET) || 3.0; // 전환 300%
 
 // 우선순위 타입 중 존재하는 첫 타입만 합산(중복 집계 방지)
+// 구매를 목표로 하는 캠페인 목표만 ROAS 판정 대상.
+// ⚠️ 귀속 여부는 계정 단위로만 정하면 안 된다 — 자사몰 계정(인하우스) 안에도 트래픽 캠페인
+//    (협력_올영세일_트래픽 등)이 같이 산다. 이들은 구매를 잡지 않으므로 ROAS 0 이 정상인데
+//    계정만 보고 판정하면 "실패한 소재"로 오인된다. (2026-09-22 라이브에서 실제로 발생)
+const SALES_OBJECTIVES = new Set([
+  'OUTCOME_SALES', 'CONVERSIONS', 'PRODUCT_CATALOG_SALES', 'OUTCOME_LEADS', 'LEAD_GENERATION',
+]);
+
 const PURCHASE_TYPES = ['purchase', 'omni_purchase', 'offsite_conversion.fb_pixel_purchase'];
 function sumPurchase(arr) {
   if (!Array.isArray(arr)) return 0;
@@ -69,7 +77,7 @@ export default async function handler(req, res) {
   const preset = String(q.preset || 'last_30d');
 
   const accounts = resolveAdAccounts({ markets });
-  const fields = 'ad_id,ad_name,campaign_name,account_currency,spend,impressions,clicks,ctr,cpc,actions,action_values';
+  const fields = 'ad_id,ad_name,campaign_name,objective,account_currency,spend,impressions,clicks,ctr,cpc,actions,action_values';
 
   try {
     const [fx, perAccount] = await Promise.all([
@@ -90,8 +98,12 @@ export default async function handler(req, res) {
     // 계정 × 소재 평탄화
     const all = [];
     for (const { acc, rows } of perAccount) {
-      const measurable = acc.attribution === 'pixel';
+      const acctMeasurable = acc.attribution === 'pixel';
       for (const row of rows) {
+        const objective = row.objective || null;
+        // 계정이 픽셀 귀속이어도 캠페인 목표가 구매가 아니면 ROAS 판정 불가.
+        // objective 를 못 받은 경우(필드 누락)엔 계정 기준을 따른다.
+        const measurable = acctMeasurable && (objective ? SALES_OBJECTIVES.has(objective) : true);
         const spend = Number(row.spend) || 0;
         const clicks = Number(row.clicks) || 0;
         const currency = row.account_currency || 'KRW';
@@ -102,7 +114,7 @@ export default async function handler(req, res) {
         all.push({
           accountId: acc.id, account: acc.name, market: acc.market,
           attribution: acc.attribution, dest: acc.dest, measurable,
-          ad_id: row.ad_id, ad_name: row.ad_name, campaign: row.campaign_name,
+          ad_id: row.ad_id, ad_name: row.ad_name, campaign: row.campaign_name, objective,
           currency,
           spend: Math.round(spend), spendUsd: toUsd(spend, currency, fx.rates),
           impressions: Number(row.impressions) || 0,
@@ -141,7 +153,9 @@ export default async function handler(req, res) {
       return {
         id: acc.id, name: acc.name, market: acc.market, attribution: acc.attribution, dest: acc.dest,
         currency: rows[0]?.currency || null,
-        ads: rows.length, clicks,
+        ads: rows.length,
+        measurableAds: rows.filter(r => r.measurable).length, // 계정이 픽셀이어도 트래픽 캠페인은 빠짐
+        clicks,
         spendUsd: Number(spendUsd.toFixed(2)),
         cpcUsd: clicks > 0 ? Number((spendUsd / clicks).toFixed(3)) : null,
         revenueNative: acc.attribution === 'pixel' ? Math.round(revenue) : null,
