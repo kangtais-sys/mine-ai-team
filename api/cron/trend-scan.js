@@ -1,21 +1,21 @@
 // GET /api/cron/trend-scan — 훅 라이브러리 적재. docs/content-team-design.md §4.
 // 인증: Authorization: Bearer ${CRON_SECRET}
-// 옵션: ?dry=1  ?keywords=a,b  ?days=90  ?skipInternal=1  ?skipYoutube=1
+// 옵션: ?dry=1  ?keywords=a,b  ?skipInternal=1  ?skipObserve=1  ?force=1(요일 게이트 무시)
 //
-// ⚠️ 2026-09-22 소스 변경 — **유튜브는 기본 OFF**.
-//   유튜브 Data API 를 썼던 이유는 "코드가 볼 수 있는 유일한 소스"였기 때문이지,
-//   유튜브가 우리 트렌드 소스라서가 아니었다. MINE 확인: 실제로 봐야 할 건 **틱톡·인스타**.
-//   그쪽은 브라우저 에이전트(Aside/Codex)가 직접 보고 → trend.observe 작업으로 들어온다.
-//   유튜브는 ?youtube=1 로만 켠다(보조).
+// ⚠️ 2026-09-22 재설계 — **토큰 효율**. MINE 판단:
+//   터지는 릴스·소재 유형은 8~12개로 유한하다. 영상을 100개 봐도 결론은 같은 유형으로 수렴한다.
+//   매일 관찰하면 같은 답을 매일 다시 사는 꼴 — 브라우저 세션이 전체에서 제일 비싼 항목이다.
+//   → 유형은 포맷 카탈로그(/api/content/formats)에 **한 번** 확정하고 참조한다.
+//   → 관찰의 목적을 "트렌드 수집" → **"카탈로그에 없는 새 유형 탐지"** 로 바꾸고 주 1회 3건으로 축소.
+//   → 유튜브 스캔 제거. 애초에 코드가 볼 수 있는 유일한 소스라 썼던 것뿐.
 //
 // 여기가 하는 일:
-//   ① 내부 위너 → 훅 카드  (성과 근거가 붙는 유일한 소스)
-//   ② 브라우저 에이전트가 볼 trend.observe 작업을 큐에 넣기
-//   ③ (옵션) 유튜브 보조 스캔
+//   ① 내부 위너 → 훅 카드 (성과 근거가 붙는 유일한 소스). **아직 카드 없는 소재만.**
+//   ② (월요일만) 브라우저 관찰 작업 3건 큐잉
 //
 // ⛔ 원문 복제 금지. LLM 에 "패턴만 뽑고 우리 제품용 오리지널 훅을 새로 써라" 를 강제한다.
 
-import { saveHooks, LEVERS } from '../_hooks.js';
+import { saveHooks, listHooks, LEVERS } from '../_hooks.js';
 import { AXES } from '../_assetCode.js';
 
 export const config = { maxDuration: 300 };
@@ -190,8 +190,13 @@ export default async function handler(req, res) {
   // ① 내부
   if (q.skipInternal !== '1') {
     try {
-      const items = await scanInternal(req);
-      report.sources.internal = { observed: items.length };
+      let items = await scanInternal(req);
+      // 이미 카드가 있는 소재는 LLM 에 다시 보내지 않는다.
+      // (저장 단계에서 어차피 중복으로 걸러지지만, 그 전에 LLM 호출 비용은 이미 나간다.)
+      const existing = new Set((await listHooks()).map(c => c.id));
+      const before = items.length;
+      items = items.filter(it => !existing.has(`internal:${it.refId}`));
+      report.sources.internal = { candidates: before, fresh: items.length, alreadyCarded: before - items.length };
       if (items.length) {
         const got = await llmCards(items, '우리 계정에서 성과가 좋았던 소재');
         for (const c of got) {
@@ -204,23 +209,34 @@ export default async function handler(req, res) {
     } catch (e) { report.sources.internal = { error: e.message }; }
   }
 
-  // ② 브라우저 에이전트에게 맡길 관찰 작업 — 틱톡·인스타가 주 소스.
-  //    코드가 못 보는 영역이라 사람/컴퓨터유즈 에이전트가 직접 보고 구조를 받아적는다.
-  if (q.skipObserve !== '1') {
+  // ② 브라우저 관찰 — **주 1회, 소량.**
+  //    2026-09-22 MINE 판단으로 매일 8건 → 주 1회 3건. 근거:
+  //    터지는 유형은 8~12개로 유한하고 이미 포맷 카탈로그에 확정돼 있다.
+  //    매일 관찰하면 같은 유형을 매번 다시 발견하며 돈을 쓴다(브라우저 세션이 제일 비싼 항목).
+  //    → 관찰의 목적을 "트렌드 수집"에서 **"카탈로그에 없는 새 유형 탐지"** 로 바꾼다.
+  //    요일 게이트는 ?force=1 로 무시 가능.
+  const isObserveDay = new Date().getUTCDay() === 1; // 월요일(UTC)
+  if (q.skipObserve !== '1' && (isObserveDay || q.force === '1')) {
     try {
-      const jobs = [];
-      for (const kw of picked) {
-        for (const [platform, market, query] of [
-          ['tiktok', 'us', kw.us], ['tiktok', 'kr', kw.kr],
-          ['instagram', 'us', kw.us], ['instagram', 'kr', kw.kr],
-        ]) {
-          jobs.push({
-            type: 'trend.observe', role: 'browser', priority: 'normal',
-            note: `${platform} · ${market.toUpperCase()} · ${query}`,
-            payload: { platform, market, query, minViews: platform === 'tiktok' ? 100000 : 50000, want: 3 },
-          });
-        }
-      }
+      const kw = picked[0];
+      // 플랫폼·시장을 매주 번갈아 — 4갈래를 한 번에 다 돌지 않는다.
+      const rota = [
+        ['tiktok', 'us', kw.us], ['instagram', 'us', kw.us],
+        ['tiktok', 'kr', kw.kr], ['instagram', 'kr', kw.kr],
+      ];
+      const week = Math.floor(doy / 7);
+      const jobs = [rota[week % 4], rota[(week + 1) % 4], rota[(week + 2) % 4]]
+        .map(([platform, market, query]) => ({
+          type: 'trend.observe', role: 'browser', priority: 'normal',
+          note: `${platform} · ${market.toUpperCase()} · ${query}`,
+          payload: {
+            platform, market, query,
+            minViews: platform === 'tiktok' ? 100000 : 50000,
+            want: 2,
+            // 워커에게 목적을 명시 — 전수 수집이 아니라 새 유형 탐지다.
+            goal: '포맷 카탈로그(/api/content/formats)에 없는 새로운 유형이 있는지만 본다. 기존 유형에 해당하면 formatId 를 적고 짧게 끝낸다.',
+          },
+        }));
       if (!dry) {
         const r = await fetch(`${baseUrl(req)}/api/agents/jobs?action=create`, {
           method: 'POST',
@@ -234,22 +250,10 @@ export default async function handler(req, res) {
     } catch (e) { report.sources.observe = { error: e.message }; }
   }
 
-  // ③ 유튜브 — 기본 OFF. 보조 소스로만.
-  if (q.youtube === '1') {
-    try {
-      const { items, error, observedRaw, deduped } = await scanYoutube(picked, days);
-      report.sources.youtube = { observed: items.length, observedRaw, deduped, ...(error ? { error } : {}) };
-      if (items.length) {
-        const got = await llmCards(items, '유튜브 숏츠에서 고조회를 낸 뷰티 콘텐츠');
-        for (const c of got) {
-          const it = items[c.i]; if (!it) continue;
-          cards.push({ ...it, sourceHook: c.sourceHook, adapted: { kr: c.adaptedKr, us: c.adaptedUs },
-            angle: c.angle, hookType: c.hookType, lever: c.lever, proof: c.proof, why: c.why });
-        }
-        report.sources.youtube.carded = got.length;
-      }
-    } catch (e) { report.sources.youtube = { ...(report.sources.youtube || {}), error: e.message }; }
-  }
+  // ③ 유튜브 — 제거됨(2026-09-22).
+  //    애초에 '코드가 볼 수 있는 유일한 소스'라서 썼던 것이고, 우리 트렌드 소스가 아니다.
+  //    브라우저 에이전트가 틱톡·인스타를 직접 보는 지금은 유지할 이유가 없다.
+  //    scanYoutube() 는 남겨두되 호출하지 않는다 — 필요해지면 되살릴 것.
 
   if (!dry && cards.length) report.saved = await saveHooks(cards);
   report.cards = cards.length;
