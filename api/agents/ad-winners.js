@@ -50,6 +50,26 @@ async function fetchJson(url) {
   return d;
 }
 
+// Meta 는 지표 필드를 주기적으로 폐기한다(예: video_3_sec_watched_actions 가 v19 에서 제거).
+// 필드 하나가 죽으면 요청 전체가 (#100) 으로 거부돼 리포트가 통째로 빈다.
+// → 거부된 필드명을 에러에서 뽑아 빼고 재시도. 어떤 지표가 사라졌는지는 droppedFields 로 표면화.
+async function fetchInsights(makeUrl, fields, maxDrops = 8) {
+  let f = [...fields];
+  const dropped = [];
+  for (let i = 0; i <= maxDrops; i++) {
+    try {
+      return { data: await fetchJson(makeUrl(f.join(','))), dropped };
+    } catch (e) {
+      const m = /\(#100\)\s*([A-Za-z0-9_]+)\s+is not valid for fields param/i.exec(e.message || '');
+      const bad = m?.[1];
+      if (!bad || !f.includes(bad)) throw e;
+      f = f.filter(x => x !== bad);
+      dropped.push(bad);
+    }
+  }
+  throw new Error(`유효하지 않은 필드가 너무 많음: ${dropped.join(', ')}`);
+}
+
 // 선택된 ad_id 들의 썸네일만 배치 조회. Graph 의 ?ids= 는 50개까지라 청크로 나눔.
 async function fetchThumbs(adIds, token) {
   const out = {};
@@ -88,23 +108,27 @@ export default async function handler(req, res) {
   //   video_p50/p100_watched_actions  중간·완주 지점 이탈 파악
   //   outbound_clicks / _ctr      외부(아마존·자사몰)로 실제 나간 클릭. 프로필 클릭 등 제외돼 clicks 보다 정확
   //   quality_ranking 등          같은 타겟을 두고 경쟁한 타사 소재 대비 상대 순위 ← 절대선 없이도 판정 가능
+  // ⚠️ 3초 시청은 전용 필드(video_3_sec_watched_actions)가 폐기됨 → actions 의 'video_view'
+  //    액션 타입이 그 자리를 대신한다(Meta 정의상 3초 재생). 아래 hookRate 가 이걸 쓴다.
   const fields = [
-    'ad_id,ad_name,campaign_name,objective,account_currency,spend,impressions,clicks,ctr,cpc',
-    'actions,action_values',
-    'video_play_actions,video_3_sec_watched_actions,video_thruplay_watched_actions',
-    'video_p50_watched_actions,video_p100_watched_actions,video_avg_time_watched_actions',
-    'outbound_clicks,outbound_clicks_ctr,cost_per_outbound_click',
-    'quality_ranking,engagement_rate_ranking,conversion_rate_ranking',
-  ].join(',');
+    'ad_id', 'ad_name', 'campaign_name', 'objective', 'account_currency',
+    'spend', 'impressions', 'clicks', 'ctr', 'cpc',
+    'actions', 'action_values',
+    'video_play_actions', 'video_thruplay_watched_actions',
+    'video_p50_watched_actions', 'video_p100_watched_actions', 'video_avg_time_watched_actions',
+    'outbound_clicks', 'outbound_clicks_ctr',
+    'quality_ranking', 'engagement_rate_ranking', 'conversion_rate_ranking',
+  ];
 
   try {
     const [fx, perAccount] = await Promise.all([
       getUsdRates(),
       Promise.all(accounts.map(async (acc) => {
         try {
-          const url = `${GRAPH}/act_${acc.id}/insights?level=ad&date_preset=${encodeURIComponent(preset)}&fields=${fields}&limit=500&access_token=${token}`;
-          const ins = await fetchJson(url);
-          return { acc, rows: ins.data || [] };
+          const makeUrl = (f) =>
+            `${GRAPH}/act_${acc.id}/insights?level=ad&date_preset=${encodeURIComponent(preset)}&fields=${f}&limit=500&access_token=${token}`;
+          const { data: ins, dropped } = await fetchInsights(makeUrl, fields);
+          return { acc, rows: ins.data || [], dropped };
         } catch (e) {
           return { acc, rows: [], error: e.message };
         }
@@ -112,6 +136,8 @@ export default async function handler(req, res) {
     ]);
 
     const errors = perAccount.filter(p => p.error).map(p => ({ account: p.acc.name, id: p.acc.id, error: p.error }));
+    // Meta 가 폐기해 빠진 지표 — 조용히 사라지면 "값이 0" 과 구분이 안 되므로 응답에 드러낸다.
+    const droppedFields = [...new Set(perAccount.flatMap(p => p.dropped || []))];
 
     // 계정 × 소재 평탄화
     const all = [];
@@ -149,7 +175,9 @@ export default async function handler(req, res) {
           // ── 콘텐츠 지표 (노출→클릭. 소재가 통제하는 구간) ──
           content: (() => {
             const impressions = Number(row.impressions) || 0;
-            const v3 = sumAll(row.video_3_sec_watched_actions);
+            // 'video_view' 액션 = Meta 정의상 3초 재생(폐기된 전용 필드의 대체).
+            const v3 = (row.actions || []).filter(a => a.action_type === 'video_view')
+              .reduce((s, a) => s + Number(a.value || 0), 0);
             const thru = sumAll(row.video_thruplay_watched_actions);
             const p50 = sumAll(row.video_p50_watched_actions);
             const p100 = sumAll(row.video_p100_watched_actions);
@@ -226,6 +254,7 @@ export default async function handler(req, res) {
       ads,
       // 하위호환 — 기존 호출부가 기대하던 키(측정 가능한 위너만)
       winners: ads.filter(a => a.verdict === 'win'),
+      ...(droppedFields.length ? { droppedFields } : {}),
       ...(errors.length ? { accountErrors: errors } : {}),
     };
     if (q.debug === '1') payload.accountsList = accounts;
