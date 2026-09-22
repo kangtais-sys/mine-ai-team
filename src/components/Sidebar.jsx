@@ -1,5 +1,5 @@
 import { agents } from '../lib/agents';
-import { LayoutDashboard, Sparkles, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Sparkles, BarChart3, LayoutGrid } from 'lucide-react';
 
 // AI 크리에이터는 에이전트 목록에서 AI 채널운영 바로 아래에 위치
 const CREATOR_MENU = {
@@ -72,15 +72,19 @@ export default function Sidebar({ route, onNavigate, urgentCount = 0 }) {
         </div>
       </div>
 
-      {/* Top nav: Dashboard only */}
+      {/* Top nav */}
       <div style={{ padding: '8px 8px 0', flexShrink: 0 }}>
-        {menuItem(
-          page === 'dashboard',
-          <LayoutDashboard size={15} strokeWidth={1.8} />,
-          '대시보드',
-          () => onNavigate('dashboard'),
-          0
-        )}
+        {menuItem(page === 'dashboard', <LayoutDashboard size={15} strokeWidth={1.8} />, '대시보드', () => onNavigate('dashboard'), 0)}
+      </div>
+
+      {/* 콘텐츠 — 이 앱의 중심. 에이전트보다 위에 둔다. */}
+      <div style={{ padding: '14px 14px 5px', fontSize: 10.5, fontWeight: 600, color: '#AEAEB2', textTransform: 'uppercase', letterSpacing: '0.07em', flexShrink: 0 }}>
+        콘텐츠
+      </div>
+      <div style={{ padding: '0 8px', flexShrink: 0 }}>
+        {menuItem(page === 'types', <LayoutGrid size={15} strokeWidth={1.8} />, '소재 유형', () => onNavigate('types'), 0)}
+        {menuItem(page === 'performance', <BarChart3 size={15} strokeWidth={1.8} />, '소재 성과', () => onNavigate('performance'), 0)}
+        {menuItem(page === 'creator', <Sparkles size={15} strokeWidth={1.8} />, '콘텐츠 보드', () => onNavigate('creator'), 0)}
       </div>
 
       {/* Section Label */}
@@ -104,31 +108,6 @@ export default function Sidebar({ route, onNavigate, urgentCount = 0 }) {
                 badge
               )}
               {/* AI 크리에이터: 채널운영 바로 아래 삽입 */}
-              {agent.id === CREATOR_MENU.insertAfter && (() => {
-                const CIcon = CREATOR_MENU.icon;
-                return (
-                  <>
-                    <div style={{ marginBottom: 1 }}>
-                      {menuItem(
-                        page === 'creator',
-                        <CIcon size={15} strokeWidth={1.8} />,
-                        CREATOR_MENU.name,
-                        () => onNavigate('creator'),
-                        0
-                      )}
-                    </div>
-                    <div style={{ marginBottom: 1 }}>
-                      {menuItem(
-                        page === 'performance',
-                        <BarChart3 size={15} strokeWidth={1.8} />,
-                        '소재 성과',
-                        () => onNavigate('performance'),
-                        0
-                      )}
-                    </div>
-                  </>
-                );
-              })()}
             </div>
           );
         })}
