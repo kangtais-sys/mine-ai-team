@@ -60,14 +60,24 @@ const RULES = `
 6. 가짜 증거 금지: 존재하지 않는 후기·수치·인물 인터뷰를 만들지 않는다. 실후기는 실제 캡처만.
 7. 비주얼 문법(정적): 흑백 + 라임 포인트 1색, Noto Sans KR 한 종, 헤드라인 900 자간 타이트,
    손그림 동그라미 검정 1곳, 직각(오퍼밴드만 라운드).
-8. 영상 문법: 4비트(HOOK 0-3s / 전개 3-8s / 페이오프 8-12s / 엔드카드 12-14s).
-   모션 구간에서 제품 라벨 클로즈업 금지(AI 가 글자를 뭉갠다) — 정확한 라벨은 엔드카드 실제 제품컷에만.
+8. 영상 골격 — CapCut 실측 28건 기준. 여기서 벗어나지 말 것.
+   캔버스 1080x1920 · 총 12~17초 · **8컷** · 컷당 약 1.9초 · 전환 없음(전부 하드컷) · SFX 없음 · BGM 있음.
+   자막은 **컷마다 정확히 1개**, 첫 컷 자막이 훅이다.
+   서사 4비트를 8컷에 얹는다: 컷1-2 HOOK / 컷3-5 전개 / 컷6-7 페이오프 / 컷8 엔드카드.
+   시각 구조는 A·B·C 중 하나 필수 — 원리는 전부 '비교'다:
+     A 하단 B&A 삽입(상단 실인물 / 하단 1/3 비포&애프터)
+     B 전면 좌우 분할(좌 칙칙 / 우 글래스스킨)
+     C PIP 삽입(큰 얼굴 위 작은 창)
+     D 구조 없음 — 리스티클 등 예외에만.
+   모션 컷에서 제품 라벨 클로즈업 금지(AI 가 글자를 뭉갠다) — 정확한 라벨은 컷8 엔드카드 실제 제품컷에만.
+10. ⛔ 광고 소재에 오피셜 KPI(댓글 100개 유도)를 적용하지 말 것 — 실측 4%. 댓글 문장은 캡션용으로만 낸다.
 9. 트렌드 차용 시: 원본 영상·오디오·대사·얼굴을 1:1 복제하지 않는다. 구조·타이밍·전환만 차용하고
    문장은 전부 새로 쓴다.
 `.trim();
 
 const SCHEMA_HINT = `
 반드시 아래 JSON 하나만 출력한다. 설명·코드펜스 금지.
+영상 과제면 cuts 를 **정확히 8개** 채운다(sec 합계 12~17초). 정적 이미지 과제면 cuts 는 빈 배열, structure/bgm 은 null.
 {
   "editPattern": "레이아웃 레시피 한 줄. 예: 볼·코 매크로 split + 하단 훅 + 채점서클(4주) + 배지2",
   "claim": "핵심클레임 — 화면에 실제로 박히는 문장들을 ' / ' 로 이어서",
@@ -78,7 +88,12 @@ const SCHEMA_HINT = `
   "comment": "댓글 가르기 문장",
   "save": "저장 유도 문장",
   "share": "공유 트리거 문장",
-  "beats": ["0-3s …", "3-8s …", "8-12s …", "12-14s 엔드카드 …"],
+  "beats": ["0-3s …", "3-8s …", "8-12s …", "12-15s 엔드카드 …"],
+  "structure": "A | B | C | D 중 하나 (영상만)",
+  "bgm": "BGM 무드 한 줄 — 생성음/로열티프리 전제 (영상만)",
+  "cuts": [
+    { "n": 1, "sec": 1.9, "shot": "이 컷에서 화면에 무엇이 보이는지 (앵글·인물·동작)", "sub": "이 컷의 자막 1줄" }
+  ],
   "captions": ["자막으로 burn-in 할 문장들", "AI 연출 표기 포함"],
   "visualPrompt": "Higgsfield 용 영문 생성 프롬프트 (인물·조명·앵글·질감. 라벨 클로즈업 금지)",
   "complianceNote": "이 소재에서 특히 조심할 것 한 줄"
@@ -178,7 +193,17 @@ export function gateBlueprint(b, slot) {
     const has = (b.captions || []).some(c => /AI\s*(연출|generated|생성)/i.test(String(c)));
     if (!has) fails.push('AI 연출 표기 누락 (자막 항목에 필수)');
   }
-  if (slot?.track !== 'image' && (b.beats || []).length < 4) fails.push('4비트 구조 미충족');
+  if (slot?.track !== 'image') {
+    // 영상 골격 — CapCut 실측 범위를 벗어나면 담당자가 그대로 못 쓴다.
+    const cuts = Array.isArray(b.cuts) ? b.cuts : [];
+    if ((b.beats || []).length < 4) fails.push('4비트 서사 미충족');
+    if (cuts.length < 6) fails.push(`컷 ${cuts.length}개 (8컷 기준, 최소 6)`);
+    const total = cuts.reduce((s2, c) => s2 + (Number(c.sec) || 0), 0);
+    if (cuts.length && (total < 6.8 || total > 19.5)) fails.push(`총 ${total.toFixed(1)}초 — 실측 범위 6.8~19.5초 밖`);
+    const noSub = cuts.filter(c => !c.sub || !String(c.sub).trim()).length;
+    if (noSub) fails.push(`자막 없는 컷 ${noSub}개 (컷마다 1개 필수)`);
+    if (!['A', 'B', 'C', 'D'].includes(String(b.structure || '').trim()[0])) fails.push('시각 구조 A/B/C/D 미지정');
+  }
   return { pass: fails.length === 0, fails };
 }
 

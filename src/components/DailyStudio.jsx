@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Flame, Repeat2, Image as ImageIcon, Link2, Sparkles, Copy, Check,
-  AlertTriangle, RefreshCw, ChevronDown, ChevronUp,
+  AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Scissors, Download,
 } from 'lucide-react';
 
 // 데일리 스튜디오 — 이 앱에서 매일 여는 단 하나의 화면.
@@ -206,11 +206,91 @@ function Blueprint({ bp, gate, engine }) {
       {row('편집패턴', bp.editPattern)}
       {row('핵심클레임', bp.claim)}
       {row('비트', (bp.beats || []).join('  →  '))}
+      {row('구조', bp.structure)}
+      {row('컷', (bp.cuts || []).length ? `${bp.cuts.length}컷 · ${(bp.cuts.reduce((s2, c) => s2 + (Number(c.sec) || 1.9), 0)).toFixed(1)}초` : null)}
+      {row('BGM', bp.bgm)}
       {row('댓글', bp.comment)}
       {row('저장', bp.save)}
       {row('공유', bp.share)}
       {row('자막', (bp.captions || []).join(' / '))}
       {row('주의', bp.complianceNote)}
+    </div>
+  );
+}
+
+// ── 캡컷 작업 패키지 ─────────────────────────────────────────────
+// 영상 편집은 캡컷 수작업으로 간다(MINE 확정). 그러면 병목은 자막을 손으로 치는 시간이다.
+// 캡컷이 SRT 가져오기를 공식 지원하므로 자막을 미리 만들어 넘긴다 — 담당자는 컷만 붙이면 된다.
+function CapcutPack({ slot, market }) {
+  const [pack, setPack] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const build = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch('/api/content/capcut-pack', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slot, market }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setErr(d.error || '패키지 생성 실패'); return; }
+      setPack(d);
+    } catch (e) { setErr(String(e.message)); }
+    finally { setBusy(false); }
+  };
+
+  const dl = () => {
+    const blob = new Blob([pack.srt], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = pack.srtFilename;
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+
+  if (!pack) {
+    return (
+      <>
+        <Btn onClick={build} disabled={busy} small><Scissors size={12} />{busy ? '만드는 중…' : '캡컷 패키지'}</Btn>
+        {err && <span style={{ fontSize: 11.5, color: C.drop }}>{err}</span>}
+      </>
+    );
+  }
+
+  const bad = pack.checklist.filter(c => !c.ok);
+  return (
+    <div style={{ width: '100%', marginTop: 8, padding: '10px 12px', borderRadius: 8, background: '#FAFAFC', border: `1px solid ${C.line}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, flexWrap: 'wrap' }}>
+        <Scissors size={13} color={C.ink} />
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: C.ink }}>캡컷 패키지</span>
+        <Pill>{pack.totalSec}초 · {pack.timeline.length}컷</Pill>
+        {bad.length
+          ? <Pill bg="#FDECEA" fg={C.drop} bold><AlertTriangle size={11} />{bad.length}건 확인</Pill>
+          : <Pill bg="#EAF6EE" fg={C.win} bold><Check size={11} />골격 OK</Pill>}
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 5 }}>
+          <button onClick={dl} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 6,
+            border: `1px solid ${C.line}`, background: C.bg, color: C.ink, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
+          }}><Download size={11} />{pack.srtFilename}</button>
+          <CopyBtn text={pack.sheet} label="작업지시서" />
+        </span>
+      </div>
+
+      <div style={{ fontSize: 11, color: C.sub, marginBottom: 8, lineHeight: 1.5 }}>{pack.importHint}</div>
+
+      <div style={{ marginBottom: 8 }}>
+        {pack.checklist.map((c, i) => (
+          <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 11.5, lineHeight: 1.7, color: c.ok ? C.sub : C.drop }}>
+            <span style={{ flexShrink: 0 }}>{c.ok ? (c.manual ? '◻' : '✓') : '✕'}</span>
+            <span>{c.text}</span>
+          </div>
+        ))}
+      </div>
+
+      <pre style={{
+        margin: 0, maxHeight: 260, overflow: 'auto', padding: '9px 11px', borderRadius: 7,
+        background: C.bg, border: `1px solid ${C.line}`, fontSize: 11, lineHeight: 1.65, color: C.ink,
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+      }}>{pack.sheet}</pre>
     </div>
   );
 }
@@ -290,7 +370,7 @@ function SlotCard({ slot, market, date, onPatch }) {
           위 입력칸에 레퍼런스 URL 을 넣으면 이 칸이 채워진다.
         </div>
       ) : (
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <Btn onClick={generate} disabled={busy} small primary={!bp}>
             <Sparkles size={12} />{busy ? '쓰는 중…' : bp ? '다시 쓰기' : '카피·훅 생성'}
           </Btn>
@@ -299,6 +379,7 @@ function SlotCard({ slot, market, date, onPatch }) {
               {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}{open ? '접기' : '블루프린트'}
             </Btn>
           )}
+          {bp && slot.track !== 'image' && <CapcutPack slot={slot} market={market} />}
           {bp?._gate && !bp._gate.pass && (
             <Pill bg="#FDECEA" fg={C.drop} bold><AlertTriangle size={11} />게이트 {bp._gate.fails.length}건</Pill>
           )}
