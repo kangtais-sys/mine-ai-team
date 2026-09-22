@@ -200,8 +200,13 @@ export default async function handler(req, res) {
               outboundClicks: outbound || null,
               outboundCtr: outboundCtrRaw > 0 ? Number(outboundCtrRaw.toFixed(2))
                 : (outbound ? pct(outbound, impressions) : null),
-              clickFromView: isVideo ? ratio(outbound, v3) : null, // 본 사람 중 몇 %가 눌렀나
-              lowSample: isVideo && v3 < MIN_DEN,                  // 표본 부족 — 판정 보류 근거
+              // 본 사람 중 몇 %가 눌렀나.
+              // ⚠️ 클릭 > 3초시청 이면 클릭이 영상 시청자에게서 나온 게 아니다(정적 노출면 혼합 게재).
+              //    이때 비율은 202% 같은 값이 되는데 이건 "성과가 좋다"가 아니라 "분모가 틀렸다" 이므로
+              //    100 으로 깎지 말고 null. 깎으면 측정 불가를 만점으로 둔갑시킨다.
+              clickFromView: isVideo && outbound <= v3 ? ratio(outbound, v3) : null,
+              clickBaseMismatch: isVideo && v3 > 0 && outbound > v3, // 클릭이 영상 밖에서 발생
+              lowSample: isVideo && v3 < MIN_DEN,                    // 표본 부족 — 판정 보류 근거
               // Meta 가 같은 타겟 경쟁 소재와 비교해준 상대 순위. 절대선이 없어도 판정 가능.
               qualityRank: row.quality_ranking || null,
               engagementRank: row.engagement_rate_ranking || null,

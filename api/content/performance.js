@@ -5,9 +5,16 @@
 //
 // 쿼리: ?market=kr|us|all  ?preset=last_30d  ?minSpend=
 
+import { Redis } from '@upstash/redis';
 import { parseAssetCode, gradeContent, THRESHOLDS, GRADE_META, AXES } from '../_assetCode.js';
+import { CACHE_KEY } from './backfill.js';
 
 export const config = { maxDuration: 120 };
+
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
 const avg = (arr) => {
   const v = arr.filter(x => x != null);
@@ -29,8 +36,23 @@ export default async function handler(req, res) {
   const src = inner.body || {};
   if (src.status === 'error' || src.status === 'disconnected') return res.status(200).json({ ...src, ads: [] });
 
+  // LLM 백필 결과를 얹는다. 이름 정규식이 읽어낸 값이 우선 — 명시 토큰(MM-AMP-BA)이 추론보다 확실하다.
+  // 백필은 **비어 있는 축만** 채운다.
+  let classified = {};
+  try { classified = (await redis.hgetall(CACHE_KEY)) || {}; } catch { /* 캐시 없어도 화면은 떠야 함 */ }
+
   const ads = (src.ads || []).map(a => {
-    const code = parseAssetCode(a.ad_name, { market: a.market, isVideo: a.content?.isVideo });
+    const parsed = parseAssetCode(a.ad_name, { market: a.market, isVideo: a.content?.isVideo });
+    const c = !parsed.coded ? classified[a.ad_id] : null;
+    const code = c
+      ? {
+          ...parsed,
+          product: parsed.product ?? c.product ?? null,
+          angle: parsed.angle ?? c.angle ?? null,
+          hook: parsed.hook ?? c.hook ?? null,
+          filledBy: 'llm', confidence: c.confidence ?? null,
+        }
+      : parsed;
     const g = gradeContent(a.content);
     return {
       ...a, code,

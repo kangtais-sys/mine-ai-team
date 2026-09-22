@@ -117,6 +117,13 @@ const gradeOne = (v, t) => (v == null ? null : v >= t.pass ? 'pass' : v < t.repl
 
 /**
  * 콘텐츠 3지표 → 판정 + 처방.
+ *
+ * 위너 = **합격 2개 이상 + 교체 0개** (2026-09-22 확정, 규칙 A).
+ * ⚠️ 처음엔 "3개 전부 합격"이었으나 라이브 데이터에서 위너가 0건이었다.
+ *    세 지표가 서로 반대로 움직이기 때문 — 훅이 센 소재는 아무나 끌어와 클릭 전환이 낮고(훅 70.9% → 본→클릭 2.1%),
+ *    훅이 약한 소재는 관심 있는 사람만 봐서 클릭률이 높다. 상위 25%를 동시에 요구하면 구조적으로 통과 불가.
+ *    → "두 구간은 확실히 잘하고 나머지 한 구간은 최소한 교체 대상은 아님" 으로 완화.
+ *
  * 2개 이상 'replace' = 폐기 / 1개만 'replace' = 그 구간만 수정(전체 재생성 금지).
  */
 export function gradeContent(content) {
@@ -138,7 +145,10 @@ export function gradeContent(content) {
     }[bad[0]];
     return { grade: 'remix', ...fix, parts };
   }
-  if (pass === scored.length) return { grade: 'win', reason: '전 지표 합격 — 이 조합 증량', parts, fix: null };
+  if (pass >= 2) {
+    const names = Object.keys(parts).filter(k => parts[k] === 'pass').map(k => LABEL[k]);
+    return { grade: 'win', reason: `${names.join('·')} 합격 — 이 조합 증량`, parts, fix: null };
+  }
   return { grade: 'keep', reason: '기준 내 — 유지', parts, fix: null };
 }
 
