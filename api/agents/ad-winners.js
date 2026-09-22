@@ -1,32 +1,27 @@
-// GET /api/agents/ad-winners — 광고 소재별 성과 위너(ROAS 상위). marketer.js 패턴·토큰 재사용.
-// 광고별: revenue=action_values 中 purchase 합(⚠️ actions 건수 아님 — ad-optimize 버그 주의), roas=revenue/spend,
-//          purchases=actions 中 purchase 합, cvr=purchases/clicks. spend>=100,000 만, roas 내림차순 상위 15.
-// 소재 썸네일: act_{id}/ads?fields=name,creative{thumbnail_url,image_url,object_story_spec} 로 ad→creative 매핑.
+// GET /api/agents/ad-winners — 소재(광고) 단위 성과. 콘텐츠팀이 "뭐가 팔렸나"를 보는 원천 데이터.
+//
+// 쿼리: ?market=kr|us|jp|all  ?minSpend=  ?top=  ?preset=last_30d|last_7d|…  ?debug=1
+//
+// 집계 규칙 (틀리기 쉬운 지점이라 명시):
+//   revenue   = action_values 中 purchase 합 (매출)   ← actions(건수) 아님. ad-optimize 가 이걸 틀렸었음
+//   purchases = actions 中 purchase 합 (건수)
+//   roas      = revenue / spend
+//   cvr       = purchases / clicks * 100
+//   ⚠️ roas·cvr 은 attribution==='pixel' 계정에서만 의미가 있다. 아마존/트래픽 계정은 구조적으로 0 →
+//      measurable:false 로 표시하고 위너 판정에서 제외. 0 을 "나쁜 소재"로 읽으면 안 됨.
+//
+// 성능: 예전엔 계정마다 /ads 를 12페이지까지 긁어 썸네일 맵을 만들었음(US 계정 광고 643개 → 한없이 느림).
+//       지금은 인사이트 먼저 → 상위 N 만 골라 → 그 ad_id 만 배치 조회(1콜). 계정 9개로 늘려도 버팀.
+import { resolveAdAccounts } from '../_adAccounts.js';
+import { getUsdRates, toUsd } from '../utils/fx.js';
+
+export const config = { maxDuration: 120 };
+
 const GRAPH = 'https://graph.facebook.com/v19.0';
+const ROAS_TARGET = Number(process.env.ROAS_TARGET) || 3.0; // 전환 300%
 
-// 우선 2개 + 옵션(올리브영 + META_AD_ACCOUNTS env JSON 병합, id 중복 제거)
-const BASE_ACCOUNTS = [
-  { name: '밀리밀리_한국', id: '791241442793311' },
-  { name: '밀리밀리_인하우스', id: '2327868604313508' },
-  { name: '밀리밀리_한국_올리브영', id: '623851980786807' },
-];
-function resolveAccounts() {
-  const list = [...BASE_ACCOUNTS];
-  try {
-    const env = process.env.META_AD_ACCOUNTS;
-    if (env) {
-      const parsed = JSON.parse(env);
-      for (const a of parsed) {
-        const id = String(typeof a === 'string' ? a : a.id).replace(/^act_/, '');
-        if (id && !list.some(x => x.id === id)) list.push({ name: (a.name || `act_${id}`), id });
-      }
-    }
-  } catch { /* env 형식 무시 */ }
-  return list;
-}
-
-const PURCHASE_TYPES = ['purchase', 'omni_purchase', 'offsite_conversion.fb_pixel_purchase'];
 // 우선순위 타입 중 존재하는 첫 타입만 합산(중복 집계 방지)
+const PURCHASE_TYPES = ['purchase', 'omni_purchase', 'offsite_conversion.fb_pixel_purchase'];
 function sumPurchase(arr) {
   if (!Array.isArray(arr)) return 0;
   for (const t of PURCHASE_TYPES) {
@@ -43,79 +38,139 @@ async function fetchJson(url) {
   return d;
 }
 
-// 계정의 ad→thumbnail_url 맵 (id·name 둘 다 키로). 실패는 error 로 표면화.
-async function creativeThumbs(accId, token) {
-  const byId = {}, byName = {};
-  // object_story_spec 은 무거워 "reduce the amount of data" 에러 유발 → thumbnail_url/image_url 만, 페이지 50개씩.
-  let url = `${GRAPH}/act_${accId}/ads?fields=name,creative{thumbnail_url,image_url}&limit=50&access_token=${token}`;
-  let pages = 0;
-  try {
-    for (; pages < 12 && url; pages++) {
-      const d = await fetchJson(url);
-      for (const ad of (d.data || [])) {
-        const c = ad.creative || {};
-        const thumb = c.thumbnail_url || c.image_url || null;
-        if (ad.id) byId[ad.id] = thumb;
-        if (ad.name) byName[ad.name] = thumb;
+// 선택된 ad_id 들의 썸네일만 배치 조회. Graph 의 ?ids= 는 50개까지라 청크로 나눔.
+async function fetchThumbs(adIds, token) {
+  const out = {};
+  for (let i = 0; i < adIds.length; i += 50) {
+    const chunk = adIds.slice(i, i + 50);
+    try {
+      const d = await fetchJson(
+        `${GRAPH}/?ids=${chunk.join(',')}&fields=creative{thumbnail_url,image_url}&access_token=${token}`
+      );
+      for (const [id, ad] of Object.entries(d || {})) {
+        const c = ad?.creative || {};
+        out[id] = c.thumbnail_url || c.image_url || null;
       }
-      url = d.paging?.next || null;
-    }
-  } catch (e) {
-    return { byId, byName, error: e.message, pages };
+    } catch { /* 썸네일 실패는 성과 데이터를 막지 않는다 */ }
   }
-  return { byId, byName, pages };
+  return out;
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
   const token = process.env.META_ACCESS_TOKEN || process.env.INSTAGRAM_ACCESS_TOKEN;
-  if (!token) return res.status(200).json({ status: 'disconnected', message: 'META_ACCESS_TOKEN 또는 INSTAGRAM_ACCESS_TOKEN 필요', winners: [] });
+  if (!token) return res.status(200).json({ status: 'disconnected', message: 'META_ACCESS_TOKEN 또는 INSTAGRAM_ACCESS_TOKEN 필요', ads: [], winners: [] });
 
-  const minSpend = Number(req.query?.minSpend) || 100000;
-  const topN = Number(req.query?.top) || 15;
-  const accounts = resolveAccounts();
-  const fields = 'ad_id,ad_name,campaign_name,spend,impressions,clicks,ctr,cpc,actions,action_values';
+  const q = req.query || {};
+  const marketArg = String(q.market || '').toLowerCase();
+  const markets = !marketArg || marketArg === 'all' ? undefined : marketArg.split(',').filter(Boolean);
+  const minSpend = q.minSpend != null ? Number(q.minSpend) : 10000;
+  const topN = Number(q.top) || 30;
+  const preset = String(q.preset || 'last_30d');
+
+  const accounts = resolveAdAccounts({ markets });
+  const fields = 'ad_id,ad_name,campaign_name,account_currency,spend,impressions,clicks,ctr,cpc,actions,action_values';
 
   try {
-    const thumbsMeta = [];
-    const perAccount = await Promise.all(accounts.map(async (acc) => {
-      try {
-        const insUrl = `${GRAPH}/act_${acc.id}/insights?level=ad&date_preset=last_30d&fields=${fields}&limit=300&access_token=${token}`;
-        const [ins, thumbs] = await Promise.all([fetchJson(insUrl), creativeThumbs(acc.id, token).catch((e) => ({ byId: {}, byName: {}, error: e.message }))]);
-        thumbsMeta.push({ account: acc.name, ids: Object.keys(thumbs.byId).length, names: Object.keys(thumbs.byName).length, withThumb: Object.values(thumbs.byId).filter(Boolean).length, error: thumbs.error || null, sampleInsAdId: ins.data?.[0]?.ad_id || null });
-        return (ins.data || []).map(row => {
-          const spend = Number(row.spend) || 0;
-          const clicks = Number(row.clicks) || 0;
-          const revenue = sumPurchase(row.action_values); // 매출(action_values) — 건수 아님
-          const purchases = sumPurchase(row.actions);      // 구매 건수(actions)
-          return {
-            account: acc.name,
-            ad_name: row.ad_name,
-            campaign: row.campaign_name,
-            spend: Math.round(spend),
-            revenue: Math.round(revenue),
-            roas: spend > 0 ? Number((revenue / spend).toFixed(2)) : 0,
-            ctr: row.ctr != null ? Number(Number(row.ctr).toFixed(2)) : null,
-            cvr: clicks > 0 ? Number((purchases / clicks * 100).toFixed(2)) : null, // %
-            purchases,
-            thumbnail_url: thumbs.byId[row.ad_id] || thumbs.byName[row.ad_name] || null,
-          };
+    const [fx, perAccount] = await Promise.all([
+      getUsdRates(),
+      Promise.all(accounts.map(async (acc) => {
+        try {
+          const url = `${GRAPH}/act_${acc.id}/insights?level=ad&date_preset=${encodeURIComponent(preset)}&fields=${fields}&limit=500&access_token=${token}`;
+          const ins = await fetchJson(url);
+          return { acc, rows: ins.data || [] };
+        } catch (e) {
+          return { acc, rows: [], error: e.message };
+        }
+      })),
+    ]);
+
+    const errors = perAccount.filter(p => p.error).map(p => ({ account: p.acc.name, id: p.acc.id, error: p.error }));
+
+    // 계정 × 소재 평탄화
+    const all = [];
+    for (const { acc, rows } of perAccount) {
+      const measurable = acc.attribution === 'pixel';
+      for (const row of rows) {
+        const spend = Number(row.spend) || 0;
+        const clicks = Number(row.clicks) || 0;
+        const currency = row.account_currency || 'KRW';
+        const revenue = sumPurchase(row.action_values);
+        const purchases = sumPurchase(row.actions);
+        const roas = measurable && spend > 0 ? Number((revenue / spend).toFixed(2)) : null;
+        const cpc = row.cpc != null ? Number(Number(row.cpc).toFixed(2)) : (clicks > 0 ? Number((spend / clicks).toFixed(2)) : null);
+        all.push({
+          accountId: acc.id, account: acc.name, market: acc.market,
+          attribution: acc.attribution, dest: acc.dest, measurable,
+          ad_id: row.ad_id, ad_name: row.ad_name, campaign: row.campaign_name,
+          currency,
+          spend: Math.round(spend), spendUsd: toUsd(spend, currency, fx.rates),
+          impressions: Number(row.impressions) || 0,
+          clicks,
+          ctr: row.ctr != null ? Number(Number(row.ctr).toFixed(2)) : null,
+          cpc, cpcUsd: cpc != null ? toUsd(cpc, currency, fx.rates) : null,
+          revenue: measurable ? Math.round(revenue) : null,
+          purchases: measurable ? purchases : null,
+          roas,
+          cvr: measurable && clicks > 0 ? Number((purchases / clicks * 100).toFixed(2)) : null,
+          // 300% 판정. 귀속 안 되는 계정은 '측정불가' — 절대 'lose' 로 찍지 말 것.
+          verdict: !measurable ? 'unmeasured' : roas == null ? 'unmeasured' : roas >= ROAS_TARGET ? 'win' : 'lose',
         });
-      } catch (e) {
-        return [{ account: acc.name, _error: e.message }];
       }
-    }));
+    }
 
-    const errors = perAccount.flat().filter(x => x._error).map(x => ({ account: x.account, error: x._error }));
-    const winners = perAccount.flat()
-      .filter(x => !x._error && x.spend >= minSpend) // 유의미 소재만
-      .sort((a, b) => b.roas - a.roas)
-      .slice(0, topN);
+    const significant = all.filter(a => a.spend >= minSpend);
+    // 측정 가능한 건 ROAS 내림차순, 나머지는 지출 내림차순(클릭 효율은 화면에서 cpc 로 정렬)
+    significant.sort((a, b) => {
+      if (a.measurable !== b.measurable) return a.measurable ? -1 : 1;
+      if (a.measurable) return (b.roas ?? -1) - (a.roas ?? -1);
+      return b.spend - a.spend;
+    });
+    const ads = significant.slice(0, topN);
 
-    const payload = { status: 'connected', period: 'last_30d', minSpend, count: winners.length, winners, ...(errors.length ? { accountErrors: errors } : {}) };
-    if (req.query?.debug === '1') payload.thumbsMeta = thumbsMeta;
+    // 썸네일은 최종 선별분만
+    const thumbs = await fetchThumbs(ads.map(a => a.ad_id).filter(Boolean), token);
+    for (const a of ads) a.thumbnail_url = thumbs[a.ad_id] || null;
+
+    // 계정 요약 (통화가 섞이므로 합산은 USD 로만)
+    const summary = accounts.map(acc => {
+      const rows = all.filter(a => a.accountId === acc.id);
+      const spendUsd = rows.reduce((s, r) => s + (r.spendUsd || 0), 0);
+      const clicks = rows.reduce((s, r) => s + r.clicks, 0);
+      const revenue = rows.reduce((s, r) => s + (r.revenue || 0), 0);
+      return {
+        id: acc.id, name: acc.name, market: acc.market, attribution: acc.attribution, dest: acc.dest,
+        currency: rows[0]?.currency || null,
+        ads: rows.length, clicks,
+        spendUsd: Number(spendUsd.toFixed(2)),
+        cpcUsd: clicks > 0 ? Number((spendUsd / clicks).toFixed(3)) : null,
+        revenueNative: acc.attribution === 'pixel' ? Math.round(revenue) : null,
+        measurable: acc.attribution === 'pixel',
+      };
+    });
+
+    const payload = {
+      status: 'connected',
+      period: preset, minSpend, roasTarget: ROAS_TARGET,
+      fx: { source: fx.source, usdKrw: fx.rates?.KRW ?? null, at: fx.at },
+      accountsQueried: accounts.length,
+      counts: {
+        total: all.length,
+        significant: significant.length,
+        measurable: significant.filter(a => a.measurable).length,
+        win: significant.filter(a => a.verdict === 'win').length,
+        lose: significant.filter(a => a.verdict === 'lose').length,
+        unmeasured: significant.filter(a => a.verdict === 'unmeasured').length,
+      },
+      summary,
+      ads,
+      // 하위호환 — 기존 호출부가 기대하던 키(측정 가능한 위너만)
+      winners: ads.filter(a => a.verdict === 'win'),
+      ...(errors.length ? { accountErrors: errors } : {}),
+    };
+    if (q.debug === '1') payload.accountsList = accounts;
     return res.status(200).json(payload);
   } catch (e) {
-    return res.status(500).json({ status: 'error', error: e.message, winners: [] });
+    return res.status(500).json({ status: 'error', error: e.message, ads: [], winners: [] });
   }
 }

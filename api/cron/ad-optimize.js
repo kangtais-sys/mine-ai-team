@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis';
+import { resolveAdAccounts } from '../_adAccounts.js';
 
 const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
@@ -7,13 +8,9 @@ const redis = new Redis({
 
 export const config = { maxDuration: 120 };
 
-const AD_ACCOUNTS = [
-  { name: '랄라라운지_한국', id: '855116430496295' },
-  { name: '밀리밀리_인하우스', id: '2327868604313508' },
-  { name: '밀리밀리_한국', id: '791241442793311' },
-  { name: '밀리밀리_한국_올리브영', id: '623851980786807' },
-  { name: '엠마워시_오피셜', id: '864303894888410' },
-];
+// 전환이 Meta 로 귀속되는 계정만. 아마존·트래픽 계정은 ROAS 가 구조적으로 0이라
+// 여기에 넣으면 "전부 저성과"라는 가짜 경보가 매일 뜬다.
+const AD_ACCOUNTS = resolveAdAccounts({ attribution: ['pixel'] });
 
 export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -27,14 +24,16 @@ export default async function handler(req, res) {
     const lowRoas = [];
     for (const acc of AD_ACCOUNTS) {
       try {
-        const url = `https://graph.facebook.com/v19.0/act_${acc.id}/insights?fields=spend,actions,campaign_name&date_preset=last_7d&level=campaign&limit=10&access_token=${token}`;
+        // ⚠️ action_values(매출) 이어야 한다. 예전엔 actions(구매 '건수')를 매출 자리에 넣어
+        //    roas = 건수/광고비 라는 무의미한 값(항상 0에 수렴)으로 매일 저성과 경보를 띄우고 있었음.
+        const url = `https://graph.facebook.com/v19.0/act_${acc.id}/insights?fields=spend,action_values,campaign_name&date_preset=last_7d&level=campaign&limit=10&access_token=${token}`;
         const r = await fetch(url);
         const d = await r.json();
         for (const row of d.data || []) {
           const spend = Number(row.spend) || 0;
           if (spend < 10000) continue;
-          const purchases = (row.actions || []).filter(a => a.action_type === 'purchase').reduce((s, a) => s + Number(a.value), 0);
-          const roas = spend > 0 ? purchases / spend : 0;
+          const revenue = (row.action_values || []).filter(a => a.action_type === 'purchase').reduce((s, a) => s + Number(a.value), 0);
+          const roas = spend > 0 ? revenue / spend : 0;
           if (roas < 2.0) {
             lowRoas.push({ account: acc.name, campaign: row.campaign_name, spend, roas: roas.toFixed(2) });
           }

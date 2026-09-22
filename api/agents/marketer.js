@@ -1,16 +1,14 @@
 import { Redis } from '@upstash/redis';
 import { readSheet } from '../utils/sheets.js';
+import { resolveAdAccounts } from '../_adAccounts.js';
 
 const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-const AD_ACCOUNTS = [
-  { name: '밀리밀리_인하우스', id: '2327868604313508' },
-  { name: '밀리밀리_한국', id: '791241442793311' },
-  { name: '밀리밀리_한국_올리브영', id: '623851980786807' },
-];
+// SSOT(api/_adAccounts.js). 예전엔 3개만 하드코딩돼 있어 US·랄라라운지·엠마워시 광고비가 총액에서 빠져 있었음.
+const AD_ACCOUNTS = resolveAdAccounts();
 
 const PERIODS = [
   { key: 'yesterday', preset: 'yesterday' },
@@ -34,7 +32,7 @@ export default async function handler(req, res) {
   const token = process.env.META_ACCESS_TOKEN || process.env.INSTAGRAM_ACCESS_TOKEN;
   if (token) {
     try {
-      const fields = 'spend,impressions,clicks,cpc,ctr,actions,action_values';
+      const fields = 'account_currency,spend,impressions,clicks,cpc,ctr,actions,action_values';
       const accounts = await Promise.all(AD_ACCOUNTS.map(async (acc) => {
         try {
           // 3개 기간 병렬 요청: 전일 / 월간 / 연간
@@ -49,17 +47,34 @@ export default async function handler(req, res) {
               const revenue = (insight.action_values || [])
                 .filter(a => a.action_type === 'purchase')
                 .reduce((s, a) => s + Number(a.value), 0);
-              return { key, spend, revenue, roas: spend > 0 ? (revenue / spend).toFixed(2) : '-' };
+              // ROAS 는 전환이 Meta 로 귀속되는 계정에서만 의미가 있다(아마존·트래픽 계정은 항상 0).
+              const measurable = acc.attribution === 'pixel';
+              return {
+                key, spend, revenue: measurable ? revenue : null,
+                currency: insight.account_currency || null,
+                roas: measurable && spend > 0 ? (revenue / spend).toFixed(2) : '-',
+              };
             } catch (e) { return { key, spend: 0, revenue: 0, roas: '-', error: e.message }; }
           }));
           const byPeriod = Object.fromEntries(periodData.map(p => [p.key, p]));
-          return { name: acc.name, ...byPeriod };
-        } catch (e) { return { name: acc.name, error: e.message || 'API error' }; }
+          return {
+            name: acc.name, id: acc.id, market: acc.market, dest: acc.dest,
+            attribution: acc.attribution, measurable: acc.attribution === 'pixel',
+            currency: periodData.find(p => p.currency)?.currency || null,
+            ...byPeriod,
+          };
+        } catch (e) { return { name: acc.name, id: acc.id, error: e.message || 'API error' }; }
       }));
       const totalSpendMonth = accounts.reduce((s, a) => s + (a.thisMonth?.spend || 0), 0);
       const totalRevenueMonth = accounts.reduce((s, a) => s + (a.thisMonth?.revenue || 0), 0);
       const totalSpendYesterday = accounts.reduce((s, a) => s + (a.yesterday?.spend || 0), 0);
       const totalRevenueYesterday = accounts.reduce((s, a) => s + (a.yesterday?.revenue || 0), 0);
+      // 귀속 가능한 계정만으로 따로 집계 — 전체 총액으로 ROAS 를 내면 아마존·트래픽 광고비가
+      // 분모에 섞여 실제보다 낮게 보인다. 화면에서 ROAS 는 반드시 measurable 쪽 값을 쓸 것.
+      const msr = accounts.filter(a => a.measurable);
+      const totalSpendMeasurable = msr.reduce((s, a) => s + (a.thisMonth?.spend || 0), 0);
+      const totalRevenueMeasurable = msr.reduce((s, a) => s + (a.thisMonth?.revenue || 0), 0);
+      const currencies = [...new Set(accounts.map(a => a.currency).filter(Boolean))];
       const totalSpendYear = accounts.reduce((s, a) => s + (a.thisYear?.spend || 0), 0);
       const totalRevenueYear = accounts.reduce((s, a) => s + (a.thisYear?.revenue || 0), 0);
       const successAccounts = accounts.filter(a => !a.error);
@@ -71,6 +86,9 @@ export default async function handler(req, res) {
         totalSpendMonth, totalRevenueMonth,
         totalSpendYesterday, totalRevenueYesterday,
         totalSpendYear, totalRevenueYear,
+        totalSpendMeasurable, totalRevenueMeasurable,
+        roasMeasurable: totalSpendMeasurable > 0 ? Number((totalRevenueMeasurable / totalSpendMeasurable).toFixed(2)) : null,
+        currencies, currencyMixed: currencies.length > 1,
         accounts,
         ...(errorMsg ? { message: errorMsg } : {}),
       };
