@@ -39,6 +39,10 @@ function sumPurchase(arr) {
   return 0;
 }
 
+// Meta 는 이런 지표를 [{action_type, value}] 배열로 준다. 총합만 필요.
+const sumAll = (arr) => Array.isArray(arr) ? arr.reduce((s, a) => s + Number(a.value || 0), 0) : 0;
+const pct = (num, den, d = 2) => (den > 0 ? Number((num / den * 100).toFixed(d)) : null);
+
 async function fetchJson(url) {
   const r = await fetch(url);
   const d = await r.json();
@@ -77,7 +81,21 @@ export default async function handler(req, res) {
   const preset = String(q.preset || 'last_30d');
 
   const accounts = resolveAdAccounts({ markets });
-  const fields = 'ad_id,ad_name,campaign_name,objective,account_currency,spend,impressions,clicks,ctr,cpc,actions,action_values';
+  // 콘텐츠 지표(노출→클릭 구간 = 소재가 실제로 통제하는 영역)를 함께 수집.
+  //   video_play_actions          영상 재생
+  //   video_3_sec_watched_actions 3초 시청 → 훅률(3초/노출)의 분자. CLAUDE.md "3초 후킹" 규칙의 실측판
+  //   video_thruplay_watched_actions  15초 or 완주 → 유지율(thruplay/3초)의 분자
+  //   video_p50/p100_watched_actions  중간·완주 지점 이탈 파악
+  //   outbound_clicks / _ctr      외부(아마존·자사몰)로 실제 나간 클릭. 프로필 클릭 등 제외돼 clicks 보다 정확
+  //   quality_ranking 등          같은 타겟을 두고 경쟁한 타사 소재 대비 상대 순위 ← 절대선 없이도 판정 가능
+  const fields = [
+    'ad_id,ad_name,campaign_name,objective,account_currency,spend,impressions,clicks,ctr,cpc',
+    'actions,action_values',
+    'video_play_actions,video_3_sec_watched_actions,video_thruplay_watched_actions',
+    'video_p50_watched_actions,video_p100_watched_actions,video_avg_time_watched_actions',
+    'outbound_clicks,outbound_clicks_ctr,cost_per_outbound_click',
+    'quality_ranking,engagement_rate_ranking,conversion_rate_ranking',
+  ].join(',');
 
   try {
     const [fx, perAccount] = await Promise.all([
@@ -127,6 +145,34 @@ export default async function handler(req, res) {
           cvr: measurable && clicks > 0 ? Number((purchases / clicks * 100).toFixed(2)) : null,
           // 300% 판정. 귀속 안 되는 계정은 '측정불가' — 절대 'lose' 로 찍지 말 것.
           verdict: !measurable ? 'unmeasured' : roas == null ? 'unmeasured' : roas >= ROAS_TARGET ? 'win' : 'lose',
+
+          // ── 콘텐츠 지표 (노출→클릭. 소재가 통제하는 구간) ──
+          content: (() => {
+            const impressions = Number(row.impressions) || 0;
+            const v3 = sumAll(row.video_3_sec_watched_actions);
+            const thru = sumAll(row.video_thruplay_watched_actions);
+            const p50 = sumAll(row.video_p50_watched_actions);
+            const p100 = sumAll(row.video_p100_watched_actions);
+            const plays = sumAll(row.video_play_actions);
+            const outbound = sumAll(row.outbound_clicks);
+            const isVideo = plays > 0 || v3 > 0;
+            return {
+              isVideo,
+              hookRate: isVideo ? pct(v3, impressions) : null,   // 3초 시청 / 노출 — 스크롤을 멈췄나
+              holdRate: isVideo ? pct(thru, v3) : null,          // ThruPlay / 3초 — 끝까지 봤나
+              midRate: isVideo ? pct(p50, v3) : null,            // 절반 지점 생존
+              finishRate: isVideo ? pct(p100, v3) : null,        // 완주
+              avgWatchSec: isVideo ? Number(sumAll(row.video_avg_time_watched_actions).toFixed(1)) || null : null,
+              outboundClicks: outbound || null,
+              outboundCtr: row.outbound_clicks_ctr != null ? Number(Number(row.outbound_clicks_ctr).toFixed(2))
+                : (outbound ? pct(outbound, impressions) : null),
+              clickFromView: isVideo && v3 > 0 ? pct(outbound, v3) : null, // 본 사람 중 몇 %가 눌렀나
+              // Meta 가 같은 타겟 경쟁 소재와 비교해준 상대 순위. 절대선이 없어도 판정 가능.
+              qualityRank: row.quality_ranking || null,
+              engagementRank: row.engagement_rate_ranking || null,
+              conversionRank: row.conversion_rate_ranking || null,
+            };
+          })(),
         });
       }
     }
