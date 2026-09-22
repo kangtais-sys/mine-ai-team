@@ -22,7 +22,11 @@ const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
-const CACHE_TTL = 1800;
+// ⚠️ 화면에서 절대 계산하지 않는다.
+//   시트 2개 + Meta 700건을 요청 때마다 긁으면 27초가 걸린다 — 쓸 수 없는 화면이 된다.
+//   캐시를 26시간 두고 크론(매시 정각)이 다시 만든다. 화면은 항상 읽기만 한다(0.2초).
+//   캐시가 조금 낡는 건 괜찮다. 소재 성과는 분 단위로 변하지 않는다.
+const CACHE_TTL = 26 * 3600;
 
 const SHEETS = {
   us: { id: process.env.CREATIVE_LOG_US_SHEET_ID || '1TT130QL2nJbbbpMJrM1pTAAP5TpTgM9n6wXt-ZcKdm4', name: 'MM_소재로그_LIVE' },
@@ -55,7 +59,11 @@ export default async function handler(req, res) {
     if (q.refresh !== '1') {
       try {
         const hit = await redis.get(cacheKey);
-        if (hit) return res.status(200).json({ ...hit, cached: true });
+        // 낡았어도 즉시 준다. 기다리게 하는 것보다 낫다.
+        if (hit) {
+          const ageMin = hit.builtAt ? Math.round((Date.now() - new Date(hit.builtAt)) / 60000) : null;
+          return res.status(200).json({ ...hit, cached: true, ageMin });
+        }
       } catch { /* 캐시 실패는 조회로 폴백 */ }
     }
 
@@ -64,6 +72,13 @@ export default async function handler(req, res) {
     const inner = { status(c) { this.statusCode = c; return this; }, json(p) { this.body = p; return this; } };
     await adWinners({ method: 'GET', query: { market: 'all', minSpend: '0', top: '1000', preset: String(q.preset || 'last_90d') } }, inner);
     const ads = inner.body?.ads || [];
+    // 집행 수가 캐시마다 흔들린 적이 있다(26 ↔ 46). Meta 조회가 계정별로 실패하면
+    // 조용히 줄어들기 때문이다. 숫자의 출처를 같이 실어 화면에서 눈에 띄게 한다.
+    const fetched = {
+      ads: ads.length,
+      accounts: (inner.body?.summary || []).map(s => ({ name: s.name, ads: s.ads })),
+      empty: (inner.body?.summary || []).filter(s => !s.ads).map(s => s.name),
+    };
     const adBy = new Map();
     for (const a of ads) { adBy.set(a.ad_name, a); adBy.set(norm(a.ad_name), a); }
 
@@ -105,7 +120,9 @@ export default async function handler(req, res) {
           kind: ad ? (ad.content?.isVideo ? 'video' : 'image')
               : archived ? (/\[영상\]/.test(String(r[ix.pattern] || '')) ? 'video' : 'image')
               : null,
-          spend: ad?.spend ?? null, impressions: ad?.impressions ?? null,
+          // spend 는 계정 통화(KR 계정은 KRW). 시장을 섞어 정렬하려면 spendUsd 를 써야 한다.
+          spend: ad?.spend ?? null, spendUsd: ad?.spendUsd ?? null, currency: ad?.currency ?? null,
+          impressions: ad?.impressions ?? null,
           ctr: ad?.ctr ?? null, cpcUsd: ad?.cpcUsd ?? null,
           hookRate: ad?.content?.hookRate ?? null,
           holdRate: ad?.content?.holdRate ?? null,
@@ -156,7 +173,7 @@ export default async function handler(req, res) {
     const payload = {
       status: 'connected',
       builtAt: new Date().toISOString(),
-      source: sheetInfo,
+      source: sheetInfo, fetched,
       thresholds: { video: THRESHOLDS, static: STATIC_THRESHOLDS },
       dict: { concept: CONCEPT, shot: SHOT },
       counts: {

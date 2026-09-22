@@ -7,7 +7,12 @@ import CreatorView from './components/CreatorView';
 import CreatorShell from './components/creator/CreatorShell';
 import CalendarBoard from './components/creator/CalendarBoard';
 import PerformanceView from './components/PerformanceView';
-import TypesView from './components/TypesView';
+import BoardView from './components/BoardView';
+import HomeView from './components/HomeView';
+import DailyStudio from './components/DailyStudio';
+import SkeletonView from './components/SkeletonView';
+import StudioView from './components/StudioView';
+import PersonaView from './components/PersonaView';
 import useChatStore from './store/chatStore';
 
 // 에러 바운더리 — 컴포넌트 크래시 시 검정 화면 대신 오류 메시지 표시
@@ -45,14 +50,18 @@ class ErrorBoundary extends Component {
 }
 
 // Parse hash → { page, agentId }
-// #           → dashboard
-// #dashboard  → dashboard
-// #channel    → channel
+// #           → today   ← 홈은 '오늘'. 이 앱은 콘텐츠 앱이다.
+// #legacy     → 옛 경영 대시보드(매출·연결현황). 기타 메뉴에 남겨둔다.
 // #chat/chief → chat + chief
 function parseHash() {
-  const raw = window.location.hash.replace(/^#\/?/, '') || 'dashboard';
+  // 기본값 = 오늘의 9칸. 이 앱을 여는 이유가 그것이기 때문.
+  const raw = window.location.hash.replace(/^#\/?/, '') || 'daily';
   const [page, agentId] = raw.split('/');
-  return { page: page || 'dashboard', agentId: agentId || null };
+  // 기존 북마크(#dashboard)가 죽지 않게 옛 대시보드로 넘긴다.
+  const p = page === 'dashboard' ? 'legacy'
+    : (page === 'today' || page === 'types') ? 'board'   // 보드로 합쳤다
+    : (page || 'home');
+  return { page: p, agentId: agentId || null };
 }
 
 function buildHash(page, agentId) {
@@ -114,11 +123,16 @@ export default function App() {
         <Sidebar route={route} onNavigate={navigate} urgentCount={urgentCount} />
       </div>
       <div style={{ marginLeft: 240, width: 'calc(100vw - 240px)', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#F5F5F7' }}>
-        {page === 'dashboard' && <ErrorBoundary><Dashboard urgentCount={urgentCount} /></ErrorBoundary>}
+        {page === 'daily' && <ErrorBoundary><DailyStudio /></ErrorBoundary>}
+        {page === 'home' && <ErrorBoundary><HomeView onNavigate={navigate} /></ErrorBoundary>}
+        {page === 'board' && <ErrorBoundary><BoardView onNavigate={navigate} /></ErrorBoundary>}
+        {page === 'skeletons' && <ErrorBoundary><SkeletonView /></ErrorBoundary>}
+        {page === 'studio' && <ErrorBoundary><StudioView onNavigate={navigate} /></ErrorBoundary>}
+        {page === 'personas' && <ErrorBoundary><PersonaView /></ErrorBoundary>}
+        {page === 'legacy' && <ErrorBoundary><Dashboard urgentCount={urgentCount} /></ErrorBoundary>}
         {page === 'channel' && <ErrorBoundary><ChannelView /></ErrorBoundary>}
         {page === 'creator' && <ErrorBoundary><CalendarBoard /></ErrorBoundary>}
         {page === 'performance' && <ErrorBoundary><PerformanceView /></ErrorBoundary>}
-        {page === 'types' && <ErrorBoundary><TypesView /></ErrorBoundary>}
         {page === 'chat' && <ErrorBoundary><ChatView /></ErrorBoundary>}
       </div>
     </div>

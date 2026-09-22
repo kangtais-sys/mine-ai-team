@@ -112,6 +112,10 @@
     {
       "path": "/api/content/log-sync",
       "schedule": "0 22 * * *"
+    },
+    {
+      "schedule": "0 * * * *",
+      "path": "/api/content/types?refresh=1&market=all"
     }
   ],
   "rewrites": [
