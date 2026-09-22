@@ -119,6 +119,11 @@ function buildPrompt(slot, market) {
       `[과제] 트렌드 모방. 아래 레퍼런스의 **구조만** 해부해서 밀리밀리 소재로 변환한다.`,
       `  레퍼런스: ${slot.sourceUrl || '(URL 없음 — 아래 훅 카드 기반)'}`,
       slot.adaptedFrom ? `  훅 카드: 앵글 ${slot.adaptedFrom.angle} / 훅 ${slot.adaptedFrom.hookType} / 레버 ${slot.adaptedFrom.lever}` : '',
+      slot.craftConfidence === 'absent'
+        ? `  ⚠️ 실행자가 영상을 못 봤다(커버·캡션만). 컷·전환은 관찰값이 없으니 **지어내지 말고**
+     위 8컷 골격(실측)을 그대로 쓴다. 차용하는 건 훅의 발상뿐이다.`
+        : (slot.craft ? `  관찰된 골격: ${JSON.stringify(slot.craft)}` : ''),
+      slot.adaptedFrom?.adapted?.kr ? `  실행자가 뽑아온 변환 훅(참고, 더 좋게 다시 써도 된다): KR ${slot.adaptedFrom.adapted.kr} / US ${slot.adaptedFrom.adapted.us}` : '',
       `  ⛔ 레퍼런스의 문장·대사·오디오를 그대로 쓰지 말 것. 훅은 100% 새로 쓴다.`,
     );
   } else if (slot.track === 'format') {
@@ -172,10 +177,6 @@ export function gateBlueprint(b, slot) {
   const triggers = ['comment', 'save', 'share'].filter(k => b[k] && String(b[k]).length > 3);
   if (triggers.length < 2) fails.push(`댓글·저장·공유 트리거 ${triggers.length}개 (2개 이상 필요)`);
   for (const re of BANNED) if (re.test(text)) fails.push(`컴플라이언스 위반 표현: ${re.source}`);
-  // AI 연출 표기 검사 제거 (MINE 확정 2026-09-23). 대신 표기가 **들어가면** 걸러낸다.
-  if ((b.captions || []).some(c => /AI\s*(연출|generated|생성)/i.test(String(c)))) {
-    fails.push('자막에 AI 연출 표기가 들어감 — 빼야 함');
-  }
   if (slot?.track !== 'image') {
     // 영상 골격 — CapCut 실측 범위를 벗어나면 담당자가 그대로 못 쓴다.
     const cuts = Array.isArray(b.cuts) ? b.cuts : [];

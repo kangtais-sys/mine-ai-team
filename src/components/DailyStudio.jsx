@@ -146,8 +146,8 @@ function RefInput({ market, date, refs, onSaved }) {
         <span style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>오늘의 트렌드 레퍼런스 3개</span>
       </div>
       <div style={{ fontSize: 11.5, color: C.mute, marginBottom: 10, lineHeight: 1.5 }}>
-        틱톡·릴스에 공개 API 가 없어 자동 수집은 하지 않는다(우회 수집은 차단·법적 위험).
-        URL 만 붙여넣으면 구조를 해부해 밀리밀리 버전으로 바꾼다 — 문장은 100% 새로 쓴다.
+        평소엔 비워둔다 — 맥의 클로드 코드(안 되면 코덱스)가 틱톡을 분석해 자동으로 채운다.
+        여기 직접 넣으면 그 URL 이 오늘 트렌드 칸을 덮어쓴다. 릴스는 받지 않는다(틱톡만).
         {' '}<a href="https://ads.tiktok.com/business/creativecenter/inspiration/topads/pc/en"
              target="_blank" rel="noreferrer"
              style={{ color: C.ink, textDecoration: 'underline' }}>TikTok Creative Center 열기 ↗</a>
@@ -341,6 +341,8 @@ function SlotCard({ slot, market, date, onPatch }) {
         <Pill bg={tone.bg} fg={tone.fg} bold>{slot.mode || tone.label}</Pill>
         {slot.personaLabel && <Pill>👤 {slot.personaLabel}</Pill>}
         {slot.lever && <Pill>{slot.lever}</Pill>}
+        {slot.craftConfidence === 'absent' && <Pill bg="#FFF4E5" fg={C.remix}>영상 미확보 · 훅만</Pill>}
+        {slot.craftConfidence && slot.craftConfidence !== 'absent' && <Pill bg="#EAF6EE" fg={C.win}>영상 분석 {slot.craftConfidence}</Pill>}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>

@@ -23,13 +23,12 @@ export const TRACK_META = {
 
 // 레인 — 무엇이 AI이고 무엇이 실제인가. 표기 의무가 여기서 갈린다.
 // docs 및 CLAUDE.md 규칙2(가짜 후기·가짜 증거 금지)와 직결.
-// disclose 는 전부 false — MINE 확정 2026-09-23: 자막에 AI 연출 표기를 넣지 않는다.
-// ⚠️ CLAUDE.md §5 와 docs/shorts-format-library.md 는 아직 "AI 연출 명시"로 남아 있다(문서 충돌).
-//    레인 구분 자체는 유지한다 — 실촬/AI 합성을 구분해야 후기·증거 소재에 AI 를 못 쓰게 막을 수 있다.
+// 레인 = 무엇이 실촬이고 무엇이 AI 인가. **표기 의무는 없다**(MINE 확정 2026-09-23).
+// 구분을 남기는 이유는 하나뿐 — 후기·증거 소재에 AI 를 못 쓰게 막기 위해서다(CLAUDE.md 규칙 2).
 export const LANES = {
-  a: { label: '실촬',      disclose: false, note: '실제 촬영분 그대로' },
-  b: { label: '실촬+AI보정', disclose: false, note: '실제 경험 기반, AI 후보정' },
-  c: { label: 'AI 합성',    disclose: false, note: '순수 AI 생성' },
+  a: { label: '실촬',      note: '실제 촬영분 그대로' },
+  b: { label: '실촬+AI보정', note: '실제 경험 기반, AI 후보정' },
+  c: { label: 'AI 합성',    note: '순수 AI 생성' },
 };
 
 // ── AI 인플루언서 ────────────────────────────────────────────────
@@ -46,15 +45,26 @@ export const PERSONA_POOL = [
 export const kstDate = (d = new Date()) => new Date(d.getTime() + 9 * 3600000).toISOString().slice(0, 10);
 export const dayIndexOf = (isoDate) => Math.floor(Date.parse(`${isoDate}T00:00:00Z`) / 86400000);
 
+const LEVER_LABEL = {
+  CURIOSITY: '궁금증 갭', PROOF: '대세감', CONTRAST: '반전·대비',
+  RELATE: '공감·상황', SAVE: '저장 유발', SHARE: '공유 유발',
+};
+
 const rot = (arr, i) => (arr.length ? arr[((i % arr.length) + arr.length) % arr.length] : null);
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 // ── ① 트렌드 3칸 ─────────────────────────────────────────────────
-// 자동 스크래핑은 하지 않는다. 틱톡·릴스에 공개 API 가 없고, 우회 수집은 차단·법적 위험.
-// 대신 레퍼런스 URL 3개를 받아 **구조만** 해부한다.
+// 수집·분석은 여기서 하지 않는다. 맥에서 도는 실행자(클로드 코드 / 코덱스)가 하고,
+// 결과는 POST /api/content/trend-ingest 계약을 통해 훅 라이브러리로 들어온다.
+// 이 함수는 들어온 카드를 오늘 3칸에 앉히기만 한다. (docs/trend-ingest-contract.md)
 //
 // ⛔ 저작권 선 (api/_hooks.js 와 동일): 원본 영상·오디오·대사·얼굴 1:1 복제 금지.
 //    sourceUrl 은 근거·추적용으로만 남기고, 생성에 들어가는 건 adapted 훅뿐이다.
+//
+// 카드는 자기가 **영상을 실제로 봤는지**를 들고 온다(sourceMeta.confidence.craft).
+//   high/low = 컷·전환·비트가 관찰값이다 → 블루프린트가 그대로 쓴다.
+//   absent   = 커버·캡션만 봤다 → 훅만 쓰고 골격은 우리 카탈로그에서 가져온다.
+// 이걸 화면에 드러내야 "영상 본 척한 카드"가 조용히 섞이지 않는다.
 export function buildTrendSlots({ refs = [], hooks = [], dayIndex, market }) {
   // 훅 라이브러리에 쌓인 외부 카드 중 아직 소재가 안 나온 것 — 레퍼 URL 이 비었을 때의 대체 입력.
   const pool = hooks
@@ -74,17 +84,32 @@ export function buildTrendSlots({ refs = [], hooks = [], dayIndex, market }) {
         lane: 'c', market, sourceUrl: null, adaptedFrom: null,
       };
     }
+    // ref 가 있으면 그 URL 의 카드를 찾아 붙인다 — 같은 영상을 두 번 해석하지 않는다.
+    const c = card || (ref ? hooks.find(h => h.sourceUrl === ref) : null);
+    const conf = c?.sourceMeta?.confidence?.craft || (c ? 'absent' : null);
+    const craft = c?.sourceMeta?.craft || null;
+    const views = c?.sourceMeta?.views;
+
     return {
       track: 'trend', seq: i + 1, state: 'ready',
-      title: ref ? `트렌드 ${i + 1} — 레퍼런스 해부` : `트렌드 ${i + 1} — ${card.lever || '훅 카드'}`,
-      why: ref
-        ? '붙여넣은 레퍼런스의 훅·비트·전환만 뽑아 밀리밀리 소재로 변환'
-        : `훅 라이브러리 카드 재사용 — ${card.sourceHook ? `"${String(card.sourceHook).slice(0, 40)}…"` : '외부 관찰분'}`,
-      note: '⛔ 원문·오디오·얼굴 복제 금지. 크래프트(구조·타이밍·전환)만 차용.',
+      title: c
+        ? `트렌드 ${i + 1} — ${LEVER_LABEL[c.lever] || c.lever || '훅 카드'}`
+        : `트렌드 ${i + 1} — 레퍼런스 해부 대기`,
+      why: c
+        ? [
+            c.sourceHook ? `원문 "${String(c.sourceHook).slice(0, 44)}"` : null,
+            Number.isFinite(Number(views)) ? `${Math.round(Number(views) / 10000)}만 조회` : null,
+            conf === 'absent' ? '영상 미확보 — 커버·캡션만' : `영상 분석 ${conf}`,
+          ].filter(Boolean).join(' · ')
+        : 'URL 은 들어왔는데 해석한 카드가 없다 — 실행자가 분석을 안 올렸다',
+      note: conf === 'absent'
+        ? '훅만 차용한다. 컷·전환은 관찰값이 없으니 우리 포맷 카탈로그 골격을 쓴다.'
+        : '⛔ 원문·오디오·얼굴 복제 금지. 크래프트(구조·타이밍·전환)만 차용.',
       lane: 'c', market,
-      sourceUrl: ref || card?.sourceUrl || null,
-      adaptedFrom: card ? { id: card.id, lever: card.lever, angle: card.angle, hookType: card.hookType } : null,
-      angle: card?.angle || null, hook: card?.hookType || null, lever: card?.lever || null,
+      sourceUrl: ref || c?.sourceUrl || null,
+      adaptedFrom: c ? { id: c.id, lever: c.lever, angle: c.angle, hookType: c.hookType, adapted: c.adapted } : null,
+      craft, craftConfidence: conf,
+      angle: c?.angle || null, hook: c?.hookType || null, lever: c?.lever || null,
     };
   });
 }
@@ -237,7 +262,6 @@ export function buildDailyPlan({
         }),
         // 이 코드를 Meta 광고 이름에 그대로 넣어야 성과가 자동 조인된다.
         joinNote: 'Meta 광고 이름 = 이 소재코드 (그대로 복사)',
-        disclose: LANES[s.lane]?.disclose ?? true,
         stamp,
       };
     }),
