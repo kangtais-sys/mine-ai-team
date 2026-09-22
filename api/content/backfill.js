@@ -62,7 +62,7 @@ function buildPrompt(items) {
    "Ain't no way this Glass Ampoule has 100 ingredients" → 앵글 MYTH, 훅타입 TEXT
 
 규칙:
-- 근거가 없으면 억지로 채우지 말고 null. 추측은 매트릭스를 오염시킨다.
+- 근거가 없으면 억지로 채우지 말고 "NONE". 추측은 매트릭스를 오염시킨다.
 - 미스트=MST, 앰플=AMP, 둘 다/세트=SET, 제품 특정 불가한 브랜드 소재=BRD.
 - confidence 는 0~1.
 
@@ -71,34 +71,60 @@ ${items.map((it, i) => `[${i}] 이름: ${it.name}
     제목: ${(it.title || '').slice(0, 120)}
     문구: ${(it.body || '').replace(/\s+/g, ' ').slice(0, 400)}`).join('\n')}
 
-JSON 배열만 출력. 다른 말 금지:
-[{"i":0,"product":"MST","angle":"POV","hook":"SCENE","confidence":0.9}, ...]`;
+각 소재에 대해 i(목록 번호), product, angle, hook, confidence(0~1) 를 채워라.`;
 }
+
+// 구조화 출력 스키마 — 모델이 형식을 어길 수 없게 강제한다(정규식으로 JSON 긁어내던 방식 폐기).
+// 'NONE' = 근거 없음. null 대신 enum 값으로 둬서 스키마를 단순하게 유지.
+const NONE = 'NONE';
+const enumOf = (axis) => [...Object.keys(AXES[axis]), NONE];
+const CLASSIFY_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['items'],
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['i', 'product', 'angle', 'hook', 'confidence'],
+        properties: {
+          i: { type: 'integer' },
+          product: { type: 'string', enum: enumOf('product') },
+          angle: { type: 'string', enum: enumOf('angle') },
+          hook: { type: 'string', enum: enumOf('hook') },
+          confidence: { type: 'number' },
+        },
+      },
+    },
+  },
+};
 
 async function classifyChunk(items) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({
-      model: process.env.CLASSIFY_MODEL || 'claude-sonnet-5',
-      max_tokens: 2000,
+      model: process.env.CLASSIFY_MODEL || 'claude-opus-5',
+      // ⚠️ 현행 모델은 thinking 을 생략하면 adaptive 사고가 기본으로 켜지고,
+      //    max_tokens 는 사고+응답 합계의 상한이다. 2000 으로 두었더니 사고에 전부 쓰고
+      //    stop_reason=max_tokens · 텍스트 블록 0개로 끝나 분류가 0건이었음.
+      //    분류는 깊은 추론이 필요 없으므로 effort=low + 넉넉한 max_tokens 로 간다.
+      max_tokens: 8000,
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: CLASSIFY_SCHEMA } },
       messages: [{ role: 'user', content: buildPrompt(items) }],
     }),
   });
   const d = await r.json();
   if (d.error) throw new Error(`${d.error.type}: ${d.error.message}`);
-  // content[0] 이 항상 텍스트인 건 아니다(사고 블록 등이 앞설 수 있음) → 텍스트 블록만 모은다.
+  if (d.stop_reason === 'refusal') throw new Error('모델이 요청을 거부함');
+  // 사고 블록이 앞설 수 있으므로 텍스트 블록만 모은다.
   const text = (d.content || []).filter(b => b?.type === 'text').map(b => b.text).join('\n');
-  const m = text.match(/\[[\s\S]*\]/);
-  if (!m) {
-    const kinds = (d.content || []).map(b => b?.type).join(',') || '없음';
-    throw new Error(`JSON 배열 없음 (stop=${d.stop_reason} blocks=${kinds}) 원문: ${text.slice(0, 200) || '(빈 텍스트)'}`);
-  }
-  try { return JSON.parse(m[0]); }
-  catch (e) { throw new Error(`JSON 파싱 실패(${e.message}) 원문: ${m[0].slice(0, 200)}`); }
+  if (!text.trim()) throw new Error(`빈 응답 (stop=${d.stop_reason} blocks=${(d.content || []).map(b => b?.type).join(',') || '없음'})`);
+  try { return JSON.parse(text).items || []; }
+  catch (e) { throw new Error(`JSON 파싱 실패(${e.message}) 원문: ${text.slice(0, 200)}`); }
 }
 
-const valid = (axis, v) => (v && Object.prototype.hasOwnProperty.call(AXES[axis], v) ? v : null);
+// 'NONE'(근거 없음) 과 미지의 값은 null 로 — "아직 모름"이 화면에서 미분류로 드러나야 한다.
+const valid = (axis, v) => (v && v !== NONE && Object.prototype.hasOwnProperty.call(AXES[axis], v) ? v : null);
 
 export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
