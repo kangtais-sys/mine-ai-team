@@ -8,7 +8,10 @@ export default function handler(req, res) {
     }
 
     const redirectUri = 'https://mine-ai-team.vercel.app/api/auth/cafe24-callback';
-    const scope = 'mall.read_order';
+    // 읽기 전용만 요청 (2026-10-05) — 주문·상품·회원·프로모션·접속통계·매출통계·상점·게시판(리뷰)·개인화(장바구니)
+    // 앱 설정(개발자센터)에 있는 권한의 부분집합이어야 승인 오류가 안 남
+    const scope = ['mall.read_order', 'mall.read_product', 'mall.read_customer', 'mall.read_promotion', 'mall.read_analytics',
+      'mall.read_salesreport', 'mall.read_store', 'mall.read_community', 'mall.read_personal'].join(',');
 
     const params = new URLSearchParams({
       response_type: 'code',
