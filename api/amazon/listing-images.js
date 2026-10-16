@@ -81,6 +81,13 @@ export default async function handler(req, res) {
     const summary = (cur.json.summaries || [])[0] || {};
     if (mode === 'view') return res.json({ status: cur.status, asin: summary.asin, productType: summary.productType, mainImage: summary.mainImage, images, issues: cur.json.issues, errors: cur.json.errors });
     if (summary.asin !== 'B0GYCB5164') return res.status(400).json({ error: 'ASIN mismatch', summary });
+    // del78-preview / del78-apply: 7 · 8번째 추가 이미지(예전 사진 2장)만 지운다(10/17 대표 승인). 원본은 milli-ops/us/backup/images_20261016
+    if (mode.startsWith('del78')) {
+      const body = { productType: summary.productType, patches: [7, 8].map(i => ({ op: 'delete', path: `/attributes/other_product_image_locator_${i}`, value: [{ marketplace_id: MARKETPLACE_ID }] })) };
+      const q = `marketplaceIds=${MARKETPLACE_ID}${mode === 'del78-apply' ? '' : '&mode=VALIDATION_PREVIEW'}`;
+      const out = await sp('PATCH', `${itemPath}?${q}`, token, body);
+      return res.json({ mode, before: images, status: out.status, result: out.json });
+    }
     const body = {
       productType: summary.productType,
       patches: IMAGES.map(({ attr, url }) => ({ op: 'replace', path: `/attributes/${attr}`, value: [{ marketplace_id: MARKETPLACE_ID, media_location: url }] })),
