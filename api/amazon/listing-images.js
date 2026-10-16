@@ -13,7 +13,7 @@ const KEY_HASH = '777bd4204c9a845bb47d97119f4bd8a1762c127dfe611d4a4445ca36d1cb5a
 const MARKETPLACE_ID = 'ATVPDKIKX0DER';
 const SELLER_ID = 'A41UDYPOXH5YD';
 const SKU = 'MISTSET-01-FBA';
-const BASE = 'https://mine-ai-team.vercel.app/amz/mist-1016';
+const BASE = 'https://mine-ai-team.vercel.app/amz/mist-1016b'; // 10/17 공식 로고로 교체한 판
 const IMAGES = [1, 2, 3, 4, 5, 6].map(i => ({ attr: `other_product_image_locator_${i}`, url: `${BASE}/PT0${i}.jpg` }));
 
 async function getLwaToken() {
