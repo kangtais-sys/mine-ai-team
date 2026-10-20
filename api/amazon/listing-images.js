@@ -74,6 +74,14 @@ export default async function handler(req, res) {
   const mode = req.query.mode || 'view';
   try {
     const token = await getLwaToken();
+    // 10/21: 조회 전용으로 다른 SKU(부모 · 단품 변형)도 볼 수 있게 — sku 파라미터는 view에서만 허용
+    const skuQ = String(req.query.sku || '');
+    if (skuQ && mode === 'view') {
+      const vp = `/listings/2021-08-01/items/${SELLER_ID}/${encodeURIComponent(skuQ)}`;
+      const v = await sp('GET', `${vp}?marketplaceIds=${MARKETPLACE_ID}&includedData=summaries,attributes`, token);
+      const va = v.json.attributes || {};
+      return res.json({ sku: skuQ, status: v.status, summary: (v.json.summaries || [])[0], images: Object.fromEntries(Object.entries(va).filter(([k]) => /image_locator/.test(k)).map(([k, x]) => [k, x.map(y => y.media_location)])) });
+    }
     const itemPath = `/listings/2021-08-01/items/${SELLER_ID}/${encodeURIComponent(SKU)}`;
     const cur = await sp('GET', `${itemPath}?marketplaceIds=${MARKETPLACE_ID}&includedData=summaries,attributes,issues`, token);
     const attrs = cur.json.attributes || {};
