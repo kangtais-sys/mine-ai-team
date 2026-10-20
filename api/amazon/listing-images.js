@@ -9,7 +9,7 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-const KEY_HASH = '777bd4204c9a845bb47d97119f4bd8a1762c127dfe611d4a4445ca36d1cb5a60';
+const KEY_HASH = 'b7549259b49e5c8fd3a67d8f6afc5c39a43d3df4b3da3cca01a2a0c6ee272aa5';
 const MARKETPLACE_ID = 'ATVPDKIKX0DER';
 const SELLER_ID = 'A41UDYPOXH5YD';
 const SKU = 'MISTSET-01-FBA';
