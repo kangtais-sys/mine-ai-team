@@ -13,8 +13,9 @@ const KEY_HASH = 'b7549259b49e5c8fd3a67d8f6afc5c39a43d3df4b3da3cca01a2a0c6ee272a
 const MARKETPLACE_ID = 'ATVPDKIKX0DER';
 const SELLER_ID = 'A41UDYPOXH5YD';
 const SKU = 'MISTSET-01-FBA';
-const BASE = 'https://mine-ai-team.vercel.app/amz/mist-1021'; // 10/21 대표 승인 — 최종 8장(흑백 · 실사 · 인플루언서 · 올리브영 1위)
-const IMAGES = [1, 2, 3, 4, 5, 6, 7, 8].map(i => ({ attr: `other_product_image_locator_${i}`, url: `${BASE}/PT0${i}.jpg` }));
+const BASE = 'https://mine-ai-team.vercel.app/amz/mist-1023'; // 10/23 대표 승인('전체 다 올려줘. 적용.') — 썸네일 2~14번째 13장
+const N_IMG = Math.max(1, Math.min(13, Number(process.env.AMZ_N_IMG) || 13));
+const IMAGES = Array.from({ length: N_IMG }, (_, j) => j + 1).map(i => ({ attr: `other_product_image_locator_${i}`, url: `${BASE}/PT${String(i).padStart(2, '0')}.jpg` }));
 
 async function getLwaToken() {
   const cached = await redis.get('amazon:lwa_token');
@@ -96,9 +97,10 @@ export default async function handler(req, res) {
       const out = await sp('PATCH', `${itemPath}?${q}`, token, body);
       return res.json({ mode, before: images, status: out.status, result: out.json });
     }
+    const n = Math.max(1, Math.min(13, Number(req.query.n) || IMAGES.length));
     const body = {
       productType: summary.productType,
-      patches: IMAGES.map(({ attr, url }) => ({ op: 'replace', path: `/attributes/${attr}`, value: [{ marketplace_id: MARKETPLACE_ID, media_location: url }] })),
+      patches: IMAGES.slice(0, n).map(({ attr, url }) => ({ op: 'replace', path: `/attributes/${attr}`, value: [{ marketplace_id: MARKETPLACE_ID, media_location: url }] })),
     };
     const q = `marketplaceIds=${MARKETPLACE_ID}${mode === 'apply' ? '' : '&mode=VALIDATION_PREVIEW'}`;
     const out = await sp('PATCH', `${itemPath}?${q}`, token, body);
