@@ -16,6 +16,8 @@ const SKU = 'MISTSET-01-FBA';
 const BASE = 'https://mine-ai-team.vercel.app/amz/mist-1024'; // 10/24 대표 승인('나머지는 다 적용해도 돼') — 1 고민 새 구도 · 숫자 노아님 글꼴 · 동그라미 빼기 · 8번 의사 · 약사
 const N_IMG = Math.max(1, Math.min(13, Number(process.env.AMZ_N_IMG) || 13));
 const IMAGES = Array.from({ length: N_IMG }, (_, j) => j + 1).map(i => ({ attr: `other_product_image_locator_${i}`, url: `${BASE}/PT${String(i).padStart(2, '0')}.jpg` }));
+// 10/24 대표 승인('적용해') — 미스트 2개 세트(B0H7H9ZG4X)도 단품과 같은 13장(13번만 2개입 구성품 장). t=duo 로 고름. 대표 사진은 안 건드림.
+const TARGETS = { mist: { sku: SKU, asin: 'B0GYCB5164', base: BASE }, duo: { sku: 'GI-C3GZ-49ZT', asin: 'B0H7H9ZG4X', base: 'https://mine-ai-team.vercel.app/amz/duo-1024' } };
 
 async function getLwaToken() {
   const cached = await redis.get('amazon:lwa_token');
@@ -83,13 +85,14 @@ export default async function handler(req, res) {
       const va = v.json.attributes || {};
       return res.json({ sku: skuQ, status: v.status, summary: (v.json.summaries || [])[0], images: Object.fromEntries(Object.entries(va).filter(([k]) => /image_locator/.test(k)).map(([k, x]) => [k, x.map(y => y.media_location)])) });
     }
-    const itemPath = `/listings/2021-08-01/items/${SELLER_ID}/${encodeURIComponent(SKU)}`;
+    const TG = TARGETS[String(req.query.t || 'mist')]; if (!TG) return res.status(400).json({ error: 'unknown target' });
+    const itemPath = `/listings/2021-08-01/items/${SELLER_ID}/${encodeURIComponent(TG.sku)}`;
     const cur = await sp('GET', `${itemPath}?marketplaceIds=${MARKETPLACE_ID}&includedData=summaries,attributes,issues`, token);
     const attrs = cur.json.attributes || {};
     const images = Object.fromEntries(Object.entries(attrs).filter(([k]) => /image_locator/.test(k)).map(([k, v]) => [k, v.map(x => x.media_location)]));
     const summary = (cur.json.summaries || [])[0] || {};
     if (mode === 'view') return res.json({ status: cur.status, asin: summary.asin, productType: summary.productType, mainImage: summary.mainImage, images, issues: cur.json.issues, errors: cur.json.errors });
-    if (summary.asin !== 'B0GYCB5164') return res.status(400).json({ error: 'ASIN mismatch', summary });
+    if (summary.asin !== TG.asin) return res.status(400).json({ error: 'ASIN mismatch', summary });
     // del78-preview / del78-apply: 7 · 8번째 추가 이미지(예전 사진 2장)만 지운다(10/17 대표 승인). 원본은 milli-ops/us/backup/images_20261016
     if (mode.startsWith('del78')) {
       const body = { productType: summary.productType, patches: [7, 8].map(i => ({ op: 'delete', path: `/attributes/other_product_image_locator_${i}`, value: [{ marketplace_id: MARKETPLACE_ID }] })) };
@@ -100,7 +103,7 @@ export default async function handler(req, res) {
     const n = Math.max(1, Math.min(13, Number(req.query.n) || IMAGES.length));
     const body = {
       productType: summary.productType,
-      patches: IMAGES.slice(0, n).map(({ attr, url }) => ({ op: 'replace', path: `/attributes/${attr}`, value: [{ marketplace_id: MARKETPLACE_ID, media_location: url }] })),
+      patches: IMAGES.slice(0, n).map(({ attr, url }) => ({ op: 'replace', path: `/attributes/${attr}`, value: [{ marketplace_id: MARKETPLACE_ID, media_location: url.replace(BASE, TG.base) }] })),
     };
     const q = `marketplaceIds=${MARKETPLACE_ID}${mode === 'apply' ? '' : '&mode=VALIDATION_PREVIEW'}`;
     const out = await sp('PATCH', `${itemPath}?${q}`, token, body);
