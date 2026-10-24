@@ -13,7 +13,7 @@ const KEY_HASH = 'b7549259b49e5c8fd3a67d8f6afc5c39a43d3df4b3da3cca01a2a0c6ee272a
 const MARKETPLACE_ID = 'ATVPDKIKX0DER';
 const SELLER_ID = 'A41UDYPOXH5YD';
 const SKU = 'MISTSET-01-FBA';
-const BASE = 'https://mine-ai-team.vercel.app/amz/mist-1023'; // 10/23 대표 승인('전체 다 올려줘. 적용.') — 썸네일 2~14번째 13장
+const BASE = 'https://mine-ai-team.vercel.app/amz/mist-1024'; // 10/24 대표 승인('나머지는 다 적용해도 돼') — 1 고민 새 구도 · 숫자 노아님 글꼴 · 동그라미 빼기 · 8번 의사 · 약사
 const N_IMG = Math.max(1, Math.min(13, Number(process.env.AMZ_N_IMG) || 13));
 const IMAGES = Array.from({ length: N_IMG }, (_, j) => j + 1).map(i => ({ attr: `other_product_image_locator_${i}`, url: `${BASE}/PT${String(i).padStart(2, '0')}.jpg` }));
 
