@@ -13,11 +13,12 @@ const KEY_HASH = 'b7549259b49e5c8fd3a67d8f6afc5c39a43d3df4b3da3cca01a2a0c6ee272a
 const MARKETPLACE_ID = 'ATVPDKIKX0DER';
 const SELLER_ID = 'A41UDYPOXH5YD';
 const SKU = 'MISTSET-01-FBA';
-const BASE = 'https://mine-ai-team.vercel.app/amz/mist-1024'; // 10/24 대표 승인('나머지는 다 적용해도 돼') — 1 고민 새 구도 · 숫자 노아님 글꼴 · 동그라미 빼기 · 8번 의사 · 약사
+const BASE = 'https://mine-ai-team.vercel.app/amz/mist-1027'; // 10/27 대표 승인('이미지들 우리 작업한 거 아마존 틱톡샵 전부 다') — 글자 규칙 통일 · 각주 삭제 · 전후 애프터 보정 · 사용법 4컷
+// (이전) mist-1024: // 10/24 대표 승인('나머지는 다 적용해도 돼') — 1 고민 새 구도 · 숫자 노아님 글꼴 · 동그라미 빼기 · 8번 의사 · 약사
 const N_IMG = Math.max(1, Math.min(13, Number(process.env.AMZ_N_IMG) || 13));
 const IMAGES = Array.from({ length: N_IMG }, (_, j) => j + 1).map(i => ({ attr: `other_product_image_locator_${i}`, url: `${BASE}/PT${String(i).padStart(2, '0')}.jpg` }));
 // 10/24 대표 승인('적용해') — 미스트 2개 세트(B0H7H9ZG4X)도 단품과 같은 13장(13번만 2개입 구성품 장). t=duo 로 고름. 대표 사진은 안 건드림.
-const TARGETS = { mist: { sku: SKU, asin: 'B0GYCB5164', base: BASE }, duo: { sku: 'GI-C3GZ-49ZT', asin: 'B0H7H9ZG4X', base: 'https://mine-ai-team.vercel.app/amz/duo-1024' } };
+const TARGETS = { mist: { sku: SKU, asin: 'B0GYCB5164', base: BASE }, duo: { sku: 'GI-C3GZ-49ZT', asin: 'B0H7H9ZG4X', base: 'https://mine-ai-team.vercel.app/amz/duo-1027' }, amp: { sku: '49-0XE6-ZKQE', asin: 'B0GYC88ZGL', base: 'https://mine-ai-team.vercel.app/amz/amp-1027' } };
 
 async function getLwaToken() {
   const cached = await redis.get('amazon:lwa_token');
