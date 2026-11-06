@@ -9,16 +9,19 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-const KEY_HASH = 'f7df6f7354beadb1125b661423814e118c7e65d359cf7477e57206436ee74bc2';
+const KEY_HASH = 'd0a1e2f217223ef0e2d63cc6fb718673403234a46bce565d5e910ff02cd92b76'; // 11/6 키 교체(대표 승인 '적용 전체 시작해' — 이전 키 파일 세션 밖)
 const MARKETPLACE_ID = 'ATVPDKIKX0DER';
 const SELLER_ID = 'A41UDYPOXH5YD';
 const SKU = 'MISTSET-01-FBA';
 const BASE = 'https://mine-ai-team.vercel.app/amz/mist-1027'; // 10/27 대표 승인('이미지들 우리 작업한 거 아마존 틱톡샵 전부 다') — 글자 규칙 통일 · 각주 삭제 · 전후 애프터 보정 · 사용법 4컷
 // (이전) mist-1024: // 10/24 대표 승인('나머지는 다 적용해도 돼') — 1 고민 새 구도 · 숫자 노아님 글꼴 · 동그라미 빼기 · 8번 의사 · 약사
-const N_IMG = Math.max(1, Math.min(13, Number(process.env.AMZ_N_IMG) || 13));
+const N_IMG = Math.max(1, Math.min(14, Number(process.env.AMZ_N_IMG) || 14));
 const IMAGES = Array.from({ length: N_IMG }, (_, j) => j + 1).map(i => ({ attr: `other_product_image_locator_${i}`, url: `${BASE}/PT${String(i).padStart(2, '0')}.jpg` }));
 // 10/24 대표 승인('적용해') — 미스트 2개 세트(B0H7H9ZG4X)도 단품과 같은 13장(13번만 2개입 구성품 장). t=duo 로 고름. 대표 사진은 안 건드림.
-const TARGETS = { mist: { sku: SKU, asin: 'B0GYCB5164', base: BASE }, duo: { sku: 'GI-C3GZ-49ZT', asin: 'B0H7H9ZG4X', base: 'https://mine-ai-team.vercel.app/amz/duo-1027' }, amp: { sku: '49-0XE6-ZKQE', asin: 'B0GYC88ZGL', base: 'https://mine-ai-team.vercel.app/amz/amp-1027' } };
+const TARGETS = { mist: { sku: SKU, asin: 'B0GYCB5164', base: BASE }, duo: { sku: 'GI-C3GZ-49ZT', asin: 'B0H7H9ZG4X', base: 'https://mine-ai-team.vercel.app/amz/duo-1027' }, amp: { sku: '49-0XE6-ZKQE', asin: 'B0GYC88ZGL', base: 'https://mine-ai-team.vercel.app/amz/amp-1027' },
+  // 11/6 대표 승인('일단 적용 전체 시작해') — 라벤더 · 무향 상세 공용 정리: 새 대표 사진(리본) · 5~7·10번 규격 · 두 버전 나란히 장. main=1 일 때만 대표 사진도 바꿈
+  lav: { sku: SKU, asin: 'B0GYCB5164', base: 'https://mine-ai-team.vercel.app/amz/lav-1106', n: 14 },
+  uns: { sku: 'MISTSET-02-FBA', asin: 'B0HMBVR1KM', base: 'https://mine-ai-team.vercel.app/amz/uns-1106', n: 13 } };
 
 async function getLwaToken() {
   const cached = await redis.get('amazon:lwa_token');
@@ -101,11 +104,10 @@ export default async function handler(req, res) {
       const out = await sp('PATCH', `${itemPath}?${q}`, token, body);
       return res.json({ mode, before: images, status: out.status, result: out.json });
     }
-    const n = Math.max(1, Math.min(13, Number(req.query.n) || IMAGES.length));
-    const body = {
-      productType: summary.productType,
-      patches: IMAGES.slice(0, n).map(({ attr, url }) => ({ op: 'replace', path: `/attributes/${attr}`, value: [{ marketplace_id: MARKETPLACE_ID, media_location: url.replace(BASE, TG.base) }] })),
-    };
+    const n = Math.max(1, Math.min(14, Number(req.query.n) || TG.n || 13));
+    const patches = IMAGES.slice(0, n).map(({ attr, url }) => ({ op: 'replace', path: `/attributes/${attr}`, value: [{ marketplace_id: MARKETPLACE_ID, media_location: url.replace(BASE, TG.base) }] }));
+    if (req.query.main === '1') patches.unshift({ op: 'replace', path: '/attributes/main_product_image_locator', value: [{ marketplace_id: MARKETPLACE_ID, media_location: `${TG.base}/MAIN.jpg` }] });
+    const body = { productType: summary.productType, patches };
     const q = `marketplaceIds=${MARKETPLACE_ID}${mode === 'apply' ? '' : '&mode=VALIDATION_PREVIEW'}`;
     const out = await sp('PATCH', `${itemPath}?${q}`, token, body);
     return res.json({ mode, before: images, status: out.status, result: out.json });
